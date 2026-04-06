@@ -61,6 +61,7 @@ export default function CampaignsClient({ initialCampaigns, contacts }: { initia
     });
     const data = await res.json();
     if (res.ok) {
+      alert(`Отправлено: ${data.sent}, ошибок: ${data.failed}\nTracking URL: ${data.trackingUrl ?? "не задан"}`);
       setCampaigns((prev) => prev.map((c) =>
         c.id === id ? { ...c, status: "sent", sent_count: data.sent, failed_count: data.failed, sent_at: new Date().toISOString() } : c
       ));
