@@ -47,12 +47,16 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     if (p.category) parts.push(p.category);
     if (p.subcategory) parts.push(p.subcategory);
     parts.push(p.name);
+    // Add only non-category characteristics from description
     if (p.description) {
-      const chars = p.description.split("\n").filter((l: string) => l.includes(":")).map((l: string) => l.split(":").pop()?.trim()).filter(Boolean);
-      if (chars.length) parts.push(`(${chars.join(", ")})`);
+      const skip = ["категория", "подкатегория"];
+      const chars = p.description.split("\n")
+        .filter((l: string) => l.includes(":") && !skip.some((s) => l.toLowerCase().startsWith(s)))
+        .map((l: string) => l.split(":").pop()?.trim())
+        .filter(Boolean);
+      if (chars.length) parts.push(chars.join(", "));
     }
-    if (p.sku) parts.push(`арт. ${p.sku}`);
-    return parts.join(" / ");
+    return parts.join(" ") + (p.sku ? ` / арт. ${p.sku}` : "");
   }
 
   function updateItem(i: number, field: string, val: string | number) {
@@ -148,17 +152,20 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     setInvoices(invoices.filter((inv: { id: string }) => inv.id !== id));
   }
 
-  async function imgToBase64(url: string): Promise<string> {
-    try {
-      const res = await fetch(url);
-      const blob = await res.blob();
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => resolve("");
-        reader.readAsDataURL(blob);
-      });
-    } catch { return ""; }
+  function imgToBase64(url: string): Promise<string> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext("2d")?.drawImage(img, 0, 0);
+        try { resolve(canvas.toDataURL("image/png")); } catch { resolve(url); }
+      };
+      img.onerror = () => resolve(url); // fallback to direct URL
+      img.src = url;
+    });
   }
 
   async function printInvoice() {
