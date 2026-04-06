@@ -152,20 +152,12 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     setInvoices(invoices.filter((inv: { id: string }) => inv.id !== id));
   }
 
-  function imgToBase64(url: string): Promise<string> {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        canvas.getContext("2d")?.drawImage(img, 0, 0);
-        try { resolve(canvas.toDataURL("image/png")); } catch { resolve(url); }
-      };
-      img.onerror = () => resolve(url); // fallback to direct URL
-      img.src = url;
-    });
+  async function imgToBase64(url: string): Promise<string> {
+    try {
+      const res = await fetch(`/api/image-proxy?url=${encodeURIComponent(url)}`);
+      if (res.ok) { const { data } = await res.json(); return data; }
+    } catch { /* ignore */ }
+    return url;
   }
 
   async function printInvoice() {
@@ -216,7 +208,10 @@ table{border-collapse:collapse}
 .sign-line{display:inline-block;width:200px;border-bottom:1px solid #000;margin:0 10px}
 .stamp{position:absolute;left:0;bottom:-10px;width:140px;height:140px;opacity:0.8}
 .signature{position:absolute;left:160px;bottom:10px;width:100px;opacity:0.8}
-@media print{body{margin:10mm 15mm}@page{size:A4;margin:10mm 15mm}}
+@media print{body{margin:10mm 15mm}@page{size:A4;margin:10mm 15mm 10mm 15mm}
+  /* Hide browser header/footer (about:blank, page numbers, date) */
+  @top-left{content:none}@top-right{content:none}@bottom-left{content:none}@bottom-right{content:none}
+}
 </style></head><body>
 
 <!-- Bank header table -->
@@ -284,7 +279,10 @@ ${sigB64 ? `<img class="signature" src="${sigB64}" />` : ""}
 <p><strong>Предприниматель</strong> <span class="sign-line"></span> / ${supplier?.director ?? ""} /</p>
 </div>
 
-<script>window.onload=()=>setTimeout(()=>window.print(),300)</script>
+<script>
+document.title='Счёт ${inv.invoice_number}';
+window.onload=()=>setTimeout(()=>window.print(),300);
+</script>
 </body></html>`;
     printWindow.document.write(html);
     printWindow.document.close();
