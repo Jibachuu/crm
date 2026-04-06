@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     if (!client) return NextResponse.json({ error: "Сессия не найдена, начните заново" }, { status: 400 });
 
     try {
-      await client.signIn({ apiId, apiHash }, { phoneNumber: phone, phoneCode: async () => code, password: async () => password ?? "" });
+      await (client as unknown as { signIn: (auth: unknown, opts: unknown) => Promise<void> }).signIn({ apiId, apiHash }, { phoneNumber: phone, phoneCode: async () => code, password: async () => password ?? "" });
       const sessionStr = (client.session as StringSession).save();
       const me = await client.getMe();
       clients.delete(sessionKey);

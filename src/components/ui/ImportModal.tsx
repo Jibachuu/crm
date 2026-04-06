@@ -212,7 +212,7 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
         body: JSON.stringify({ rows: mapped }),
       });
       const data = await res.json();
-      setResult({ added: data.added ?? 0, skipped: 0, errors: data.errors ?? [], total: fileRows.length });
+      setResult({ added: data.added ?? 0, updated: 0, skipped: 0, errors: data.errors ?? [], total: fileRows.length });
       if (data.added > 0) onImported?.(data.added);
     } else {
       const res = await fetch("/api/import/smart", {

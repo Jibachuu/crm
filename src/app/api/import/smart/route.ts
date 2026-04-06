@@ -135,10 +135,10 @@ export async function POST(req: NextRequest) {
   }
 
   function findUserId(name: unknown): string {
-    if (!name) return user.id;
+    if (!name) return user!.id;
     const nameStr = String(name).trim();
-    if (!nameStr) return user.id;
-    return matchUser(nameStr, allUsers ?? []) ?? placeholderMap.get(norm(nameStr)) ?? user.id;
+    if (!nameStr) return user!.id;
+    return matchUser(nameStr, allUsers ?? []) ?? placeholderMap.get(norm(nameStr)) ?? user!.id;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

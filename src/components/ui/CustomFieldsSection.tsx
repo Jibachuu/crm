@@ -70,7 +70,7 @@ export default function CustomFieldsSection({ entityType, entityId }: Props) {
       onConflict: "field_id,entity_id",
     });
 
-    setValues((p) => ({ ...p, [field.id]: payload as CustomFieldValue }));
+    setValues((p) => ({ ...p, [field.id]: payload as unknown as CustomFieldValue }));
     setSaving((p) => ({ ...p, [field.id]: false }));
   }
 
