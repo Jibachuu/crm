@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const limit = Number(searchParams.get("limit") || 30);
   const folder = searchParams.get("folder") || "INBOX";
+  const includeSent = searchParams.get("sent") === "1";
 
   let client: ImapFlow | null = null;
 
@@ -33,59 +34,39 @@ export async function GET(req: NextRequest) {
     });
 
     await client.connect();
-    const lock = await client.getMailboxLock(folder);
 
-    try {
-      const mailbox = client.mailbox as { exists?: number } | false;
-      const total = (mailbox && typeof mailbox === "object") ? (mailbox.exists ?? 0) : 0;
+    const emails: {
+      uid: number;
+      folder: string;
+      subject: string;
+      from: string;
+      fromEmail: string;
+      to: string;
+      date: string;
+      preview: string;
+      seen: boolean;
+    }[] = [];
 
-      if (total === 0) {
-        return NextResponse.json({ emails: [], total: 0 });
-      }
+    // Fetch from primary folder
+    await fetchFromFolder(client, folder, limit, emails);
 
-      // Fetch last N messages
-      const startSeq = Math.max(1, total - limit + 1);
-      const emails: {
-        uid: number;
-        subject: string;
-        from: string;
-        fromEmail: string;
-        to: string;
-        date: string;
-        preview: string;
-        seen: boolean;
-      }[] = [];
-
-      for await (const msg of client.fetch(`${startSeq}:*`, {
-        uid: true,
-        flags: true,
-        envelope: true,
-        source: true,
-      })) {
+    // Optionally fetch from Sent folder too
+    if (includeSent) {
+      const sentFolders = ["Sent", "INBOX.Sent", "Отправленные", "INBOX.Отправленные", "Sent Messages", "INBOX.Sent Messages"];
+      for (const sf of sentFolders) {
         try {
-          const parsed = await simpleParser(msg.source as Buffer);
-          emails.push({
-            uid: msg.uid,
-            subject: parsed.subject ?? "(без темы)",
-            from: parsed.from?.text ?? "",
-            fromEmail: parsed.from?.value?.[0]?.address ?? "",
-            to: parsed.to ? (Array.isArray(parsed.to) ? parsed.to.map((t) => t.text).join(", ") : parsed.to.text) : "",
-            date: parsed.date?.toISOString() ?? new Date().toISOString(),
-            preview: (parsed.text ?? "").slice(0, 200),
-            seen: msg.flags?.has("\\Seen") ?? false,
-          });
+          await fetchFromFolder(client, sf, Math.min(limit, 50), emails);
+          break; // found the sent folder
         } catch {
-          // Skip unparseable messages
+          // folder doesn't exist, try next
         }
       }
-
-      // Newest first
-      emails.reverse();
-
-      return NextResponse.json({ emails, total });
-    } finally {
-      lock.release();
     }
+
+    // Sort by date, newest first
+    emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return NextResponse.json({ emails: emails.slice(0, limit * 2), total: emails.length });
   } catch (err: unknown) {
     const msg = (err as { message?: string }).message ?? String(err);
     return NextResponse.json({ error: `IMAP: ${msg}` }, { status: 500 });
@@ -93,5 +74,47 @@ export async function GET(req: NextRequest) {
     if (client) {
       try { await client.logout(); } catch { /* ignore */ }
     }
+  }
+}
+
+async function fetchFromFolder(
+  client: ImapFlow,
+  folder: string,
+  limit: number,
+  emails: { uid: number; folder: string; subject: string; from: string; fromEmail: string; to: string; date: string; preview: string; seen: boolean }[]
+) {
+  const lock = await client.getMailboxLock(folder);
+  try {
+    const mailbox = client.mailbox as { exists?: number } | false;
+    const total = (mailbox && typeof mailbox === "object") ? (mailbox.exists ?? 0) : 0;
+    if (total === 0) return;
+
+    const startSeq = Math.max(1, total - limit + 1);
+
+    for await (const msg of client.fetch(`${startSeq}:*`, {
+      uid: true,
+      flags: true,
+      envelope: true,
+      source: true,
+    })) {
+      try {
+        const parsed = await simpleParser(msg.source as Buffer);
+        emails.push({
+          uid: msg.uid,
+          folder,
+          subject: parsed.subject ?? "(без темы)",
+          from: parsed.from?.text ?? "",
+          fromEmail: parsed.from?.value?.[0]?.address ?? "",
+          to: parsed.to ? (Array.isArray(parsed.to) ? parsed.to.map((t) => t.text).join(", ") : parsed.to.text) : "",
+          date: parsed.date?.toISOString() ?? new Date().toISOString(),
+          preview: (parsed.text ?? "").slice(0, 200),
+          seen: msg.flags?.has("\\Seen") ?? false,
+        });
+      } catch {
+        // Skip unparseable messages
+      }
+    }
+  } finally {
+    lock.release();
   }
 }

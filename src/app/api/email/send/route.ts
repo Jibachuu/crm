@@ -33,13 +33,13 @@ export async function POST(req: NextRequest) {
       auth: { user, pass },
     });
 
-    const attachments = await Promise.all(
-      files.filter((f) => f.size > 0).map(async (f) => ({
-        filename: f.name,
-        content: Buffer.from(await f.arrayBuffer()),
-        contentType: f.type,
-      }))
-    );
+    const attachments = [];
+    for (const f of files) {
+      if (!f.size || !f.name) continue;
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      if (bytes.length === 0) continue;
+      attachments.push({ filename: f.name, content: Buffer.from(bytes) });
+    }
 
     await transporter.sendMail({
       from,

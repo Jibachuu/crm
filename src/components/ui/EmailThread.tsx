@@ -45,7 +45,7 @@ export default function EmailThread({ email, compact = false, entityType, entity
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/email/inbox?limit=100");
+      const res = await fetch("/api/email/inbox?limit=100&sent=1");
       if (!res.ok) { const d = await res.json(); setError(d.error); setLoading(false); return; }
       const data = await res.json();
       // Filter emails that involve this email address

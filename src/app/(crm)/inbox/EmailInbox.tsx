@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Mail, RefreshCw, ArrowLeft, Paperclip, Reply } from "lucide-react";
+import { Mail, RefreshCw, ArrowLeft, Paperclip, Reply, Send } from "lucide-react";
 import EmailCompose from "@/components/ui/EmailCompose";
 
 interface Email {
   uid: number;
+  folder: string;
   subject: string;
   from: string;
   fromEmail: string;
@@ -52,7 +53,7 @@ export default function EmailInbox() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/email/inbox?limit=50");
+      const res = await fetch("/api/email/inbox?limit=50&sent=1");
       const data = await res.json();
       if (!res.ok) { setError(data.error); return; }
       setEmails(data.emails ?? []);
@@ -89,7 +90,7 @@ export default function EmailInbox() {
       {/* Email list */}
       <div className="flex flex-col" style={{ width: 380, borderRight: "1px solid #e4e4e4", background: "#fff" }}>
         <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid #f0f0f0" }}>
-          <span className="text-xs font-semibold" style={{ color: "#888" }}>ВХОДЯЩИЕ · {emails.length}</span>
+          <span className="text-xs font-semibold" style={{ color: "#888" }}>ПОЧТА · {emails.length}</span>
           <button onClick={refresh} disabled={refreshing} className="p-1 rounded hover:bg-slate-100 disabled:opacity-40">
             <RefreshCw size={13} style={{ color: "#888" }} className={refreshing ? "animate-spin" : ""} />
           </button>
@@ -111,37 +112,40 @@ export default function EmailInbox() {
               <p className="text-xs" style={{ color: "#aaa" }}>Нет писем</p>
             </div>
           )}
-          {emails.map((email) => (
-            <button
-              key={email.uid}
-              onClick={() => openEmail(email.uid)}
-              className="w-full text-left px-4 py-3 transition-colors hover:bg-gray-50"
-              style={{
-                borderBottom: "1px solid #f5f5f5",
-                background: selectedEmail?.uid === email.uid ? "#e8f4fd" : "transparent",
-              }}
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5"
-                  style={{ background: email.seen ? "#aaa" : "#0067a5" }}>
-                  {getInitials(email.from)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-xs font-medium truncate" style={{ color: "#333", fontWeight: email.seen ? 400 : 600 }}>
-                      {email.from.split("<")[0].trim() || email.fromEmail}
-                    </span>
-                    <span className="text-xs flex-shrink-0 ml-2" style={{ color: "#aaa" }}>{formatDate(email.date)}</span>
+          {emails.map((email) => {
+            const isSent = email.folder !== "INBOX";
+            return (
+              <button
+                key={`${email.folder}-${email.uid}`}
+                onClick={() => openEmail(email.uid)}
+                className="w-full text-left px-4 py-3 transition-colors hover:bg-gray-50"
+                style={{
+                  borderBottom: "1px solid #f5f5f5",
+                  background: selectedEmail?.uid === email.uid ? "#e8f4fd" : "transparent",
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5"
+                    style={{ background: isSent ? "#2e7d32" : email.seen ? "#aaa" : "#0067a5" }}>
+                    {isSent ? <Send size={13} /> : getInitials(email.from)}
                   </div>
-                  <p className="text-xs truncate" style={{ color: "#333", fontWeight: email.seen ? 400 : 600 }}>{email.subject}</p>
-                  <p className="text-xs truncate mt-0.5" style={{ color: "#999" }}>{email.preview}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-xs font-medium truncate" style={{ color: "#333", fontWeight: email.seen ? 400 : 600 }}>
+                        {isSent ? `Кому: ${email.to.split("<")[0].trim() || email.to}` : (email.from.split("<")[0].trim() || email.fromEmail)}
+                      </span>
+                      <span className="text-xs flex-shrink-0 ml-2" style={{ color: "#aaa" }}>{formatDate(email.date)}</span>
+                    </div>
+                    <p className="text-xs truncate" style={{ color: "#333", fontWeight: email.seen ? 400 : 600 }}>{email.subject}</p>
+                    <p className="text-xs truncate mt-0.5" style={{ color: "#999" }}>{email.preview}</p>
+                  </div>
+                  {!isSent && !email.seen && (
+                    <div className="w-2 h-2 rounded-full flex-shrink-0 mt-2" style={{ background: "#0067a5" }} />
+                  )}
                 </div>
-                {!email.seen && (
-                  <div className="w-2 h-2 rounded-full flex-shrink-0 mt-2" style={{ background: "#0067a5" }} />
-                )}
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -218,7 +222,7 @@ export default function EmailInbox() {
                   <EmailCompose
                     to={selectedEmail.fromEmail}
                     defaultSubject={`Re: ${selectedEmail.subject.replace(/^Re:\s*/i, "")}`}
-                    onSent={() => setShowReply(false)}
+                    onSent={() => { setShowReply(false); loadEmails(); }}
                     onClose={() => setShowReply(false)}
                     compact
                   />

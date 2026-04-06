@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
       if (file.size === 0) continue;
       const ext = file.name.split(".").pop() ?? "bin";
       const path = `campaigns/${user.id}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
-      const buffer = Buffer.from(await file.arrayBuffer());
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const buffer = Buffer.from(bytes);
 
       const { error: uploadErr } = await admin.storage
         .from("attachments")
