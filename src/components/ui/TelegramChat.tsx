@@ -24,6 +24,7 @@ interface Props {
   peer: string; // username or phone
   compact?: boolean; // inline in deal/contact vs fullscreen inbox
   pollInterval?: number; // ms, default 8000
+  readOnly?: boolean; // hide input for channels
 }
 
 function formatMsgTime(unix: number) {
@@ -127,7 +128,7 @@ function MediaBubble({ media, peer, msgId }: { media: NonNullable<TgMessage["med
   return null;
 }
 
-export default function TelegramChat({ peer, compact = false, pollInterval = 8000 }: Props) {
+export default function TelegramChat({ peer, compact = false, pollInterval = 8000, readOnly = false }: Props) {
   const [messages, setMessages] = useState<TgMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -322,6 +323,11 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
       )}
 
       {/* Input bar */}
+      {readOnly ? (
+        <div className="flex items-center justify-center px-3 py-3" style={{ borderTop: "1px solid #e4e4e4", background: "#fafafa" }}>
+          <span className="text-xs" style={{ color: "#aaa" }}>Это канал — отправка сообщений недоступна</span>
+        </div>
+      ) : (
       <div className="flex items-center gap-2 px-3 py-2" style={{ borderTop: "1px solid #e4e4e4", background: "#fff" }}>
         {/* File picker */}
         <button
@@ -373,6 +379,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
           </button>
         )}
       </div>
+      )}
 
       {/* Hidden media icons used by MediaBubble - keeps lucide from tree-shaking */}
       <span className="hidden"><Image size={1} /><Video size={1} /><X size={1} /></span>

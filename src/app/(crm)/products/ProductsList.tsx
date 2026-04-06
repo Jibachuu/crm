@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Search, Package, Edit2, Trash2 } from "lucide-react";
+import { Plus, Search, Package, Edit2, Trash2, CheckSquare } from "lucide-react";
 import Button from "@/components/ui/Button";
-import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
+import ExportImportButtons from "@/components/ui/ExportImportButtons";
+import PurgeButton from "@/components/ui/PurgeButton";
 import ProductModal from "./ProductModal";
 import { formatCurrency } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -16,12 +17,32 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
   const [modalOpen, setModalOpen] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editing, setEditing] = useState<any | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [editingStock, setEditingStock] = useState<Record<string, string>>({});
 
   const filtered = products.filter((p: { name: string; sku: string }) =>
     !search ||
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.sku.toLowerCase().includes(search.toLowerCase())
   );
+
+  const filteredIds = filtered.map((p: { id: string }) => p.id);
+  const allSelected = filteredIds.length > 0 && filteredIds.every((id: string) => selected.has(id));
+  const someSelected = selected.size > 0;
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelected((prev) => { const s = new Set(prev); filteredIds.forEach((id: string) => s.delete(id)); return s; });
+    } else {
+      setSelected((prev) => { const s = new Set(prev); filteredIds.forEach((id: string) => s.add(id)); return s; });
+    }
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function handleSaved(saved: any) {
@@ -35,73 +56,205 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Удалить товар? Это действие нельзя отменить.")) return;
+    if (!confirm("Удалить товар?")) return;
     await createClient().from("products").delete().eq("id", id);
     setProducts((prev: typeof products) => prev.filter((p: { id: string }) => p.id !== id));
   }
 
+  async function bulkDelete() {
+    if (!confirm(`Удалить ${selected.size} товаров?`)) return;
+    setBulkDeleting(true);
+    const ids = Array.from(selected);
+    const res = await fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ table: "products", ids }),
+    });
+    if (res.ok) {
+      setProducts((prev) => prev.filter((p: { id: string }) => !ids.includes(p.id)));
+      setSelected(new Set());
+    }
+    setBulkDeleting(false);
+  }
+
+  async function updateStock(productId: string, stock: number) {
+    const supabase = createClient();
+    // Update base stock on product_variants if exists, otherwise we'll store in description or ignore
+    const product = products.find((p: { id: string }) => p.id === productId);
+    if (product?.product_variants?.length > 0) {
+      // Update first variant's stock
+      await supabase.from("product_variants").update({ stock }).eq("id", product.product_variants[0].id);
+    } else {
+      // Create a default variant with the stock
+      await supabase.from("product_variants").insert({
+        product_id: productId,
+        attributes: {},
+        price: product?.base_price ?? 0,
+        stock,
+      });
+    }
+    // Reload product
+    const { data } = await supabase
+      .from("products")
+      .select("*, product_attributes(*), product_variants(*)")
+      .eq("id", productId)
+      .single();
+    if (data) {
+      setProducts((prev: typeof products) => prev.map((p: { id: string }) => p.id === productId ? data : p));
+    }
+    setEditingStock((prev) => { const n = { ...prev }; delete n[productId]; return n; });
+  }
+
+  async function updateField(productId: string, field: string, value: unknown) {
+    const supabase = createClient();
+    await supabase.from("products").update({ [field]: value }).eq("id", productId);
+    setProducts((prev: typeof products) =>
+      prev.map((p: { id: string }) => p.id === productId ? { ...p, [field]: value } : p)
+    );
+  }
+
   return (
     <div>
-      <div className="flex gap-3 mb-5">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      {/* Toolbar */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <div className="relative flex-1 min-w-48">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "#aaa" }} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Поиск по названию или артикулу..."
-            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Поиск по названию, артикулу..."
+            className="w-full pl-8 pr-3 py-1.5 text-sm focus:outline-none"
+            style={{ border: "1px solid #d0d0d0", borderRadius: 4 }}
           />
         </div>
+        <ExportImportButtons entity="products" onImported={() => window.location.reload()} />
+        <PurgeButton table="products" onPurged={() => window.location.reload()} />
         <Button size="sm" onClick={() => { setEditing(null); setModalOpen(true); }}>
-          <Plus size={16} /> Новый товар
+          <Plus size={13} /> Новый товар
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {/* Bulk actions */}
+      {someSelected && (
+        <div className="flex items-center gap-3 px-4 py-2 mb-3 rounded" style={{ background: "#e8f4fd", border: "1px solid #b3d4f0" }}>
+          <span className="text-sm font-medium" style={{ color: "#0067a5" }}>Выбрано: {selected.size}</span>
+          <button onClick={() => setSelected(new Set())} className="text-xs hover:underline" style={{ color: "#0067a5" }}>Снять</button>
+          <div className="flex-1" />
+          <Button size="sm" variant="danger" onClick={bulkDelete} loading={bulkDeleting}>
+            <Trash2 size={13} /> Удалить
+          </Button>
+        </div>
+      )}
+
+      {/* Stats */}
+      <div className="flex gap-4 mb-3 text-xs" style={{ color: "#888" }}>
+        <span>Товаров: <strong style={{ color: "#333" }}>{filtered.length}</strong></span>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white overflow-hidden" style={{ border: "1px solid #e4e4e4", borderRadius: 6 }}>
         {filtered.length === 0 ? (
-          <div className="col-span-4 text-center py-16">
-            <Package size={40} className="mx-auto mb-3 text-slate-300" />
-            <p className="text-slate-400">Товары не найдены</p>
+          <div className="text-center py-12" style={{ color: "#aaa" }}>
+            <Package size={36} className="mx-auto mb-2" style={{ color: "#ddd" }} />
+            <p className="text-sm">Товары не найдены</p>
           </div>
         ) : (
-          filtered.map((product: {
-            id: string; name: string; sku: string; base_price: number; is_active: boolean;
-            product_variants?: { id: string; attributes: Record<string, string>; price?: number; stock: number }[];
-          }) => {
-            const totalStock = product.product_variants?.reduce((s, v) => s + v.stock, 0) ?? 0;
-            return (
-              <Card key={product.id} className="hover:shadow-md transition-shadow">
-                <CardBody>
-                  <div className="flex items-start justify-between mb-2">
-                    <Package size={20} className="text-slate-400" />
-                    <Badge variant={product.is_active ? "success" : "default"}>
-                      {product.is_active ? "Активен" : "Неактивен"}
-                    </Badge>
-                  </div>
-                  <h3 className="font-semibold text-slate-900 mb-0.5 leading-tight">{product.name}</h3>
-                  <p className="text-xs text-slate-500 mb-3">Арт. {product.sku}</p>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-bold text-slate-900">{formatCurrency(product.base_price)}</span>
-                    <span className={`text-xs font-medium ${totalStock > 0 ? "text-green-600" : "text-red-600"}`}>
-                      {totalStock > 0 ? `${totalStock} шт.` : "Нет в наличии"}
-                    </span>
-                  </div>
-                  {product.product_variants && product.product_variants.length > 0 && (
-                    <p className="text-xs text-slate-400 mb-3">{product.product_variants.length} вариантов</p>
-                  )}
-                  <div className="flex gap-2 pt-2 border-t border-slate-100">
-                    <Button size="sm" variant="secondary" className="flex-1"
-                      onClick={() => { setEditing(product); setModalOpen(true); }}>
-                      <Edit2 size={13} /> Изменить
-                    </Button>
-                    <Button size="sm" variant="danger" onClick={() => handleDelete(product.id)}>
-                      <Trash2 size={13} />
-                    </Button>
-                  </div>
-                </CardBody>
-              </Card>
-            );
-          })
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: "1px solid #e4e4e4", background: "#fafafa" }}>
+                  <th className="px-3 py-2.5 w-8">
+                    <input type="checkbox" checked={allSelected} onChange={toggleAll} className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
+                  </th>
+                  {["Товар", "Артикул", "Цена", "Наличие", "Статус", ""].map((h) => (
+                    <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((product: {
+                  id: string; name: string; sku: string; base_price: number; is_active: boolean;
+                  product_variants?: { id: string; stock: number }[];
+                }) => {
+                  const isSel = selected.has(product.id);
+                  const totalStock = product.product_variants?.reduce((s, v) => s + v.stock, 0) ?? 0;
+                  const isEditingStock = product.id in editingStock;
+                  return (
+                    <tr key={product.id} style={{ borderBottom: "1px solid #f0f0f0", background: isSel ? "#f0f7ff" : "transparent" }}>
+                      <td className="px-3 py-2.5">
+                        <input type="checkbox" checked={isSel} onChange={() => toggleOne(product.id)} className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <p className="font-medium" style={{ color: "#333" }}>{product.name}</p>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.sku}</td>
+                      <td className="px-4 py-2.5 font-medium" style={{ color: "#333" }}>{formatCurrency(product.base_price)}</td>
+                      <td className="px-4 py-2.5">
+                        {isEditingStock ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              className="w-16 text-xs px-2 py-1 focus:outline-none"
+                              style={{ border: "1px solid #d0d0d0", borderRadius: 3 }}
+                              value={editingStock[product.id]}
+                              onChange={(e) => setEditingStock((p) => ({ ...p, [product.id]: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") updateStock(product.id, Number(editingStock[product.id]) || 0);
+                                if (e.key === "Escape") setEditingStock((p) => { const n = { ...p }; delete n[product.id]; return n; });
+                              }}
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => updateStock(product.id, Number(editingStock[product.id]) || 0)}
+                              className="text-xs px-1.5 py-0.5 rounded"
+                              style={{ background: "#0067a5", color: "#fff" }}
+                            >OK</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setEditingStock((p) => ({ ...p, [product.id]: String(totalStock) }))}
+                            className="text-xs font-medium px-2 py-0.5 rounded hover:bg-gray-100 transition-colors"
+                            style={{ color: totalStock > 0 ? "#2e7d32" : "#c62828" }}
+                            title="Нажмите чтобы изменить"
+                          >
+                            {totalStock > 0 ? `${totalStock} шт` : "Нет"}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <button
+                          onClick={() => updateField(product.id, "is_active", !product.is_active)}
+                          title={product.is_active ? "Деактивировать" : "Активировать"}
+                        >
+                          <Badge variant={product.is_active ? "success" : "default"}>
+                            {product.is_active ? "Активен" : "Неактивен"}
+                          </Badge>
+                        </button>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1 justify-end">
+                          <button
+                            onClick={() => { setEditing(product); setModalOpen(true); }}
+                            className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                            title="Редактировать"
+                          >
+                            <Edit2 size={13} style={{ color: "#888" }} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(product.id)}
+                            className="p-1.5 rounded hover:bg-red-50 transition-colors"
+                            title="Удалить"
+                          >
+                            <Trash2 size={13} style={{ color: "#c62828" }} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

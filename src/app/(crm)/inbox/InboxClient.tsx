@@ -133,7 +133,11 @@ export default function InboxClient() {
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium truncate" style={{ color: "#222" }}>{dialog.name}</span>
+                    <span className="text-sm font-medium truncate" style={{ color: "#222" }}>
+                      {dialog.isChannel && <span className="text-xs mr-1 px-1 py-0.5 rounded" style={{ background: "#fff3e0", color: "#e65c00", fontSize: 9 }}>КАНАЛ</span>}
+                      {dialog.isGroup && <span className="text-xs mr-1 px-1 py-0.5 rounded" style={{ background: "#e8f5e9", color: "#2e7d32", fontSize: 9 }}>ГРУППА</span>}
+                      {dialog.name}
+                    </span>
                     <span className="text-xs flex-shrink-0 ml-1" style={{ color: "#aaa" }}>
                       {formatDialogDate(dialog.lastDate)}
                     </span>
@@ -172,15 +176,19 @@ export default function InboxClient() {
                 {getInitials(selected!.name)}
               </div>
               <div>
-                <p className="text-sm font-semibold" style={{ color: "#222" }}>{selected!.name}</p>
+                <p className="text-sm font-semibold" style={{ color: "#222" }}>
+                {selected!.name}
+                {selected!.isChannel && <span className="ml-2 text-xs px-1.5 py-0.5 rounded" style={{ background: "#fff3e0", color: "#e65c00" }}>Канал</span>}
+              </p>
                 {selected!.username && <p className="text-xs" style={{ color: "#0067a5" }}>@{selected!.username}</p>}
                 {!selected!.username && selected!.phone && <p className="text-xs" style={{ color: "#888" }}>{selected!.phone}</p>}
+                {selected!.isChannel && <p className="text-xs" style={{ color: "#e65c00" }}>В каналы нельзя отправлять сообщения</p>}
               </div>
             </div>
 
             {/* Chat component */}
             <div className="flex-1 min-h-0">
-              <TelegramChat peer={selectedPeer} compact={false} />
+              <TelegramChat peer={selectedPeer} compact={false} readOnly={selected!.isChannel} />
             </div>
           </>
         )}
