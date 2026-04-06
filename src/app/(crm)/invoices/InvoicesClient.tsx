@@ -126,55 +126,109 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     if (!printWindow || !previewInvoice) return;
     const inv = previewInvoice;
     const total = previewItems.reduce((s: number, i: { total: number }) => s + i.total, 0);
+    const fmt = (n: number) => Number(n).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+    const d = new Date(inv.invoice_date);
+    const dateStr = `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()} г.`;
+    const dueDateStr = inv.payment_due ? new Date(inv.payment_due).toLocaleDateString("ru-RU") : "";
+
+    // Find buyer company details
+    const buyerCompany = companies.find((c: { id: string }) => c.id === inv.buyer_company_id);
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Счёт №${inv.invoice_number}</title>
-<style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#333}
-table{width:100%;border-collapse:collapse;margin:10px 0}
-td,th{border:1px solid #333;padding:5px 8px;text-align:left}
-th{background:#f5f5f5;font-weight:bold}
-.right{text-align:right}
-.header{border:none;margin-bottom:20px}
-.header td{border:none;vertical-align:top;padding:2px 0}
-h2{margin:0 0 5px;font-size:16px}
-.total-row td{font-weight:bold}
-.footer{margin-top:30px;font-size:11px}
-@media print{body{margin:15mm}}
+<style>
+body{font-family:Arial,sans-serif;font-size:11px;margin:20mm 15mm;color:#000;line-height:1.4}
+table{border-collapse:collapse}
+.bank-header{width:100%;margin-bottom:0}
+.bank-header td{border:1px solid #000;padding:4px 6px;font-size:10px;vertical-align:top}
+.bank-header .label{font-size:9px;color:#555}
+.title{font-size:16px;font-weight:bold;margin:20px 0 15px;padding-bottom:8px;border-bottom:2px solid #000}
+.details{margin-bottom:15px;font-size:11px}
+.details td{padding:2px 0;border:none;vertical-align:top}
+.details .lbl{font-weight:bold;padding-right:10px;white-space:nowrap;width:120px}
+.items{width:100%;margin:10px 0}
+.items td,.items th{border:1px solid #000;padding:4px 6px}
+.items th{font-weight:bold;text-align:center;font-size:10px}
+.items .r{text-align:right}
+.items .c{text-align:center}
+.totals{width:100%;margin:0}
+.totals td{border:none;padding:2px 6px;font-size:11px}
+.totals .r{text-align:right}
+.totals .bold{font-weight:bold}
+.sum-words{font-weight:bold;font-size:11px;margin:5px 0}
+.fine-print{font-size:9px;color:#333;margin:15px 0;line-height:1.5}
+.sign-block{margin-top:25px;position:relative}
+.sign-line{display:inline-block;width:200px;border-bottom:1px solid #000;margin:0 10px}
+.stamp{position:absolute;left:0;bottom:-10px;width:140px;height:140px;opacity:0.8}
+.signature{position:absolute;left:160px;bottom:10px;width:100px;opacity:0.8}
+@media print{body{margin:10mm 15mm}@page{size:A4;margin:10mm 15mm}}
 </style></head><body>
-<table class="header"><tr>
-<td style="width:60%">
-<p><strong>${supplier?.bank_name ?? ""}</strong></p>
-<p>БИК: ${supplier?.bik ?? ""} &nbsp; Корр. счёт: ${supplier?.corr_account ?? ""}</p>
-<p>Расч. счёт: ${supplier?.account_number ?? ""}</p>
+
+<!-- Bank header table -->
+<table class="bank-header">
+<tr>
+<td rowspan="2" style="width:55%">
+${supplier?.bank_name ?? ""}<br><span class="label">Банк получателя</span>
 </td>
+<td style="width:10%"><span class="label">БИК</span></td>
+<td style="width:35%">${supplier?.bik ?? ""}</td>
+</tr>
+<tr>
+<td><span class="label">Сч. №</span></td>
+<td>${supplier?.corr_account ?? ""}</td>
+</tr>
+<tr>
 <td>
-<p><strong>Получатель:</strong></p>
-<p>${supplier?.company_name ?? ""}</p>
-<p>ИНН: ${supplier?.inn ?? ""} ${supplier?.kpp ? "КПП: " + supplier.kpp : ""}</p>
+<span class="label">ИНН</span>&nbsp;&nbsp;${supplier?.inn ?? ""}&nbsp;&nbsp;&nbsp;&nbsp;<span class="label">КПП</span>&nbsp;&nbsp;${supplier?.kpp ?? ""}
+<br>${supplier?.company_name ?? ""}<br><span class="label">Получатель</span>
 </td>
-</tr></table>
-<h2>Счёт на оплату № ${inv.invoice_number} от ${new Date(inv.invoice_date).toLocaleDateString("ru-RU")}</h2>
-<p><strong>Поставщик:</strong> ${supplier?.company_name ?? ""}, ИНН ${supplier?.inn ?? ""}, ${supplier?.address ?? ""}</p>
-<p><strong>Покупатель:</strong> ${inv.buyer_name}${inv.buyer_inn ? ", ИНН " + inv.buyer_inn : ""}</p>
-<p><strong>Основание:</strong> ${inv.basis}</p>
-<table>
-<thead><tr><th>№</th><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th class="right">Цена</th><th class="right">Сумма</th></tr></thead>
+<td><span class="label">Сч. №</span></td>
+<td>${supplier?.account_number ?? ""}</td>
+</tr>
+</table>
+
+<div class="title">Счет на оплату № ${inv.invoice_number} от ${dateStr}</div>
+
+<table class="details">
+<tr><td class="lbl">Поставщик<br>(Исполнитель):</td><td>${supplier?.company_name ?? ""}, ИНН ${supplier?.inn ?? ""}${supplier?.kpp ? ", " + supplier.kpp : ""}${supplier?.address ? ", " + supplier.address : ""}</td></tr>
+<tr><td class="lbl">Покупатель<br>(Заказчик):</td><td>${inv.buyer_name}${inv.buyer_inn ? ", ИНН " + inv.buyer_inn : ""}${buyerCompany?.kpp ? ", КПП " + buyerCompany.kpp : ""}</td></tr>
+<tr><td class="lbl">Основание:</td><td>${inv.basis}</td></tr>
+</table>
+
+<table class="items">
+<thead>
+<tr><th style="width:30px">№</th><th>Товары (работы, услуги)</th><th style="width:50px">Кол-во</th><th style="width:35px">Ед.</th><th style="width:80px" class="r">Цена</th><th style="width:90px" class="r">Сумма</th></tr>
+</thead>
 <tbody>
 ${previewItems.map((item: { name: string; quantity: number; unit: string; price: number; total: number }, i: number) =>
-  `<tr><td>${i + 1}</td><td>${item.name}</td><td>${item.quantity}</td><td>${item.unit}</td><td class="right">${Number(item.price).toLocaleString("ru-RU", { minimumFractionDigits: 2 })}</td><td class="right">${Number(item.total).toLocaleString("ru-RU", { minimumFractionDigits: 2 })}</td></tr>`
+  `<tr><td class="c">${i + 1}</td><td>${item.name}</td><td class="c">${item.quantity}</td><td class="c">${item.unit}</td><td class="r">${fmt(item.price)}</td><td class="r">${fmt(item.total)}</td></tr>`
 ).join("")}
 </tbody>
-<tfoot>
-<tr class="total-row"><td colspan="5" class="right">Итого:</td><td class="right">${total.toLocaleString("ru-RU", { minimumFractionDigits: 2 })}</td></tr>
-<tr><td colspan="5" class="right">${inv.vat_included ? "В том числе НДС (20%):" : "Без НДС"}</td><td class="right">${inv.vat_included ? (total * 0.2 / 1.2).toLocaleString("ru-RU", { minimumFractionDigits: 2 }) : "—"}</td></tr>
-<tr class="total-row"><td colspan="5" class="right">Всего к оплате:</td><td class="right">${total.toLocaleString("ru-RU", { minimumFractionDigits: 2 })}</td></tr>
-</tfoot>
 </table>
-<p><strong>Всего наименований ${previewItems.length}, на сумму ${total.toLocaleString("ru-RU", { minimumFractionDigits: 2 })} руб.</strong></p>
-<p><em>${amountToWords(total)}</em></p>
-${inv.comment ? `<p>Комментарий: ${inv.comment}</p>` : ""}
-<p>Оплатить не позднее: <strong>${inv.payment_due ? new Date(inv.payment_due).toLocaleDateString("ru-RU") : "—"}</strong></p>
-<div class="footer">
-<p><strong>Руководитель</strong> _________________ / ${supplier?.director ?? ""} /</p>
+
+<table class="totals">
+<tr><td colspan="4"></td><td class="r bold" style="width:100px">Итого:</td><td class="r bold" style="width:100px">${fmt(total)}</td></tr>
+<tr><td colspan="4"></td><td class="r">${inv.vat_included ? "В том числе НДС (20%):" : "Без налога (НДС)"}</td><td class="r">${inv.vat_included ? fmt(total * 0.2 / 1.2) : "-"}</td></tr>
+<tr><td colspan="4"></td><td class="r bold">Всего к оплате:</td><td class="r bold">${fmt(total)}</td></tr>
+</table>
+
+<p style="margin-top:10px">Всего наименований ${previewItems.length}, на сумму ${fmt(total)} руб.</p>
+<p class="sum-words">${amountToWords(total)}</p>
+
+${dueDateStr ? `<p style="margin-top:10px">Оплатить не позднее ${dueDateStr}</p>` : ""}
+
+<div class="fine-print">
+Оплата данного счета означает согласие с условиями поставки товара.<br>
+Уведомление об оплате обязательно, в противном случае не гарантируется наличие товара на складе.<br>
+Товар отпускается по факту прихода денег на р/с Поставщика, самовывозом, при наличии доверенности и паспорта.
 </div>
+
+<div class="sign-block">
+${supplier?.stamp_url ? `<img class="stamp" src="${supplier.stamp_url}" />` : ""}
+${supplier?.signature_url ? `<img class="signature" src="${supplier.signature_url}" />` : ""}
+<p><strong>Предприниматель</strong> <span class="sign-line"></span> / ${supplier?.director ?? ""} /</p>
+</div>
+
 <script>window.onload=()=>window.print()</script>
 </body></html>`;
     printWindow.document.write(html);
