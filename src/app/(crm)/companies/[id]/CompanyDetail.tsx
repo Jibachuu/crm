@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, Edit2, Trash2, Building2, Phone, Mail, Globe, MapPin, MessageSquare, Plus, CheckSquare, FileText, Download, Upload } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmailThread from "@/components/ui/EmailThread";
+import TelegramChat from "@/components/ui/TelegramChat";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
@@ -28,7 +29,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
   const [company, setCompany] = useState(initialCompany);
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "email">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "email" | "telegram">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -103,11 +104,15 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
     setContractUploading(false);
   }
 
+  // Find contacts with telegram for company telegram tab
+  const tgContact = contacts?.find((c: { telegram_id?: string }) => c.telegram_id);
+
   const tabs = [
     { id: "info", label: "Информация" },
     { id: "communications", label: `Коммуникации (${communications.length})` },
     { id: "tasks", label: `Задачи (${tasks.length})` },
     ...(company.email ? [{ id: "email", label: "📧 Почта" }] : []),
+    ...(tgContact ? [{ id: "telegram", label: "💬 Telegram" }] : []),
   ];
 
   return (
@@ -189,14 +194,18 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                     </div>
                     <CardBody className="p-0">
                       <ul className="divide-y divide-slate-100">
-                        {contacts.map((c: { id: string; full_name: string; position?: string; phone?: string }) => (
+                        {contacts.map((c: { id: string; full_name: string; position?: string; phone?: string; email?: string; telegram_id?: string }) => (
                           <li key={c.id}>
                             <Link href={`/contacts/${c.id}`} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50">
                               <div>
                                 <p className="text-sm font-medium text-blue-600 hover:underline">{c.full_name}</p>
                                 {c.position && <p className="text-xs text-slate-400">{c.position}</p>}
                               </div>
-                              {c.phone && <span className="text-xs text-slate-500">{c.phone}</span>}
+                              <div className="flex items-center gap-3 text-xs text-slate-500">
+                                {c.phone && <span className="flex items-center gap-1"><Phone size={11} /> {c.phone}</span>}
+                                {c.email && <span className="flex items-center gap-1"><Mail size={11} /> {c.email}</span>}
+                                {c.telegram_id && <span style={{ color: "#0088cc" }}>TG</span>}
+                              </div>
                             </Link>
                           </li>
                         ))}
@@ -216,7 +225,12 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                           <li key={d.id}>
                             <Link href={`/deals/${d.id}`} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50">
                               <span className="text-sm text-blue-600 hover:underline">{d.title}</span>
-                              <span className="text-xs text-slate-500">{DEAL_STAGE[d.stage] ?? d.stage}</span>
+                              <div className="flex items-center gap-2">
+                                {d.amount > 0 && <span className="text-xs font-medium" style={{ color: "#2e7d32" }}>{Number(d.amount).toLocaleString("ru-RU")} ₽</span>}
+                                <Badge variant={d.stage === "won" ? "success" : d.stage === "lost" ? "danger" : "default"}>
+                                  {DEAL_STAGE[d.stage] ?? d.stage}
+                                </Badge>
+                              </div>
                             </Link>
                           </li>
                         ))}
@@ -307,6 +321,15 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
 
             {activeTab === "email" && company.email && (
               <EmailThread email={company.email} compact entityType="company" entityId={company.id} />
+            )}
+
+            {activeTab === "telegram" && tgContact && (
+              <div>
+                <p className="text-xs mb-2" style={{ color: "#888" }}>
+                  Переписка с <strong>{tgContact.full_name}</strong> (@{tgContact.telegram_id})
+                </p>
+                <TelegramChat peer={tgContact.telegram_id} compact />
+              </div>
             )}
           </div>
         </div>
