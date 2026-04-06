@@ -107,20 +107,54 @@ function autoMatch(fileHeaders: string[], fields: CrmField[]): Record<string, st
   const mapping: Record<string, string> = {};
   const used = new Set<string>();
 
-  // Normalize: lowercase + collapse whitespace + remove non-printable chars
-  function n(s: string) { return s.toLowerCase().replace(/\s+/g, " ").trim(); }
+  function n(s: string) { return s.toLowerCase().replace(/[—–-]/g, "-").replace(/\s+/g, " ").trim(); }
 
+  // Pass 1: exact matches (label or key or alias)
   for (const field of fields) {
     const label = n(field.label);
     const key = n(field.key);
     const aliases = (FIELD_ALIASES[field.key] ?? []).map(n);
+    for (const header of fileHeaders) {
+      if (used.has(header)) continue;
+      const h = n(header);
+      if (h === label || h === key || aliases.includes(h)) {
+        mapping[field.key] = header;
+        used.add(header);
+        break;
+      }
+    }
+  }
 
+  // Pass 2: product slot matching — "Товар N — название/кол-во/цена/сумма"
+  for (const header of fileHeaders) {
+    if (used.has(header)) continue;
+    const h = n(header);
+    const pm = h.match(/товар\s*(\d+)\s*-\s*(название|кол[- ]?во|цена за шт|цена|сумма)/);
+    if (pm) {
+      const num = pm[1];
+      const type = pm[2];
+      let key = "";
+      if (type.startsWith("назван")) key = `product_${num}_name`;
+      else if (type.startsWith("кол")) key = `product_${num}_qty`;
+      else if (type.startsWith("цена")) key = `product_${num}_price`;
+      else if (type.startsWith("сумм")) key = `product_${num}_total`;
+      if (key && !mapping[key]) {
+        mapping[key] = header;
+        used.add(header);
+      }
+    }
+  }
+
+  // Pass 3: fuzzy (substring) matches for non-product fields only
+  for (const field of fields) {
+    if (mapping[field.key]) continue;
+    if (field.key.startsWith("product_")) continue; // skip product slots — handled above
+    const label = n(field.label);
+    const aliases = (FIELD_ALIASES[field.key] ?? []).map(n);
     for (const header of fileHeaders) {
       if (used.has(header)) continue;
       const h = n(header);
       const matched =
-        h === label || h === key ||
-        aliases.includes(h) ||
         h.includes(label) || label.includes(h) ||
         aliases.some((a) => h.includes(a) || a.includes(h));
       if (matched) {
@@ -130,6 +164,7 @@ function autoMatch(fileHeaders: string[], fields: CrmField[]): Record<string, st
       }
     }
   }
+
   return mapping;
 }
 
