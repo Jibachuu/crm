@@ -345,7 +345,7 @@ export async function POST(req: NextRequest) {
 
     // Build main records
     const toInsert: Record<string, unknown>[] = [];
-    const productRows: { idx: number; name: string; sku: string | null; price: number | null; qty: number | null }[] = [];
+    const productRows: { idx: number; name: string; sku: string | null; price: number | null; qty: number | null; category: string | null; subcategory: string | null; volume: string | null; aroma: string | null }[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -375,15 +375,29 @@ export async function POST(req: NextRequest) {
       }
       if (row.created_at) { const d = parseDate(row.created_at); if (d) rec.created_at = d; }
 
-      // Deal products — structured columns: product_1_name, product_1_sku, product_1_qty, product_1_price ... up to 10
+      // Deal products — structured columns: product_N_category, subcategory, name, sku, volume, aroma, qty, price, total
       if (table === "deals") {
         for (let p = 1; p <= 10; p++) {
           const pName = String(row[`product_${p}_name`] ?? "").trim();
-          if (!pName) continue;
           const pSku = String(row[`product_${p}_sku`] ?? "").trim();
+          if (!pName && !pSku) continue;
+          const pCategory = String(row[`product_${p}_category`] ?? "").trim();
+          const pSubcategory = String(row[`product_${p}_subcategory`] ?? "").trim();
+          const pVolume = String(row[`product_${p}_volume`] ?? "").trim();
+          const pAroma = String(row[`product_${p}_aroma`] ?? "").trim();
           const pQty = parseNum(row[`product_${p}_qty`]) ?? 1;
           const pPrice = parseNum(row[`product_${p}_price`]) ?? 0;
-          productRows.push({ idx: toInsert.length, name: pName, sku: pSku || null, price: pPrice, qty: pQty });
+          productRows.push({
+            idx: toInsert.length,
+            name: pName || pSku,
+            sku: pSku || null,
+            price: pPrice,
+            qty: pQty,
+            category: pCategory || null,
+            subcategory: pSubcategory || null,
+            volume: pVolume || null,
+            aroma: pAroma || null,
+          });
         }
       }
 
@@ -422,7 +436,11 @@ export async function POST(req: NextRequest) {
       }
 
       // Collect products that need to be created
-      const toCreateProducts = new Map<string, { name: string; sku: string; price: number }>();
+      interface ProductToCreate {
+        name: string; sku: string; price: number;
+        category: string | null; subcategory: string | null; volume: string | null; aroma: string | null;
+      }
+      const toCreateProducts = new Map<string, ProductToCreate>();
       for (const pr of productRows) {
         if (findProductId(pr.name, pr.sku)) continue;
         const key = pr.sku ? norm(pr.sku) : norm(pr.name);
@@ -431,23 +449,42 @@ export async function POST(req: NextRequest) {
           name: pr.name,
           sku: pr.sku || (pr.name.slice(0, 20) + "_" + Math.random().toString(36).slice(2, 8)),
           price: pr.price ?? 0,
+          category: pr.category, subcategory: pr.subcategory,
+          volume: pr.volume, aroma: pr.aroma,
         });
       }
 
-      // Create missing products one by one (UNIQUE sku constraint)
+      // Create missing products with characteristics
       for (const [, prod] of toCreateProducts) {
+        // Build description from characteristics
+        const chars = [
+          prod.category && `Категория: ${prod.category}`,
+          prod.subcategory && `Подкатегория: ${prod.subcategory}`,
+          prod.volume && `Объём: ${prod.volume}`,
+          prod.aroma && `Аромат: ${prod.aroma}`,
+        ].filter(Boolean).join("\n");
+
         const { data, error: pErr } = await admin.from("products")
-          .insert({ name: prod.name, sku: prod.sku, base_price: prod.price })
+          .insert({ name: prod.name, sku: prod.sku, base_price: prod.price, description: chars || null })
           .select("id, name, sku")
           .single();
         if (data) {
           productByName.set(norm(data.name), data.id);
           if (data.sku) productBySku.set(norm(data.sku), data.id);
+          // Create product attributes for structured data
+          const attrs: { product_id: string; name: string; values: string[] }[] = [];
+          if (prod.category) attrs.push({ product_id: data.id, name: "Категория", values: [prod.category] });
+          if (prod.subcategory) attrs.push({ product_id: data.id, name: "Подкатегория", values: [prod.subcategory] });
+          if (prod.volume) attrs.push({ product_id: data.id, name: "Объём", values: [prod.volume] });
+          if (prod.aroma) attrs.push({ product_id: data.id, name: "Аромат", values: [prod.aroma] });
+          if (attrs.length > 0) {
+            await admin.from("product_attributes").insert(attrs);
+          }
         } else if (pErr) {
           // SKU conflict — try with random suffix
           const skuRetry = prod.sku + "_" + Math.random().toString(36).slice(2, 6);
           const { data: d2, error: pErr2 } = await admin.from("products")
-            .insert({ name: prod.name, sku: skuRetry, base_price: prod.price })
+            .insert({ name: prod.name, sku: skuRetry, base_price: prod.price, description: chars || null })
             .select("id, name, sku")
             .single();
           if (d2) {
