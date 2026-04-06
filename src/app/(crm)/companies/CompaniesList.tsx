@@ -13,6 +13,13 @@ const COMPANY_TYPE_LABELS: Record<string, string> = {
   restaurant: "Ресторан", hotel: "Отель", salon: "Салон",
   retail: "Розница", wholesale: "Опт", other: "Другое",
 };
+const CONTRACT_LABELS: Record<string, string> = { none: "Нет договора", pending: "На согласовании", signed: "Подписан", terminated: "Расторгнут" };
+const CONTRACT_COLORS: Record<string, { bg: string; color: string }> = {
+  none: { bg: "#fdecea", color: "#c62828" },
+  pending: { bg: "#fff3e0", color: "#e65c00" },
+  signed: { bg: "#e8f5e9", color: "#2e7d32" },
+  terminated: { bg: "#f5f5f5", color: "#888" },
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function CompaniesList({ initialCompanies, users }: any) {
@@ -22,13 +29,16 @@ export default function CompaniesList({ initialCompanies, users }: any) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkTaskOpen, setBulkTaskOpen] = useState(false);
+  const [contractFilter, setContractFilter] = useState("");
 
-  const filtered = companies.filter((c: { name: string; inn?: string; company_type?: string }) =>
-    !search ||
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.inn?.includes(search) ||
-    COMPANY_TYPE_LABELS[c.company_type ?? ""]?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = companies.filter((c: { name: string; inn?: string; company_type?: string; contract_status?: string }) => {
+    const matchSearch = !search ||
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.inn?.includes(search) ||
+      COMPANY_TYPE_LABELS[c.company_type ?? ""]?.toLowerCase().includes(search.toLowerCase());
+    const matchContract = !contractFilter || (c.contract_status ?? "none") === contractFilter;
+    return matchSearch && matchContract;
+  });
 
   const filteredIds = filtered.map((c: { id: string }) => c.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id: string) => selected.has(id));
@@ -73,6 +83,14 @@ export default function CompaniesList({ initialCompanies, users }: any) {
             style={{ border: "1px solid #d0d0d0", borderRadius: 4 }}
           />
         </div>
+        <select value={contractFilter} onChange={(e) => setContractFilter(e.target.value)}
+          className="text-xs px-2 py-1.5 rounded outline-none"
+          style={{ border: "1px solid #d0d0d0", color: contractFilter ? "#333" : "#888" }}>
+          <option value="">Все договоры</option>
+          {Object.entries(CONTRACT_LABELS).map(([k, v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+        </select>
         <ExportImportButtons entity="companies" onImported={() => window.location.reload()} />
         <PurgeButton table="companies" onPurged={() => window.location.reload()} />
         <Button onClick={() => setShowCreate(true)} size="sm">
@@ -108,14 +126,14 @@ export default function CompaniesList({ initialCompanies, users }: any) {
                   <th className="px-3 py-2.5 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleAll} className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
                   </th>
-                  {["Компания", "ИНН", "Тип", "Контакты", "Ответственный"].map((h) => (
+                  {["Компания", "ИНН", "Тип", "Договор", "Контакты", "Ответственный"].map((h) => (
                     <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((company: {
-                  id: string; name: string; inn?: string; company_type?: string;
+                  id: string; name: string; inn?: string; company_type?: string; contract_status?: string;
                   phone?: string; email?: string; website?: string; users?: { full_name: string };
                 }) => {
                   const isSel = selected.has(company.id);
@@ -135,6 +153,17 @@ export default function CompaniesList({ initialCompanies, users }: any) {
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{company.inn ?? "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>
                         {COMPANY_TYPE_LABELS[company.company_type ?? ""] ?? company.company_type ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {(() => {
+                          const st = company.contract_status ?? "none";
+                          const c = CONTRACT_COLORS[st] ?? CONTRACT_COLORS.none;
+                          return (
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: c.bg, color: c.color }}>
+                              {CONTRACT_LABELS[st] ?? st}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex gap-3">

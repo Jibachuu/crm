@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Edit2, Trash2, Building2, Phone, Mail, Globe, MapPin, MessageSquare, Plus, CheckSquare } from "lucide-react";
+import { ChevronLeft, Edit2, Trash2, Building2, Phone, Mail, Globe, MapPin, MessageSquare, Plus, CheckSquare, FileText, Download, Upload } from "lucide-react";
 import Button from "@/components/ui/Button";
 import EmailThread from "@/components/ui/EmailThread";
 import { Card, CardBody } from "@/components/ui/Card";
@@ -19,6 +19,8 @@ const CHANNEL_LABELS: Record<string, string> = { email: "Email", telegram: "Tele
 const PRIORITY_LABELS: Record<string, string> = { low: "Низкий", medium: "Средний", high: "Высокий" };
 const DEAL_STAGE: Record<string, string> = { lead: "Лид", proposal: "Предложение", negotiation: "Переговоры", order_assembly: "Сборка заказа", won: "Выиграна", lost: "Проиграна" };
 const COMPANY_TYPE: Record<string, string> = { restaurant: "Ресторан", hotel: "Отель", salon: "Салон", retail: "Розница", wholesale: "Опт", other: "Другое" };
+const CONTRACT_STATUS: Record<string, string> = { none: "Нет договора", pending: "На согласовании", signed: "Подписан", terminated: "Расторгнут" };
+const CONTRACT_COLORS: Record<string, string> = { none: "#c62828", pending: "#e65c00", signed: "#2e7d32", terminated: "#888" };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function CompanyDetail({ company: initialCompany, contacts, deals, communications: initialComms, tasks: initialTasks }: any) {
@@ -32,6 +34,15 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Contract state
+  const [contractStatus, setContractStatus] = useState(company.contract_status ?? "none");
+  const [contractSignedAt, setContractSignedAt] = useState(company.contract_signed_at ?? "");
+  const [contractComment, setContractComment] = useState(company.contract_comment ?? "");
+  const [contractFileUrl, setContractFileUrl] = useState(company.contract_file_url ?? "");
+  const [contractFileName, setContractFileName] = useState(company.contract_file_name ?? "");
+  const [contractSaving, setContractSaving] = useState(false);
+  const [contractUploading, setContractUploading] = useState(false);
 
   async function addNote() {
     if (!noteText.trim()) return;
@@ -62,6 +73,34 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
       return;
     }
     router.push("/companies");
+  }
+
+  async function saveContract() {
+    setContractSaving(true);
+    const supabase = createClient();
+    await supabase.from("companies").update({
+      contract_status: contractStatus,
+      contract_signed_at: contractStatus === "signed" && contractSignedAt ? contractSignedAt : null,
+      contract_comment: contractComment || null,
+    }).eq("id", company.id);
+    setContractSaving(false);
+  }
+
+  async function uploadContractFile(file: File) {
+    setContractUploading(true);
+    const fd = new FormData();
+    fd.append("company_id", company.id);
+    fd.append("file", file);
+    const res = await fetch("/api/companies/contract", { method: "POST", body: fd });
+    if (res.ok) {
+      const data = await res.json();
+      setContractFileUrl(data.url);
+      setContractFileName(data.name);
+    } else {
+      const data = await res.json();
+      alert("Ошибка загрузки: " + (data.error ?? ""));
+    }
+    setContractUploading(false);
   }
 
   const tabs = [
@@ -312,6 +351,75 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                   )}
                 </div>
               )}
+            </CardBody>
+          </Card>
+
+          {/* Contract block */}
+          <Card>
+            <CardBody>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+                <FileText size={14} /> Договор
+              </h3>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">Статус</label>
+                  <select value={contractStatus}
+                    onChange={(e) => { setContractStatus(e.target.value); }}
+                    className="w-full text-xs rounded px-2 py-1.5 outline-none"
+                    style={{ border: "1px solid #d0d0d0" }}>
+                    {Object.entries(CONTRACT_STATUS).map(([k, v]) => (
+                      <option key={k} value={k}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                {contractStatus === "signed" && (
+                  <div>
+                    <label className="text-xs text-slate-500 block mb-1">Дата подписания</label>
+                    <input type="date" value={contractSignedAt}
+                      onChange={(e) => setContractSignedAt(e.target.value)}
+                      className="w-full text-xs rounded px-2 py-1.5 outline-none"
+                      style={{ border: "1px solid #d0d0d0" }} />
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">Файл договора</label>
+                  {contractFileUrl ? (
+                    <div className="flex items-center gap-2">
+                      <a href={contractFileUrl} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-blue-50"
+                        style={{ color: "#0067a5", border: "1px solid #e0e0e0" }}>
+                        <Download size={11} /> {contractFileName || "Скачать"}
+                      </a>
+                      <label className="flex items-center gap-1 text-xs px-2 py-1.5 rounded cursor-pointer hover:bg-gray-50"
+                        style={{ color: "#888", border: "1px solid #e0e0e0" }}>
+                        <Upload size={11} /> Заменить
+                        <input type="file" accept=".pdf,.doc,.docx" className="hidden"
+                          onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadContractFile(f); }} />
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="flex items-center gap-1.5 text-xs px-3 py-2 rounded cursor-pointer hover:bg-gray-50 transition-colors"
+                      style={{ border: "1px dashed #d0d0d0", color: "#888" }}>
+                      <Upload size={13} /> {contractUploading ? "Загрузка..." : "Загрузить PDF"}
+                      <input type="file" accept=".pdf,.doc,.docx" className="hidden" disabled={contractUploading}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadContractFile(f); }} />
+                    </label>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">Комментарий</label>
+                  <textarea value={contractComment}
+                    onChange={(e) => setContractComment(e.target.value)}
+                    rows={2} className="w-full text-xs rounded px-2 py-1.5 outline-none"
+                    style={{ border: "1px solid #d0d0d0", resize: "vertical" }}
+                    placeholder="Примечание к договору..." />
+                </div>
+                <button onClick={saveContract} disabled={contractSaving}
+                  className="text-xs px-3 py-1.5 rounded text-white disabled:opacity-50"
+                  style={{ background: "#0067a5" }}>
+                  {contractSaving ? "Сохранение..." : "Сохранить"}
+                </button>
+              </div>
             </CardBody>
           </Card>
 
