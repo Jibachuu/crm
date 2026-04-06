@@ -8,6 +8,7 @@ const TABLE_LABELS: Record<string, string> = {
   deals: "все сделки",
   contacts: "все контакты",
   companies: "все компании",
+  products: "все товары",
 };
 
 export default function PurgeButton({ table, onPurged }: { table: string; onPurged: () => void }) {

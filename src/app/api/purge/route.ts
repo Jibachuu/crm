@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const ALLOWED_TABLES = ["leads", "deals", "contacts", "companies"] as const;
+const ALLOWED_TABLES = ["leads", "deals", "contacts", "companies", "products"] as const;
 type Table = typeof ALLOWED_TABLES[number];
 
 export async function POST(req: NextRequest) {
@@ -37,6 +37,12 @@ export async function POST(req: NextRequest) {
     }
     if (table === "deals") {
       await admin.from("deal_products").delete().not("deal_id", "is", null);
+    }
+    if (table === "products") {
+      await admin.from("deal_products").delete().not("product_id", "is", null);
+      await admin.from("lead_products").delete().not("product_id", "is", null);
+      await admin.from("product_variants").delete().not("product_id", "is", null);
+      await admin.from("product_attributes").delete().not("product_id", "is", null);
     }
 
     // Delete all rows (in batches via neq to match all)
