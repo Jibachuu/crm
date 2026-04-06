@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Button from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
-import { Download, Search, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { Download, Search, ChevronUp, ChevronDown, ChevronsUpDown, Bot, RefreshCw } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import * as XLSX from "xlsx";
 
@@ -505,6 +505,53 @@ export function AnalyticsDashboard({ kpis, stages, sources, companyLTV, topProdu
           </CardBody>
         </Card>
       )}
+
+      {/* AI Objections Analysis */}
+      <AIObjectionsBlock />
     </div>
+  );
+}
+
+function AIObjectionsBlock() {
+  const [analysis, setAnalysis] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function analyze() {
+    setLoading(true); setError("");
+    try {
+      const res = await fetch("/api/ai/analyze", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "objections" }),
+      });
+      const data = await res.json();
+      if (!res.ok) setError(data.error ?? "Ошибка");
+      else setAnalysis(data.analysis);
+    } catch (e) { setError(String(e)); }
+    setLoading(false);
+  }
+
+  return (
+    <Card>
+      <CardBody>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold flex items-center gap-1.5" style={{ color: "#333" }}>
+            <Bot size={14} style={{ color: "#7b1fa2" }} /> Анализ возражений (ИИ)
+          </h3>
+          <button onClick={analyze} disabled={loading}
+            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded transition-colors hover:bg-purple-50 disabled:opacity-50"
+            style={{ border: "1px solid #7b1fa2", color: "#7b1fa2" }}>
+            {loading ? <RefreshCw size={12} className="animate-spin" /> : <Bot size={12} />}
+            {loading ? "Анализ..." : analysis ? "Обновить" : "Запустить анализ"}
+          </button>
+        </div>
+        {error && <p className="text-xs px-3 py-1.5 rounded mb-2" style={{ background: "#fdecea", color: "#c62828" }}>{error}</p>}
+        {analysis ? (
+          <div className="text-xs whitespace-pre-wrap" style={{ color: "#333", lineHeight: 1.6 }}>{analysis}</div>
+        ) : !loading ? (
+          <p className="text-xs" style={{ color: "#aaa" }}>Нажмите "Запустить анализ" чтобы ИИ проанализировал возражения из всех сделок</p>
+        ) : null}
+      </CardBody>
+    </Card>
   );
 }

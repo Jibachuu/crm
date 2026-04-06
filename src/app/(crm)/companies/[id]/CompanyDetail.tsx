@@ -9,6 +9,7 @@ import EmailThread from "@/components/ui/EmailThread";
 import TelegramChat from "@/components/ui/TelegramChat";
 import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import ExportCommunicationsModal from "@/components/ui/ExportCommunicationsModal";
+import AIAnalysis from "@/components/ui/AIAnalysis";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
@@ -246,9 +247,12 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
 
             {activeTab === "communications" && (
               <div className="space-y-3">
-                <div className="flex justify-end">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <AIAnalysis companyId={company.id} type="client" label="Анализ ИИ" />
+                  <AIAnalysis companyId={company.id} type="communications" label="Анализ переписок" />
+                  <div className="flex-1" />
                   <button onClick={() => setExportOpen(true)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded hover:bg-blue-50" style={{ border: "1px solid #0067a5", color: "#0067a5" }}>
-                    <Download size={12} /> Экспортировать переписки
+                    <Download size={12} /> Экспорт .docx
                   </button>
                 </div>
                 <Card>
