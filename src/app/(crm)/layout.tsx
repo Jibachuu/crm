@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import PageLoader from "@/components/layout/PageLoader";
+import AIChatPanel from "@/components/ui/AIChatPanel";
 import type { User } from "@/types/database";
 
 export default async function CRMLayout({ children }: { children: React.ReactNode }) {
@@ -34,6 +35,7 @@ export default async function CRMLayout({ children }: { children: React.ReactNod
         <PageLoader />
         {children}
       </div>
+      <AIChatPanel />
     </div>
   );
 }
