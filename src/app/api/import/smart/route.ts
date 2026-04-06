@@ -381,20 +381,22 @@ export async function POST(req: NextRequest) {
       }
 
       // Deal products — multi-product raw string
-      // Format: "Мыло 1000мл (арт. HS1000) 1 шт 800 ₽ Крем 500мл (арт. KR500) 2 шт 1 000 ₽"
-      // Each product ends with: N шт PRICE ₽
+      // Formats seen in real data:
+      //   "Мыло 1000мл (арт. HS1000) 1 шт 800 ₽"
+      //   "Мыло 1000мл (арт. HS1000) 1шт по 800 ₽"
+      //   "Крем 1000мл (арт. KR1000) Cherry - 1 шт по 1 000 ₽"
       if (table === "deals" && row.products_raw) {
         const rawStr = String(row.products_raw).trim();
         if (rawStr) {
-          // Match: product_name ... N шт PRICE ₽
-          const regex = /(.+?)\s*(\d+)\s*шт\.?\s*([\d\s.,]+)\s*₽/gi;
+          // Match: anything ... N шт [по] PRICE ₽
+          const regex = /(.+?)\s*[-–—]?\s*(\d+)\s*шт\.?\s*(?:по\s*)?([\d\s.,]+)\s*₽/gi;
           let m: RegExpExecArray | null;
           while ((m = regex.exec(rawStr)) !== null) {
             let pName = m[1].trim();
-            // Remove leading numbering like "1." or "1)"
+            // Remove leading numbering "1." "1)" "2."
             pName = pName.replace(/^\d+[.)]\s*/, "").trim();
-            // Remove trailing dash/hyphen
-            pName = pName.replace(/[-–—]+\s*$/, "").trim();
+            // Remove trailing punctuation
+            pName = pName.replace(/[-–—,.\s]+$/, "").trim();
             const pQty = parseNum(m[2]) ?? 1;
             const pPrice = parseNum(m[3]) ?? 0;
             if (pName) {
@@ -418,6 +420,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Handle deal products
+    if (table === "deals") {
+      errors.push(`ℹ️ Найдено товарных позиций для привязки: ${productRows.length}`);
+    }
     if (table === "deals" && productRows.length > 0) {
       // Pre-load/create products
       const uniqueProductNames = [...new Set(productRows.map((p) => p.name))];
