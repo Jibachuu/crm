@@ -11,7 +11,7 @@ export default async function CompaniesPage() {
       order: { column: "name" },
     }),
     fetchAll(supabase, "users", "id, full_name", {
-      filters: (q) => q.eq("is_active", true),
+      eq: { is_active: true },
       order: { column: "full_name" },
     }),
   ]);

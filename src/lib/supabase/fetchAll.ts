@@ -10,7 +10,7 @@ export async function fetchAll<T = unknown>(
   select: string,
   opts: {
     order?: { column: string; ascending?: boolean };
-    filters?: (q: ReturnType<SupabaseClient["from"]>) => ReturnType<SupabaseClient["from"]>;
+    eq?: Record<string, unknown>;
   } = {}
 ): Promise<T[]> {
   const PAGE = 1000;
@@ -20,7 +20,11 @@ export async function fetchAll<T = unknown>(
   while (true) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let q: any = supabase.from(table).select(select);
-    if (opts.filters) q = opts.filters(q);
+    if (opts.eq) {
+      for (const [col, val] of Object.entries(opts.eq)) {
+        q = q.eq(col, val);
+      }
+    }
     if (opts.order) q = q.order(opts.order.column, { ascending: opts.order.ascending ?? true });
     q = q.range(offset, offset + PAGE - 1);
 

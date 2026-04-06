@@ -14,7 +14,7 @@ export default async function DealsPage() {
       users!deals_assigned_to_fkey(id, full_name)
     `, { order: { column: "created_at", ascending: false } }),
     fetchAll(supabase, "users", "id, full_name", {
-      filters: (q) => q.eq("is_active", true),
+      eq: { is_active: true },
       order: { column: "full_name" },
     }),
   ]);
