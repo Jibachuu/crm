@@ -16,6 +16,8 @@ import {
   BarChart3,
   Settings,
   LogOut,
+  UsersRound,
+  Mail,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 
@@ -35,6 +37,8 @@ const navItems: NavItem[] = [
   { href: "/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/tasks", label: "Задачи", icon: CheckSquare },
   { href: "/analytics", label: "Аналитика", icon: BarChart3 },
+  { href: "/team", label: "Команда", icon: UsersRound },
+  { href: "/campaigns", label: "Рассылки", icon: Mail },
 ];
 
 type SectionPerms = Record<string, { can_read: boolean; can_create: boolean; can_update: boolean; can_delete: boolean }>;
