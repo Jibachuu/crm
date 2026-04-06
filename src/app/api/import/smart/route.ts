@@ -403,38 +403,59 @@ export async function POST(req: NextRequest) {
     // Handle deal products
     // Product linking
     if (table === "deals" && productRows.length > 0) {
-      // Load ALL products from catalog (avoid .in() URL limit with long names)
-      const allProducts = await fetchAllRows("products", "id, name");
-      const productIdMap = new Map<string, string>();
-      for (const p of allProducts) productIdMap.set(norm(p.name), p.id);
-
-      const uniqueProductNames = [...new Set(productRows.map((p) => p.name))];
-      const missingProducts = uniqueProductNames.filter((n) => !productIdMap.has(norm(n)));
-
-      // Create missing products in catalog
-
-      // Create missing products one by one
-      const priceMap = new Map<string, number>();
-      for (const pr of productRows) {
-        const key = norm(pr.name);
-        if (!priceMap.has(key) && pr.price) priceMap.set(key, pr.price);
-      }
-      // Build SKU map from file data
-      const skuFromFile = new Map<string, string>();
-      for (const pr of productRows) {
-        if (pr.sku && !skuFromFile.has(norm(pr.name))) skuFromFile.set(norm(pr.name), pr.sku);
+      // Load ALL products from catalog
+      const allProducts = await fetchAllRows("products", "id, name, sku");
+      const productByName = new Map<string, string>(); // norm(name) → id
+      const productBySku = new Map<string, string>();   // norm(sku) → id
+      for (const p of allProducts) {
+        productByName.set(norm(p.name), p.id);
+        if (p.sku) productBySku.set(norm(p.sku), p.id);
       }
 
-      for (const n of missingProducts) {
-        const sku = skuFromFile.get(norm(n)) || (n.slice(0, 20) + "_" + Math.random().toString(36).slice(2, 8));
+      // Resolve product IDs: first by SKU (more precise), then by name
+      function findProductId(name: string, sku: string | null): string | null {
+        if (sku) {
+          const bySku = productBySku.get(norm(sku));
+          if (bySku) return bySku;
+        }
+        return productByName.get(norm(name)) ?? null;
+      }
+
+      // Collect products that need to be created
+      const toCreateProducts = new Map<string, { name: string; sku: string; price: number }>();
+      for (const pr of productRows) {
+        if (findProductId(pr.name, pr.sku)) continue;
+        const key = pr.sku ? norm(pr.sku) : norm(pr.name);
+        if (toCreateProducts.has(key)) continue;
+        toCreateProducts.set(key, {
+          name: pr.name,
+          sku: pr.sku || (pr.name.slice(0, 20) + "_" + Math.random().toString(36).slice(2, 8)),
+          price: pr.price ?? 0,
+        });
+      }
+
+      // Create missing products one by one (UNIQUE sku constraint)
+      for (const [, prod] of toCreateProducts) {
         const { data, error: pErr } = await admin.from("products")
-          .insert({ name: n, sku, base_price: priceMap.get(norm(n)) ?? 0 })
-          .select("id, name")
+          .insert({ name: prod.name, sku: prod.sku, base_price: prod.price })
+          .select("id, name, sku")
           .single();
         if (data) {
-          productIdMap.set(norm(data.name), data.id);
+          productByName.set(norm(data.name), data.id);
+          if (data.sku) productBySku.set(norm(data.sku), data.id);
         } else if (pErr) {
-          errors.push(`Товар "${n}": ${pErr.message}`);
+          // SKU conflict — try with random suffix
+          const skuRetry = prod.sku + "_" + Math.random().toString(36).slice(2, 6);
+          const { data: d2, error: pErr2 } = await admin.from("products")
+            .insert({ name: prod.name, sku: skuRetry, base_price: prod.price })
+            .select("id, name, sku")
+            .single();
+          if (d2) {
+            productByName.set(norm(d2.name), d2.id);
+            if (d2.sku) productBySku.set(norm(d2.sku), d2.id);
+          } else if (pErr2) {
+            errors.push(`Товар "${prod.name}": ${pErr2.message}`);
+          }
         }
       }
 
@@ -442,7 +463,7 @@ export async function POST(req: NextRequest) {
         .filter((pr) => insertedIds[pr.idx])
         .map((pr) => ({
           deal_id: insertedIds[pr.idx],
-          product_id: productIdMap.get(norm(pr.name)),
+          product_id: findProductId(pr.name, pr.sku),
           quantity: pr.qty ?? 1,
           unit_price: pr.price ?? 0,
           discount_percent: 0,
