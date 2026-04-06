@@ -125,26 +125,38 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
     const roomId = "crm-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const callUrl = `https://8x8.vc/crm/${roomId}`;
 
-    // If calling a specific user — send them the link in chat
+    // Open window first (must be synchronous to avoid popup blocker)
+    const callWindow = window.open(callUrl, "_blank");
+
+    // Send the link in chat to the other user
     const targetId = userId || selectedUser?.id;
     if (targetId) {
-      const res = await fetch("/api/team/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to_user: targetId,
-          body: `📞 Приглашение в видеозвонок!\nПрисоединяйтесь: ${callUrl}`,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (targetId === selectedUser?.id) {
-          setMessages((prev) => [...prev, data.message]);
+      try {
+        const res = await fetch("/api/team/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to_user: targetId,
+            body: `📞 Приглашение в видеозвонок!\nПрисоединяйтесь: ${callUrl}`,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (targetId === selectedUser?.id) {
+            setMessages((prev) => [...prev, data.message]);
+          }
+        } else {
+          const err = await res.json();
+          console.error("Call message error:", err);
         }
+      } catch (e) {
+        console.error("Call message failed:", e);
       }
     }
 
-    window.open(callUrl, "_blank");
+    if (!callWindow) {
+      alert(`Браузер заблокировал окно. Откройте вручную:\n${callUrl}`);
+    }
   }
 
   const filteredUsers = users.filter((u) =>
