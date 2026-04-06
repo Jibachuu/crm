@@ -208,7 +208,12 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  function handleClose() { reset(); onClose(); }
+  function handleClose() {
+    const hadImport = result && (result.added > 0 || result.updated > 0);
+    reset();
+    onClose();
+    if (hadImport) onImported?.(1);
+  }
 
   async function handleFile(file: File) {
     setFileName(file.name);
@@ -261,7 +266,6 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
       });
       const data = await res.json();
       setResult(data);
-      if (data.added > 0) onImported?.(data.added);
     }
 
     setLoading(false);
