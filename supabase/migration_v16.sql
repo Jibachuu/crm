@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS public.invoices (
   buyer_company_id UUID REFERENCES public.companies(id) ON DELETE SET NULL,
   buyer_name TEXT,
   buyer_inn TEXT,
+  buyer_kpp TEXT,
+  buyer_address TEXT,
   basis TEXT NOT NULL DEFAULT 'Основной договор',
   status TEXT NOT NULL DEFAULT 'issued',
   deal_id UUID REFERENCES public.deals(id) ON DELETE SET NULL,

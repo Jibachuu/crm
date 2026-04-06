@@ -88,6 +88,8 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       buyer_company_id: form.buyer_company_id || null,
       buyer_name: form.buyer_name,
       buyer_inn: form.buyer_inn || null,
+      buyer_kpp: form.buyer_kpp || null,
+      buyer_address: form.buyer_address || null,
       basis: form.basis,
       deal_id: form.deal_id || null,
       comment: form.comment || null,
@@ -146,9 +148,30 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     setInvoices(invoices.filter((inv: { id: string }) => inv.id !== id));
   }
 
-  function printInvoice() {
+  async function imgToBase64(url: string): Promise<string> {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve("");
+        reader.readAsDataURL(blob);
+      });
+    } catch { return ""; }
+  }
+
+  async function printInvoice() {
+    if (!previewInvoice) return;
+
+    // Pre-convert images to base64 to avoid CORS issues
+    let stampB64 = "";
+    let sigB64 = "";
+    if (supplier?.stamp_url) stampB64 = await imgToBase64(supplier.stamp_url);
+    if (supplier?.signature_url) sigB64 = await imgToBase64(supplier.signature_url);
+
     const printWindow = window.open("", "_blank");
-    if (!printWindow || !previewInvoice) return;
+    if (!printWindow) { alert("Браузер заблокировал окно"); return; }
     const inv = previewInvoice;
     const total = previewItems.reduce((s: number, i: { total: number }) => s + i.total, 0);
     const fmt = (n: number) => Number(n).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -216,7 +239,7 @@ ${supplier?.bank_name ?? ""}<br><span class="label">Банк получател�
 
 <table class="details">
 <tr><td class="lbl">Поставщик<br>(Исполнитель):</td><td>${supplier?.company_name ?? ""}, ИНН ${supplier?.inn ?? ""}${supplier?.kpp ? ", " + supplier.kpp : ""}${supplier?.address ? ", " + supplier.address : ""}</td></tr>
-<tr><td class="lbl">Покупатель<br>(Заказчик):</td><td>${inv.buyer_name}${inv.buyer_inn ? ", ИНН " + inv.buyer_inn : ""}${buyerCompany?.kpp ? ", КПП " + buyerCompany.kpp : ""}</td></tr>
+<tr><td class="lbl">Покупатель<br>(Заказчик):</td><td>${inv.buyer_name}${inv.buyer_inn ? ", ИНН " + inv.buyer_inn : ""}${(inv.buyer_kpp || buyerCompany?.kpp) ? ", КПП " + (inv.buyer_kpp || buyerCompany?.kpp) : ""}${(inv.buyer_address || buyerCompany?.legal_address) ? ", " + (inv.buyer_address || buyerCompany?.legal_address) : ""}</td></tr>
 <tr><td class="lbl">Основание:</td><td>${inv.basis}</td></tr>
 </table>
 
@@ -249,22 +272,12 @@ ${dueDateStr ? `<p style="margin-top:10px">Оплатить не позднее 
 </div>
 
 <div class="sign-block">
-${supplier?.stamp_url ? `<img class="stamp" src="${supplier.stamp_url}" />` : ""}
-${supplier?.signature_url ? `<img class="signature" src="${supplier.signature_url}" />` : ""}
+${stampB64 ? `<img class="stamp" src="${stampB64}" />` : ""}
+${sigB64 ? `<img class="signature" src="${sigB64}" />` : ""}
 <p><strong>Предприниматель</strong> <span class="sign-line"></span> / ${supplier?.director ?? ""} /</p>
 </div>
 
-<script>
-window.onload=()=>{
-  const imgs=document.images;
-  if(imgs.length===0){window.print();return}
-  let loaded=0;
-  for(let i=0;i<imgs.length;i++){
-    if(imgs[i].complete){loaded++;if(loaded===imgs.length)window.print()}
-    else{imgs[i].onload=imgs[i].onerror=()=>{loaded++;if(loaded===imgs.length)window.print()}}
-  }
-}
-</script>
+<script>window.onload=()=>setTimeout(()=>window.print(),300)</script>
 </body></html>`;
     printWindow.document.write(html);
     printWindow.document.close();
