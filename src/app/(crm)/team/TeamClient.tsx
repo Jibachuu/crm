@@ -123,7 +123,7 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
 
   async function startCall(userId?: string) {
     const roomId = "crm-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const callUrl = `https://meet.jit.si/${roomId}`;
+    const callUrl = `https://8x8.vc/crm/${roomId}`;
 
     // If calling a specific user — send them the link in chat
     const targetId = userId || selectedUser?.id;
