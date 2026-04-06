@@ -6,6 +6,7 @@ const PIXEL = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBR
 
 export async function GET(req: NextRequest) {
   const recipientId = new URL(req.url).searchParams.get("rid");
+  console.log("TRACK PIXEL HIT:", recipientId);
 
   if (recipientId) {
     const admin = createAdminClient();

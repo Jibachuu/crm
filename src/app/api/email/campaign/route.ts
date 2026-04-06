@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
       sent_at: new Date().toISOString(),
     }).eq("id", campaign_id);
 
-    return NextResponse.json({ sent: sentCount, failed: failedCount });
+    return NextResponse.json({ sent: sentCount, failed: failedCount, trackingUrl: appUrl });
   }
 
   // ── Delete campaign ──────────────────────────────────────────────────
