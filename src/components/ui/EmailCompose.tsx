@@ -1,8 +1,23 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Send, X, Paperclip } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Send, X, Paperclip, FileText, ChevronDown } from "lucide-react";
 import Button from "./Button";
+import { createClient } from "@/lib/supabase/client";
+
+interface Template {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+}
+
+interface Signature {
+  id: string;
+  name: string;
+  body: string;
+  is_default: boolean;
+}
 
 interface Props {
   to: string;
@@ -22,6 +37,38 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
   const [sent, setSent] = useState(false);
   const [sentMsg, setSentMsg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Templates & signatures
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [signatures, setSignatures] = useState<Signature[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [signatureAppended, setSignatureAppended] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    Promise.all([
+      supabase.from("email_templates").select("*").order("name"),
+      supabase.from("email_signatures").select("*").order("created_at"),
+    ]).then(([{ data: t }, { data: s }]) => {
+      setTemplates(t ?? []);
+      setSignatures(s ?? []);
+      // Auto-append default signature
+      const defaultSig = (s ?? []).find((sig) => sig.is_default);
+      if (defaultSig && !defaultSubject) {
+        setBody("\n\n--\n" + defaultSig.body);
+        setSignatureAppended(true);
+      }
+    });
+  }, [defaultSubject]);
+
+  function applyTemplate(t: Template) {
+    setSubject(t.subject);
+    const defaultSig = signatures.find((s) => s.is_default);
+    const sigBlock = defaultSig ? "\n\n--\n" + defaultSig.body : "";
+    setBody(t.body + sigBlock);
+    setSignatureAppended(!!defaultSig);
+    setShowTemplates(false);
+  }
 
   function addFiles(newFiles: FileList | null) {
     if (!newFiles) return;
@@ -74,7 +121,7 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
       const fileInfo = files.length > 0 ? ` (файлов: ${data.attachmentCount ?? 0})` : "";
       setSentMsg(`Отправлено${fileInfo}`);
       setSent(true);
-      setTimeout(() => { setSent(false); setSentMsg(""); setSubject(""); setBody(""); setFiles([]); onSent?.(); }, 3000);
+      setTimeout(() => { setSent(false); setSentMsg(""); setSubject(""); setBody(""); setFiles([]); setSignatureAppended(false); onSent?.(); }, 3000);
     } catch (err) {
       alert("Ошибка отправки: " + String(err));
     }
@@ -96,9 +143,32 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
     <div className="rounded" style={{ border: "1px solid #e4e4e4", background: "#fff" }}>
       <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: "1px solid #f0f0f0", background: "#fafafa" }}>
         <span className="text-xs font-semibold" style={{ color: "#555" }}>Новое письмо</span>
-        {onClose && (
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={14} style={{ color: "#aaa" }} /></button>
-        )}
+        <div className="flex items-center gap-1">
+          {/* Template selector */}
+          {templates.length > 0 && (
+            <div className="relative">
+              <button onClick={() => setShowTemplates(!showTemplates)}
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+                style={{ color: "#0067a5" }}>
+                <FileText size={12} /> Шаблон <ChevronDown size={10} />
+              </button>
+              {showTemplates && (
+                <div className="absolute right-0 top-full mt-1 z-50 rounded shadow-lg py-1" style={{ background: "#fff", border: "1px solid #e4e4e4", minWidth: 200 }}>
+                  {templates.map((t) => (
+                    <button key={t.id} onClick={() => applyTemplate(t)}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors" style={{ color: "#333" }}>
+                      <p className="font-medium">{t.name}</p>
+                      {t.subject && <p style={{ color: "#888" }}>Тема: {t.subject}</p>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {onClose && (
+            <button onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={14} style={{ color: "#aaa" }} /></button>
+          )}
+        </div>
       </div>
       <div className="p-3 space-y-2">
         <div className="flex items-center gap-2 text-xs" style={{ color: "#888" }}>
@@ -131,11 +201,17 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
           </div>
         )}
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-1">
             <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
             <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-gray-100 transition-colors" style={{ color: "#888" }}>
-              <Paperclip size={13} /> Прикрепить файл
+              <Paperclip size={13} /> Файл
             </button>
+            {/* Signature indicator */}
+            {signatureAppended && (
+              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "#f0f0f0", color: "#888", fontSize: 10 }}>
+                Подпись добавлена
+              </span>
+            )}
           </div>
           <Button size="sm" onClick={handleSend} loading={sending} disabled={!subject.trim() || !body.trim()}>
             <Send size={13} /> Отправить
