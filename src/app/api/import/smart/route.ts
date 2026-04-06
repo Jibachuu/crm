@@ -69,11 +69,28 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient();
 
+  // ── Paginated fetch (bypasses PostgREST 1000-row limit) ─────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function fetchAllRows(table: string, select: string): Promise<any[]> {
+    const PAGE = 1000;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const all: any[] = [];
+    let offset = 0;
+    while (true) {
+      const { data } = await admin.from(table).select(select).range(offset, offset + PAGE - 1);
+      if (!data?.length) break;
+      all.push(...data);
+      if (data.length < PAGE) break;
+      offset += PAGE;
+    }
+    return all;
+  }
+
   // ── Load lookup maps once ──────────────────────────────────────────────────
-  const [{ data: existingCompanies }, { data: existingContacts }, { data: allUsers }] = await Promise.all([
-    admin.from("companies").select("id, name"),
-    admin.from("contacts").select("id, full_name, phone, email"),
-    admin.from("users").select("id, full_name"),  // all users, not just active
+  const [existingCompanies, existingContacts, allUsers] = await Promise.all([
+    fetchAllRows("companies", "id, name"),
+    fetchAllRows("contacts", "id, full_name, phone, email"),
+    fetchAllRows("users", "id, full_name"),
   ]);
 
   const companyMap = new Map<string, string>(); // norm(name) → id
