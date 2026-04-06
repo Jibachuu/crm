@@ -43,8 +43,8 @@ export async function POST(req: NextRequest) {
       .filter((f) => f.data && f.name)
       .map((f) => ({
         filename: f.name,
-        content: Buffer.from(f.data, "base64"),
-        contentType: f.type || "application/octet-stream",
+        content: f.data,
+        encoding: "base64" as const,
       }));
 
     await transporter.sendMail({
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
         to_address: to,
         subject,
         body,
-        attachments: attachments.map((a) => ({ filename: a.filename, size: a.content.length })),
+        attachments: (files ?? []).filter((f) => f.data && f.name).map((f) => ({ filename: f.name, size: Math.round(f.data.length * 3 / 4) })),
       });
     }
 

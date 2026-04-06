@@ -58,8 +58,8 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
     });
     const data = await res.json();
     if (res.ok) {
-      const fileInfo = files.length > 0 ? ` (файлов: ${data.attachmentCount ?? 0})` : "";
-      setSentMsg(`Письмо отправлено на ${to}${fileInfo}`);
+      const fileInfo = files.length > 0 ? ` (файлов прикреплено: ${data.attachmentCount ?? 0} из ${files.length})` : "";
+      setSentMsg(`Письмо отправлено${fileInfo}`);
       setSent(true);
       setTimeout(() => { setSent(false); setSentMsg(""); setSubject(""); setBody(""); setFiles([]); onSent?.(); }, 3000);
     } else {
