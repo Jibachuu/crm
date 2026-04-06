@@ -408,32 +408,32 @@ export async function POST(req: NextRequest) {
     const filledIds = insertedIds.filter(Boolean).length;
     errors.push(`[debug] productRows: ${productRows.length}, insertedIds filled: ${filledIds}/${insertedIds.length}`);
     if (table === "deals" && productRows.length > 0) {
-      // Pre-load/create products
-      const uniqueProductNames = [...new Set(productRows.map((p) => p.name))];
-      const { data: existingProducts } = await admin.from("products").select("id, name").in("name", uniqueProductNames);
+      // Load ALL products from catalog (avoid .in() URL limit with long names)
+      const allProducts = await fetchAllRows("products", "id, name");
       const productIdMap = new Map<string, string>();
-      for (const p of existingProducts ?? []) productIdMap.set(norm(p.name), p.id);
+      for (const p of allProducts) productIdMap.set(norm(p.name), p.id);
 
+      const uniqueProductNames = [...new Set(productRows.map((p) => p.name))];
       const missingProducts = uniqueProductNames.filter((n) => !productIdMap.has(norm(n)));
-      if (missingProducts.length > 0) {
-        // Use price from first occurrence as base_price
-        const priceMap = new Map<string, number>();
-        for (const pr of productRows) {
-          const key = norm(pr.name);
-          if (!priceMap.has(key) && pr.price) priceMap.set(key, pr.price);
-        }
-        // Insert one by one to handle UNIQUE sku conflicts
-        for (const n of missingProducts) {
-          const sku = n.slice(0, 20) + "_" + Math.random().toString(36).slice(2, 8);
-          const { data, error: pErr } = await admin.from("products")
-            .insert({ name: n, sku, base_price: priceMap.get(norm(n)) ?? 0 })
-            .select("id, name")
-            .single();
-          if (data) {
-            productIdMap.set(norm(data.name), data.id);
-          } else if (pErr) {
-            errors.push(`Товар "${n}": ${pErr.message}`);
-          }
+
+      errors.push(`[debug] unique products: ${uniqueProductNames.length}, existing: ${allProducts.length}, missing: ${missingProducts.length}`);
+
+      // Create missing products one by one
+      const priceMap = new Map<string, number>();
+      for (const pr of productRows) {
+        const key = norm(pr.name);
+        if (!priceMap.has(key) && pr.price) priceMap.set(key, pr.price);
+      }
+      for (const n of missingProducts) {
+        const sku = n.slice(0, 20) + "_" + Math.random().toString(36).slice(2, 8);
+        const { data, error: pErr } = await admin.from("products")
+          .insert({ name: n, sku, base_price: priceMap.get(norm(n)) ?? 0 })
+          .select("id, name")
+          .single();
+        if (data) {
+          productIdMap.set(norm(data.name), data.id);
+        } else if (pErr) {
+          errors.push(`Товар "${n}": ${pErr.message}`);
         }
       }
 
