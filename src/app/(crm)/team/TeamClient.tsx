@@ -171,18 +171,29 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
     else if (target?.type === "group") sendGroupMessage();
   }
 
-  // File upload (personal only for now, groups via group API)
+  // File upload for personal and group chats
   async function sendFile(file: File) {
-    if (target?.type === "user") {
-      setUploading(true);
+    if (!target) return;
+    setUploading(true);
+
+    if (target.type === "user") {
       const form = new FormData();
       form.append("file", file);
       form.append("to_user", target.user.id);
       const res = await fetch("/api/team/upload", { method: "POST", body: form });
       if (res.ok) { const data = await res.json(); setMessages((prev) => [...prev, data.message]); }
       else { const err = await res.json(); alert("Ошибка: " + (err.error ?? "")); }
-      setUploading(false);
+    } else {
+      // Upload to storage first, then send as group message
+      const form = new FormData();
+      form.append("file", file);
+      form.append("group_id", target.group.id);
+      const res = await fetch("/api/team/upload", { method: "POST", body: form });
+      if (res.ok) { const data = await res.json(); setGroupMessages((prev) => [...prev, data.message]); }
+      else { const err = await res.json(); alert("Ошибка: " + (err.error ?? "")); }
     }
+
+    setUploading(false);
   }
 
   // Voice recording
@@ -412,12 +423,42 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
 
             {/* Members panel */}
             {showMembers && target.type === "group" && (
-              <div className="px-4 py-2 flex flex-wrap gap-1.5" style={{ background: "#f8f9fa", borderBottom: "1px solid #e4e4e4" }}>
-                {target.group.group_chat_members?.map((m: { user_id: string; users: { id: string; full_name: string } }) => (
-                  <span key={m.user_id} className="text-xs px-2 py-1 rounded-full" style={{ background: "#e8f4fd", color: "#0067a5" }}>
-                    {m.users?.full_name ?? "—"}
-                  </span>
-                ))}
+              <div className="px-4 py-2" style={{ background: "#f8f9fa", borderBottom: "1px solid #e4e4e4" }}>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {target.group.group_chat_members?.map((m: { user_id: string; users: { id: string; full_name: string } }) => (
+                    <span key={m.user_id} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full" style={{ background: "#e8f4fd", color: "#0067a5" }}>
+                      {m.users?.full_name ?? "—"}
+                      {m.user_id !== target.group.created_by && (
+                        <button onClick={async () => {
+                          if (!confirm(`Удалить ${m.users?.full_name} из группы?`)) return;
+                          await fetch("/api/team/groups", {
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "remove_member", group_id: target.group.id, user_id: m.user_id }),
+                          });
+                          fetchGroups();
+                        }} className="hover:text-red-600"><X size={10} /></button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+                {/* Add member */}
+                <select
+                  onChange={async (e) => {
+                    const uid = e.target.value;
+                    if (!uid) return;
+                    await fetch("/api/team/groups", {
+                      method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "add_member", group_id: target.group.id, user_id: uid }),
+                    });
+                    e.target.value = "";
+                    fetchGroups();
+                  }}
+                  className="text-xs px-2 py-1 rounded outline-none" style={{ border: "1px solid #d0d0d0", color: "#888" }}>
+                  <option value="">+ Добавить участника</option>
+                  {users.filter((u) => !target.group.group_chat_members?.some((m: { user_id: string }) => m.user_id === u.id)).map((u) => (
+                    <option key={u.id} value={u.id}>{u.full_name ?? u.email}</option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -441,14 +482,11 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
 
             {/* Input */}
             <div className="flex items-center gap-2 px-3 py-2" style={{ borderTop: "1px solid #e4e4e4", background: "#fff" }}>
-              {target.type === "user" && (
-                <>
-                  <button onClick={() => fileRef.current?.click()} disabled={uploading || recording} className="p-1.5 rounded-full hover:bg-slate-100 transition-colors disabled:opacity-40">
-                    <Paperclip size={18} style={{ color: "#888" }} />
-                  </button>
-                  <input ref={fileRef} type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) sendFile(f); e.target.value = ""; }} />
-                </>
-              )}
+              <button onClick={() => fileRef.current?.click()} disabled={uploading || recording} className="p-1.5 rounded-full hover:bg-slate-100 transition-colors disabled:opacity-40">
+                <Paperclip size={18} style={{ color: "#888" }} />
+              </button>
+              <input ref={fileRef} type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) sendFile(f); e.target.value = ""; }} />
+
               <input value={text} onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                 placeholder={uploading ? "Загрузка..." : "Сообщение..."}
@@ -459,14 +497,10 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
                 <button onClick={sendMessage} disabled={sending} className="p-2 rounded-full transition-colors disabled:opacity-40" style={{ background: "#0067a5" }}>
                   <Send size={16} style={{ color: "#fff" }} />
                 </button>
-              ) : target.type === "user" ? (
+              ) : (
                 <button onClick={recording ? stopRecording : startRecording} disabled={uploading}
                   className="p-2 rounded-full transition-colors disabled:opacity-40" style={{ background: recording ? "#d32f2f" : "#0067a5" }}>
                   {recording ? <MicOff size={16} style={{ color: "#fff" }} /> : <Mic size={16} style={{ color: "#fff" }} />}
-                </button>
-              ) : (
-                <button onClick={sendMessage} disabled className="p-2 rounded-full opacity-40" style={{ background: "#0067a5" }}>
-                  <Send size={16} style={{ color: "#fff" }} />
                 </button>
               )}
             </div>

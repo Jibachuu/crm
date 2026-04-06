@@ -9,10 +9,11 @@ export async function POST(req: NextRequest) {
 
   const formData = await req.formData();
   const file = formData.get("file") as File;
-  const toUser = formData.get("to_user") as string;
+  const toUser = formData.get("to_user") as string | null;
+  const groupId = formData.get("group_id") as string | null;
 
-  if (!file || !toUser) {
-    return NextResponse.json({ error: "file and to_user required" }, { status: 400 });
+  if (!file || (!toUser && !groupId)) {
+    return NextResponse.json({ error: "file and (to_user or group_id) required" }, { status: 400 });
   }
 
   const admin = createAdminClient();
@@ -27,7 +28,6 @@ export async function POST(req: NextRequest) {
     .upload(path, buffer, { contentType: file.type, upsert: false });
 
   if (uploadErr) {
-    // If bucket doesn't exist, create it
     if (uploadErr.message?.includes("not found") || uploadErr.message?.includes("Bucket")) {
       await admin.storage.createBucket("attachments", { public: true });
       const { error: retryErr } = await admin.storage
@@ -42,19 +42,22 @@ export async function POST(req: NextRequest) {
   const { data: urlData } = admin.storage.from("attachments").getPublicUrl(path);
   const fileUrl = urlData.publicUrl;
 
-  // Save message with file
-  const { data: msg, error: msgErr } = await admin
-    .from("internal_messages")
-    .insert({
-      from_user: user.id,
-      to_user: toUser,
-      body: null,
-      file_url: fileUrl,
-      file_name: file.name,
-    })
-    .select("*")
-    .single();
-
-  if (msgErr) return NextResponse.json({ error: msgErr.message }, { status: 500 });
-  return NextResponse.json({ message: msg });
+  // Save message — personal or group
+  if (toUser) {
+    const { data: msg, error: msgErr } = await admin
+      .from("internal_messages")
+      .insert({ from_user: user.id, to_user: toUser, body: null, file_url: fileUrl, file_name: file.name })
+      .select("*")
+      .single();
+    if (msgErr) return NextResponse.json({ error: msgErr.message }, { status: 500 });
+    return NextResponse.json({ message: msg });
+  } else {
+    const { data: msg, error: msgErr } = await admin
+      .from("group_messages")
+      .insert({ group_id: groupId, sender_id: user.id, body: null, file_url: fileUrl, file_name: file.name })
+      .select("*, users:sender_id(full_name)")
+      .single();
+    if (msgErr) return NextResponse.json({ error: msgErr.message }, { status: 500 });
+    return NextResponse.json({ message: msg });
+  }
 }
