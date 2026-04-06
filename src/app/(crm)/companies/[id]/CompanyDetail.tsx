@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import EmailThread from "@/components/ui/EmailThread";
 import TelegramChat from "@/components/ui/TelegramChat";
 import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
+import ExportCommunicationsModal from "@/components/ui/ExportCommunicationsModal";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
@@ -45,6 +46,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
   const [contractFileName, setContractFileName] = useState(company.contract_file_name ?? "");
   const [contractSaving, setContractSaving] = useState(false);
   const [contractUploading, setContractUploading] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   async function addNote() {
     if (!noteText.trim()) return;
@@ -244,6 +246,11 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
 
             {activeTab === "communications" && (
               <div className="space-y-3">
+                <div className="flex justify-end">
+                  <button onClick={() => setExportOpen(true)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded hover:bg-blue-50" style={{ border: "1px solid #0067a5", color: "#0067a5" }}>
+                    <Download size={12} /> Экспортировать переписки
+                  </button>
+                </div>
                 <Card>
                   <CardBody>
                     <textarea
@@ -433,6 +440,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
       </div>
 
       <EditCompanyModal open={editOpen} onClose={() => setEditOpen(false)} company={company} onSaved={setCompany} />
+      <ExportCommunicationsModal open={exportOpen} onClose={() => setExportOpen(false)} communications={communications} companyName={company.name} />
       <CreateTaskModal
         open={taskOpen}
         onClose={() => setTaskOpen(false)}
