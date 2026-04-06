@@ -76,6 +76,7 @@ const ENTITY_FIELDS: Record<Entity, CrmField[]> = {
     { key: "contact_email", label: "Email контакта" },
     ...Array.from({ length: 10 }, (_, i) => [
       { key: `product_${i + 1}_name`, label: `Товар ${i + 1} — название` },
+      { key: `product_${i + 1}_sku`, label: `Товар ${i + 1} — артикул` },
       { key: `product_${i + 1}_qty`, label: `Товар ${i + 1} — кол-во` },
       { key: `product_${i + 1}_price`, label: `Товар ${i + 1} — цена за шт` },
       { key: `product_${i + 1}_total`, label: `Товар ${i + 1} — сумма` },
@@ -129,12 +130,13 @@ function autoMatch(fileHeaders: string[], fields: CrmField[]): Record<string, st
   for (const header of fileHeaders) {
     if (used.has(header)) continue;
     const h = n(header);
-    const pm = h.match(/товар\s*(\d+)\s*-\s*(название|кол[- ]?во|цена за шт|цена|сумма)/);
+    const pm = h.match(/товар\s*(\d+)\s*-\s*(название|артикул|кол[- ]?во|цена за шт|цена|сумма)/);
     if (pm) {
       const num = pm[1];
       const type = pm[2];
       let key = "";
       if (type.startsWith("назван")) key = `product_${num}_name`;
+      else if (type.startsWith("артикул")) key = `product_${num}_sku`;
       else if (type.startsWith("кол")) key = `product_${num}_qty`;
       else if (type.startsWith("цена")) key = `product_${num}_price`;
       else if (type.startsWith("сумм")) key = `product_${num}_total`;
@@ -250,8 +252,6 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
   async function handleImport() {
     setLoading(true);
     const mapped = applyMapping(fileRows);
-    console.log("IMPORT: sending", mapped.length, "rows, first row keys:", Object.keys(mapped[0] ?? {}));
-
     try {
     // For products entity, use the old API
     if (entity === "products") {
@@ -270,7 +270,6 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
         body: JSON.stringify({ entity, rows: mapped, mode }),
       });
       const data = await res.json();
-      console.log("IMPORT RESULT:", JSON.stringify(data, null, 2));
       setResult(data);
     }
 

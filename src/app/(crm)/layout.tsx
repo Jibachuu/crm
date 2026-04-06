@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
+import PageLoader from "@/components/layout/PageLoader";
 import type { User } from "@/types/database";
 
 export default async function CRMLayout({ children }: { children: React.ReactNode }) {
@@ -30,6 +31,7 @@ export default async function CRMLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-screen bg-slate-50">
       <Sidebar user={profile as User} permissions={permissions} />
       <div className="flex-1 flex flex-col min-w-0">
+        <PageLoader />
         {children}
       </div>
     </div>

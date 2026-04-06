@@ -39,6 +39,28 @@ const navItems: NavItem[] = [
 
 type SectionPerms = Record<string, { can_read: boolean; can_create: boolean; can_update: boolean; can_delete: boolean }>;
 
+function NavLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      className={cn(
+        "sidebar-link flex items-center gap-2.5 px-3 py-2 text-sm font-medium",
+        isActive ? "text-white" : ""
+      )}
+      style={{
+        borderRadius: 6,
+        background: isActive ? "#0067a5" : "transparent",
+        color: isActive ? "#ffffff" : "rgba(255,255,255,0.55)",
+        transition: "all 0.15s ease",
+      }}
+    >
+      <Icon size={16} className="flex-shrink-0" style={{ transition: "transform 0.15s ease" }} />
+      {item.label}
+    </Link>
+  );
+}
+
 export default function Sidebar({ user, permissions = {} }: { user: User; permissions?: SectionPerms }) {
   const pathname = usePathname();
 
@@ -66,57 +88,21 @@ export default function Sidebar({ user, permissions = {} }: { user: User; permis
           if (user.role === "admin") return true;
           const sectionKey = item.href.replace("/", "");
           const perm = permissions[sectionKey];
-          // If no permission row exists — default allow. If row exists, check can_read.
           return perm === undefined ? true : perm.can_read;
         }).map((item) => {
-          const Icon = item.icon;
           const isActive =
             pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(item.href));
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-2.5 px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "text-white"
-                  : "hover:text-white"
-              )}
-              style={{
-                borderRadius: 4,
-                background: isActive ? "#0067a5" : "transparent",
-                color: isActive ? "#ffffff" : "rgba(255,255,255,0.6)",
-              }}
-            >
-              <Icon size={16} className="flex-shrink-0" />
-              {item.label}
-            </Link>
-          );
+          return <NavLink key={item.href} item={item} isActive={isActive} />;
         })}
 
         {user.role === "admin" && (
           <>
             <div className="my-2" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }} />
-            {[{ href: "/settings", label: "Настройки", icon: Settings }].map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname.startsWith(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium transition-colors"
-                  style={{
-                    borderRadius: 4,
-                    background: isActive ? "#0067a5" : "transparent",
-                    color: isActive ? "#ffffff" : "rgba(255,255,255,0.6)",
-                  }}
-                >
-                  <Icon size={16} className="flex-shrink-0" />
-                  {item.label}
-                </Link>
-              );
-            })}
+            <NavLink
+              item={{ href: "/settings", label: "Настройки", icon: Settings }}
+              isActive={pathname.startsWith("/settings")}
+            />
           </>
         )}
       </nav>
@@ -140,16 +126,25 @@ export default function Sidebar({ user, permissions = {} }: { user: User; permis
         <form action={logout} className="mt-0.5">
           <button
             type="submit"
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors"
-            style={{ borderRadius: 4, color: "rgba(255,255,255,0.5)" }}
-            onMouseOver={(e) => (e.currentTarget.style.color = "#fff")}
-            onMouseOut={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+            className="sidebar-link w-full flex items-center gap-2.5 px-3 py-2 text-sm"
+            style={{ borderRadius: 6, color: "rgba(255,255,255,0.5)", transition: "all 0.15s ease" }}
           >
             <LogOut size={14} />
             Выйти
           </button>
         </form>
       </div>
+
+      <style jsx global>{`
+        .sidebar-link:hover:not([style*="background: #0067a5"]) {
+          background: rgba(255,255,255,0.08) !important;
+          color: #fff !important;
+          padding-left: 14px !important;
+        }
+        .sidebar-link:active {
+          transform: scale(0.98);
+        }
+      `}</style>
     </aside>
   );
 }

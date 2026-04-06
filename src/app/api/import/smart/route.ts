@@ -345,7 +345,7 @@ export async function POST(req: NextRequest) {
 
     // Build main records
     const toInsert: Record<string, unknown>[] = [];
-    const productRows: { idx: number; name: string; price: number | null; qty: number | null }[] = [];
+    const productRows: { idx: number; name: string; sku: string | null; price: number | null; qty: number | null }[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -375,19 +375,15 @@ export async function POST(req: NextRequest) {
       }
       if (row.created_at) { const d = parseDate(row.created_at); if (d) rec.created_at = d; }
 
-      // Deal products — structured columns: product_1_name, product_1_qty, product_1_price, product_1_total ... up to 10
+      // Deal products — structured columns: product_1_name, product_1_sku, product_1_qty, product_1_price ... up to 10
       if (table === "deals") {
         for (let p = 1; p <= 10; p++) {
           const pName = String(row[`product_${p}_name`] ?? "").trim();
           if (!pName) continue;
+          const pSku = String(row[`product_${p}_sku`] ?? "").trim();
           const pQty = parseNum(row[`product_${p}_qty`]) ?? 1;
           const pPrice = parseNum(row[`product_${p}_price`]) ?? 0;
-          productRows.push({ idx: toInsert.length, name: pName, price: pPrice, qty: pQty });
-        }
-        // Debug: log what we found for first few rows
-        if (i < 3) {
-          const keys = Object.keys(row).filter(k => k.startsWith("product_"));
-          errors.push(`[debug row ${i+2}] product keys: ${keys.join(", ") || "(none)"} | values: ${keys.map(k => `${k}=${row[k]}`).join(", ") || "(empty)"}`);
+          productRows.push({ idx: toInsert.length, name: pName, sku: pSku || null, price: pPrice, qty: pQty });
         }
       }
 
@@ -405,8 +401,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Handle deal products
-    const filledIds = insertedIds.filter(Boolean).length;
-    errors.push(`[debug] productRows: ${productRows.length}, insertedIds filled: ${filledIds}/${insertedIds.length}`);
+    // Product linking
     if (table === "deals" && productRows.length > 0) {
       // Load ALL products from catalog (avoid .in() URL limit with long names)
       const allProducts = await fetchAllRows("products", "id, name");
@@ -416,7 +411,7 @@ export async function POST(req: NextRequest) {
       const uniqueProductNames = [...new Set(productRows.map((p) => p.name))];
       const missingProducts = uniqueProductNames.filter((n) => !productIdMap.has(norm(n)));
 
-      errors.push(`[debug] unique products: ${uniqueProductNames.length}, existing: ${allProducts.length}, missing: ${missingProducts.length}`);
+      // Create missing products in catalog
 
       // Create missing products one by one
       const priceMap = new Map<string, number>();
@@ -424,8 +419,14 @@ export async function POST(req: NextRequest) {
         const key = norm(pr.name);
         if (!priceMap.has(key) && pr.price) priceMap.set(key, pr.price);
       }
+      // Build SKU map from file data
+      const skuFromFile = new Map<string, string>();
+      for (const pr of productRows) {
+        if (pr.sku && !skuFromFile.has(norm(pr.name))) skuFromFile.set(norm(pr.name), pr.sku);
+      }
+
       for (const n of missingProducts) {
-        const sku = n.slice(0, 20) + "_" + Math.random().toString(36).slice(2, 8);
+        const sku = skuFromFile.get(norm(n)) || (n.slice(0, 20) + "_" + Math.random().toString(36).slice(2, 8));
         const { data, error: pErr } = await admin.from("products")
           .insert({ name: n, sku, base_price: priceMap.get(norm(n)) ?? 0 })
           .select("id, name")
@@ -450,7 +451,7 @@ export async function POST(req: NextRequest) {
         }))
         .filter((dp) => dp.product_id);
 
-      errors.push(`[debug] dealProductsToInsert: ${dealProductsToInsert.length}, productIdMap size: ${productIdMap.size}, sample: ${JSON.stringify(dealProductsToInsert[0] ?? {})}`);
+      // Insert deal_products
 
       if (dealProductsToInsert.length > 0) {
         // Insert in batches of 100
