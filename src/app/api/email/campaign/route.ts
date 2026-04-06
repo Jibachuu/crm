@@ -88,10 +88,22 @@ export async function POST(req: NextRequest) {
     const fromAddr = campaign.from_email || smtpUser;
     const fromName = campaign.from_name || "CRM";
 
+    // Build base URL for tracking pixel
+    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin
+      : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || baseUrl;
+
     for (const recipient of recipients ?? []) {
       const vars = recipient.variables as Record<string, string>;
       const subj = replaceVariables(campaign.subject, vars);
-      const html = replaceVariables(campaign.body_template, vars).replace(/\n/g, "<br>");
+      let html = replaceVariables(campaign.body_template, vars).replace(/\n/g, "<br>");
+
+      // Add tracking pixel
+      const trackUrl = `${appUrl}/api/email/track?rid=${recipient.id}`;
+      html += `<img src="${trackUrl}" width="1" height="1" style="display:none" alt="" />`;
 
       try {
         await transporter.sendMail({
@@ -117,6 +129,15 @@ export async function POST(req: NextRequest) {
     }).eq("id", campaign_id);
 
     return NextResponse.json({ sent: sentCount, failed: failedCount });
+  }
+
+  // ── Delete campaign ──────────────────────────────────────────────────
+  if (action === "delete") {
+    const { campaign_id } = body;
+    // Recipients cascade-deleted via FK
+    const { error: delErr } = await admin.from("email_campaigns").delete().eq("id", campaign_id);
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
