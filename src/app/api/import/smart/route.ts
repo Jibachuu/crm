@@ -98,6 +98,11 @@ export async function POST(req: NextRequest) {
     return null;
   }
 
+  const errors: string[] = [];
+  let added = 0;
+  let updated = 0;
+  let skipped = 0;
+
   // Pre-create placeholder users for all unique unmatched responsible names
   const uniqueResponsibleNames = [...new Set(
     rows.map((r) => String(r.assigned_to_name ?? "").trim()).filter(Boolean)
@@ -135,11 +140,6 @@ export async function POST(req: NextRequest) {
     if (!nameStr) return user.id;
     return matchUser(nameStr, allUsers ?? []) ?? placeholderMap.get(norm(nameStr)) ?? user.id;
   }
-
-  const errors: string[] = [];
-  let added = 0;
-  let updated = 0;
-  let skipped = 0;
 
   // ═══════════════════════════════════════════════════════════════════════════
   if (entity === "companies") {
