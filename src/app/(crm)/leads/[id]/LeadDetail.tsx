@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Edit2, Trash2, MessageSquare, CheckSquare, Phone, Mail, Building2, Plus, Package, ArrowRightCircle } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
+import EmailThread from "@/components/ui/EmailThread";
 import { formatCurrency } from "@/lib/utils";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
@@ -46,7 +47,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
   const [leadProducts, setLeadProducts] = useState(initialProducts ?? []);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "telegram">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -120,6 +121,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
     { id: "communications", label: `Коммуникации (${communications.length})` },
     { id: "tasks", label: `Задачи (${tasks.length})` },
     { id: "products", label: `Товары (${leadProducts.length})` },
+    ...(lead.contacts?.email ? [{ id: "email", label: "📧 Почта" }] : []),
     ...(lead.contacts?.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
   ];
 
@@ -327,6 +329,10 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                   onAdd={() => setAddProductBlock("order")}
                 />
               </div>
+            )}
+
+            {activeTab === "email" && lead.contacts?.email && (
+              <EmailThread email={lead.contacts.email} compact />
             )}
 
             {activeTab === "telegram" && lead.contacts?.telegram_id && (

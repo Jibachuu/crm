@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, Package, Plus, CheckSquare, MessageSquare, Send } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
+import EmailThread from "@/components/ui/EmailThread";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
@@ -39,7 +40,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
   const [dealProducts, setDealProducts] = useState(initialDealProducts ?? []);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "telegram">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -159,6 +160,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 { id: "communications", label: `Коммуникации (${communications.length})` },
                 { id: "tasks", label: `Задачи (${tasks.length})` },
                 { id: "products", label: `Товары (${dealProducts.length})` },
+                ...(deal.contacts?.email ? [{ id: "email", label: "📧 Почта" }] : []),
                 ...(deal.contacts?.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
               ].map((tab) => (
                 <button
@@ -268,6 +270,10 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   ))
                 )}
               </div>
+            )}
+
+            {activeTab === "email" && deal.contacts?.email && (
+              <EmailThread email={deal.contacts.email} compact />
             )}
 
             {activeTab === "telegram" && deal.contacts?.telegram_id && (

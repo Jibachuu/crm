@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Edit2, Trash2, Building2, Phone, Mail, Globe, MapPin, MessageSquare, Plus, CheckSquare } from "lucide-react";
 import Button from "@/components/ui/Button";
+import EmailThread from "@/components/ui/EmailThread";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
@@ -25,7 +26,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
   const [company, setCompany] = useState(initialCompany);
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "email">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -67,6 +68,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
     { id: "info", label: "Информация" },
     { id: "communications", label: `Коммуникации (${communications.length})` },
     { id: "tasks", label: `Задачи (${tasks.length})` },
+    ...(company.email ? [{ id: "email", label: "📧 Почта" }] : []),
   ];
 
   return (
@@ -262,6 +264,10 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                   ))
                 )}
               </div>
+            )}
+
+            {activeTab === "email" && company.email && (
+              <EmailThread email={company.email} compact />
             )}
           </div>
         </div>

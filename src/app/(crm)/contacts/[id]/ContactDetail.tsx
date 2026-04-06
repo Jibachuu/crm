@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, MessageSquare, Plus, CheckSquare } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
+import EmailThread from "@/components/ui/EmailThread";
 import Button from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -26,7 +27,7 @@ export default function ContactDetail({ contact: initialContact, communications:
   const [contact, setContact] = useState(initialContact);
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "telegram">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "email" | "telegram">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -85,6 +86,7 @@ export default function ContactDetail({ contact: initialContact, communications:
     { id: "info", label: "Информация" },
     { id: "communications", label: `Коммуникации (${communications.length})` },
     { id: "tasks", label: `Задачи (${tasks.length})` },
+    ...(contact.email ? [{ id: "email", label: "📧 Почта" }] : []),
     ...(contact.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
   ];
 
@@ -269,6 +271,10 @@ export default function ContactDetail({ contact: initialContact, communications:
                   ))
                 )}
               </div>
+            )}
+
+            {activeTab === "email" && contact.email && (
+              <EmailThread email={contact.email} compact />
             )}
 
             {activeTab === "telegram" && contact.telegram_id && (
