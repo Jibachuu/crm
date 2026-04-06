@@ -384,6 +384,11 @@ export async function POST(req: NextRequest) {
           const pPrice = parseNum(row[`product_${p}_price`]) ?? 0;
           productRows.push({ idx: toInsert.length, name: pName, price: pPrice, qty: pQty });
         }
+        // Debug: log what we found for first few rows
+        if (i < 3) {
+          const keys = Object.keys(row).filter(k => k.startsWith("product_"));
+          errors.push(`[debug row ${i+2}] product keys: ${keys.join(", ") || "(none)"} | values: ${keys.map(k => `${k}=${row[k]}`).join(", ") || "(empty)"}`);
+        }
       }
 
       toInsert.push(rec);
