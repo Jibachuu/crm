@@ -5,8 +5,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 const PIXEL = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
 
 export async function GET(req: NextRequest) {
-  const recipientId = new URL(req.url).searchParams.get("rid");
-  console.log("TRACK PIXEL HIT:", recipientId);
+  const url = new URL(req.url);
+  const recipientId = url.searchParams.get("rid");
+  const isClick = url.searchParams.get("click") === "1";
 
   if (recipientId) {
     const admin = createAdminClient();
@@ -43,6 +44,11 @@ export async function GET(req: NextRequest) {
         }
       }
     }
+  }
+
+  if (isClick) {
+    // Redirect to a "thank you" page or back to app
+    return NextResponse.redirect(new URL("/api/email/track/confirmed", req.url));
   }
 
   return new NextResponse(PIXEL, {

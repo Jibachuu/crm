@@ -101,9 +101,10 @@ export async function POST(req: NextRequest) {
       const subj = replaceVariables(campaign.subject, vars);
       let html = replaceVariables(campaign.body_template, vars).replace(/\n/g, "<br>");
 
-      // Add tracking pixel
+      // Add tracking pixel + tracking link
       const trackUrl = `${appUrl}/api/email/track?rid=${recipient.id}`;
       html += `<img src="${trackUrl}" width="1" height="1" style="display:none" alt="" />`;
+      html += `<br><br><p style="font-size:11px;color:#999;text-align:center;"><a href="${trackUrl}&click=1" style="color:#999;">Открыть в браузере</a></p>`;
 
       try {
         await transporter.sendMail({
