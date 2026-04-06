@@ -422,10 +422,19 @@ export async function POST(req: NextRequest) {
           const key = norm(pr.name);
           if (!priceMap.has(key) && pr.price) priceMap.set(key, pr.price);
         }
-        const { data } = await admin.from("products")
-          .insert(missingProducts.map((n) => ({ name: n, sku: n.slice(0, 30), base_price: priceMap.get(norm(n)) ?? 0 })))
-          .select("id, name");
-        for (const p of data ?? []) productIdMap.set(norm(p.name), p.id);
+        // Insert one by one to handle UNIQUE sku conflicts
+        for (const n of missingProducts) {
+          const sku = n.slice(0, 20) + "_" + Math.random().toString(36).slice(2, 8);
+          const { data, error: pErr } = await admin.from("products")
+            .insert({ name: n, sku, base_price: priceMap.get(norm(n)) ?? 0 })
+            .select("id, name")
+            .single();
+          if (data) {
+            productIdMap.set(norm(data.name), data.id);
+          } else if (pErr) {
+            errors.push(`Товар "${n}": ${pErr.message}`);
+          }
+        }
       }
 
       const dealProductsToInsert = productRows
