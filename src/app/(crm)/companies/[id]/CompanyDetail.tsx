@@ -10,6 +10,7 @@ import TelegramChat from "@/components/ui/TelegramChat";
 import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import ExportCommunicationsModal from "@/components/ui/ExportCommunicationsModal";
 import AIAnalysis from "@/components/ui/AIAnalysis";
+import GatherCommunicationsButton from "@/components/ui/GatherCommunicationsButton";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
@@ -248,6 +249,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
             {activeTab === "communications" && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 flex-wrap">
+                  <GatherCommunicationsButton companyId={company.id} companyName={company.name} />
                   <AIAnalysis companyId={company.id} type="client" label="Анализ ИИ" />
                   <AIAnalysis companyId={company.id} type="communications" label="Анализ переписок" />
                   <div className="flex-1" />
