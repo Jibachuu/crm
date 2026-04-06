@@ -32,38 +32,51 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
     setFiles((prev) => prev.filter((_, i) => i !== idx));
   }
 
+  function readFileAsBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1] ?? "");
+      };
+      reader.onerror = () => reject(new Error("Ошибка чтения файла"));
+      reader.readAsDataURL(file);
+    });
+  }
+
   async function handleSend() {
     if (!subject.trim() || !body.trim()) return;
     setSending(true);
 
-    // Convert files to base64 for reliable upload
-    const fileData: { name: string; type: string; data: string }[] = [];
-    for (const f of files) {
-      const buf = await f.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      fileData.push({ name: f.name, type: f.type, data: btoa(binary) });
-    }
+    try {
+      const fileData: { name: string; type: string; data: string }[] = [];
+      for (const f of files) {
+        const b64 = await readFileAsBase64(f);
+        fileData.push({ name: f.name, type: f.type || "application/octet-stream", data: b64 });
+      }
 
-    const res = await fetch("/api/email/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to, subject, body,
-        entityType: entityType || undefined,
-        entityId: entityId || undefined,
-        files: fileData,
-      }),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      const fileInfo = files.length > 0 ? ` (файлов прикреплено: ${data.attachmentCount ?? 0} из ${files.length})` : "";
-      setSentMsg(`Письмо отправлено${fileInfo}`);
+      const res = await fetch("/api/email/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to, subject, body,
+          entityType: entityType || undefined,
+          entityId: entityId || undefined,
+          files: fileData.length > 0 ? fileData : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert("Ошибка: " + (data.error ?? "не удалось отправить"));
+        setSending(false);
+        return;
+      }
+      const fileInfo = files.length > 0 ? ` (файлов: ${data.attachmentCount ?? 0})` : "";
+      setSentMsg(`Отправлено${fileInfo}`);
       setSent(true);
       setTimeout(() => { setSent(false); setSentMsg(""); setSubject(""); setBody(""); setFiles([]); onSent?.(); }, 3000);
-    } else {
-      alert("Ошибка: " + (data.error ?? "не удалось отправить"));
+    } catch (err) {
+      alert("Ошибка отправки: " + String(err));
     }
     setSending(false);
   }
