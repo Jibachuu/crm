@@ -214,7 +214,7 @@ export default function UsersSettings({ users: initialUsers, permissions: initia
           }}
           onRoleChange={async (role) => {
             await handleEdit(permUser.id, { role });
-            setPermUser((u) => u ? { ...u, role } : null);
+            setPermUser((u: typeof permUser) => u ? { ...u, role } : null);
           }}
         />
       )}
