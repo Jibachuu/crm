@@ -121,8 +121,22 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
     setSending(false);
   }
 
-  function openTelemost() {
-    window.open("https://telemost.yandex.ru/new", "_blank");
+  const [creatingCall, setCreatingCall] = useState(false);
+
+  async function openTelemost() {
+    setCreatingCall(true);
+    try {
+      const res = await fetch("/api/telemost", { method: "POST" });
+      const data = await res.json();
+      if (data.join_url) {
+        window.open(data.join_url, "_blank");
+      } else {
+        alert(data.error || "Не удалось создать звонок");
+      }
+    } catch {
+      alert("Ошибка создания звонка");
+    }
+    setCreatingCall(false);
   }
 
   const filteredUsers = users.filter((u) =>
@@ -198,7 +212,7 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
             className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded transition-colors"
             style={{ background: "#5b57d1", color: "#fff", borderRadius: 6 }}
           >
-            <Phone size={14} /> Создать звонок (Telemost)
+            <Phone size={14} /> {creatingCall ? "Создаём..." : "Создать звонок (Telemost)"}
           </button>
         </div>
       </div>
