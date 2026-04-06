@@ -465,7 +465,7 @@ export async function POST(req: NextRequest) {
         ].filter(Boolean).join("\n");
 
         const { data, error: pErr } = await admin.from("products")
-          .insert({ name: prod.name, sku: prod.sku, base_price: prod.price, description: chars || null })
+          .insert({ name: prod.name, sku: prod.sku, base_price: prod.price, description: chars || null, category: prod.category || null, subcategory: prod.subcategory || null })
           .select("id, name, sku")
           .single();
         if (data) {
@@ -484,7 +484,7 @@ export async function POST(req: NextRequest) {
           // SKU conflict — try with random suffix
           const skuRetry = prod.sku + "_" + Math.random().toString(36).slice(2, 6);
           const { data: d2, error: pErr2 } = await admin.from("products")
-            .insert({ name: prod.name, sku: skuRetry, base_price: prod.price, description: chars || null })
+            .insert({ name: prod.name, sku: skuRetry, base_price: prod.price, description: chars || null, category: prod.category || null, subcategory: prod.subcategory || null })
             .select("id, name, sku")
             .single();
           if (d2) {
@@ -506,6 +506,8 @@ export async function POST(req: NextRequest) {
           discount_percent: 0,
           total_price: (pr.qty ?? 1) * (pr.price ?? 0),
           product_block: "order",
+          category: pr.category ?? null,
+          subcategory: pr.subcategory ?? null,
         }))
         .filter((dp) => dp.product_id);
 

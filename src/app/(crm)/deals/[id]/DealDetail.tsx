@@ -414,11 +414,14 @@ function DealProductBlock({ title, description, items, total, onAdd }: { title: 
                 </tr>
               </thead>
               <tbody>
-                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; quantity: number; unit_price: number; discount_percent: number; total_price: number }) => (
+                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; category?: string; subcategory?: string; quantity: number; unit_price: number; discount_percent: number; total_price: number }) => (
                   <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                     <td className="px-4 py-2">
                       <p className="font-medium" style={{ color: "#333" }}>{item.products?.name}</p>
                       <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products?.sku}</p>
+                      {(item.category || item.subcategory) && (
+                        <p className="text-xs" style={{ color: "#0067a5" }}>{[item.category, item.subcategory].filter(Boolean).join(" → ")}</p>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-right" style={{ color: "#555" }}>{item.quantity} шт.</td>
                     <td className="px-4 py-2 text-right" style={{ color: "#aaa" }}>{item.base_price ? formatCurrency(item.base_price) : "—"}</td>
