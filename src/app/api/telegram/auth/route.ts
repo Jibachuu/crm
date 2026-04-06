@@ -18,15 +18,27 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "start") {
-    const session = new StringSession(process.env.TELEGRAM_SESSION ?? "");
-    const client = new TelegramClient(session, apiId, apiHash, { connectionRetries: 3 });
-    await client.connect();
-
-    if (await client.isUserAuthorized()) {
-      const me = await client.getMe();
-      return NextResponse.json({ status: "already_authorized", user: { firstName: (me as { firstName?: string }).firstName, phone: (me as { phone?: string }).phone } });
+    // Try existing session first
+    const existingSession = process.env.TELEGRAM_SESSION ?? "";
+    if (existingSession) {
+      try {
+        const checkClient = new TelegramClient(new StringSession(existingSession), apiId, apiHash, { connectionRetries: 2, timeout: 10 });
+        await Promise.race([checkClient.connect(), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000))]);
+        if (await checkClient.isUserAuthorized()) {
+          const me = await checkClient.getMe();
+          await checkClient.disconnect();
+          return NextResponse.json({ status: "already_authorized", user: { firstName: (me as { firstName?: string }).firstName, phone: (me as { phone?: string }).phone } });
+        }
+        await checkClient.disconnect();
+      } catch {
+        // Old session invalid — proceed with fresh session
+      }
     }
 
+    // Start fresh session for new auth
+    const freshSession = new StringSession("");
+    const client = new TelegramClient(freshSession, apiId, apiHash, { connectionRetries: 3 });
+    await client.connect();
     await client.sendCode({ apiId, apiHash }, phone);
     clients.set(sessionKey, client);
     return NextResponse.json({ status: "code_sent" });
