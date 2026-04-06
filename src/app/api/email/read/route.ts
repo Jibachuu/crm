@@ -17,7 +17,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "IMAP не настроен" }, { status: 503 });
   }
 
-  const uid = Number(new URL(req.url).searchParams.get("uid"));
+  const params = new URL(req.url).searchParams;
+  const uid = Number(params.get("uid"));
+  const folder = params.get("folder") || "INBOX";
   if (!uid) return NextResponse.json({ error: "uid required" }, { status: 400 });
 
   let client: ImapFlow | null = null;
@@ -30,7 +32,7 @@ export async function GET(req: NextRequest) {
     });
 
     await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
+    const lock = await client.getMailboxLock(folder);
 
     try {
       const rawMsg = await client.fetchOne(String(uid), { source: true, flags: true }, { uid: true });

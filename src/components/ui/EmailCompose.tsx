@@ -20,6 +20,7 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [sentMsg, setSentMsg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   function addFiles(newFiles: FileList | null) {
@@ -44,11 +45,13 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
     for (const f of files) fd.append("files", f);
 
     const res = await fetch("/api/email/send", { method: "POST", body: fd });
+    const data = await res.json();
     if (res.ok) {
+      const fileInfo = files.length > 0 ? ` (файлов: ${data.attachmentCount ?? 0})` : "";
+      setSentMsg(`Письмо отправлено на ${to}${fileInfo}`);
       setSent(true);
-      setTimeout(() => { setSent(false); setSubject(""); setBody(""); setFiles([]); onSent?.(); }, 2000);
+      setTimeout(() => { setSent(false); setSentMsg(""); setSubject(""); setBody(""); setFiles([]); onSent?.(); }, 3000);
     } else {
-      const data = await res.json();
       alert("Ошибка: " + (data.error ?? "не удалось отправить"));
     }
     setSending(false);
@@ -58,7 +61,7 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
     return (
       <div className="flex items-center gap-2 p-4 rounded" style={{ background: "#e8f5e9", border: "1px solid #a5d6a7" }}>
         <Send size={14} style={{ color: "#2e7d32" }} />
-        <span className="text-sm font-medium" style={{ color: "#2e7d32" }}>Письмо отправлено на {to}</span>
+        <span className="text-sm font-medium" style={{ color: "#2e7d32" }}>{sentMsg || `Письмо отправлено на ${to}`}</span>
       </div>
     );
   }

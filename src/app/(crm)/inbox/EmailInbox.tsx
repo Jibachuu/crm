@@ -71,11 +71,11 @@ export default function EmailInbox() {
 
   useEffect(() => { loadEmails(); }, []);
 
-  async function openEmail(uid: number) {
+  async function openEmail(uid: number, folder = "INBOX") {
     setLoadingDetail(true);
     setShowReply(false);
     try {
-      const res = await fetch(`/api/email/read?uid=${uid}`);
+      const res = await fetch(`/api/email/read?uid=${uid}&folder=${encodeURIComponent(folder)}`);
       const data = await res.json();
       if (res.ok) setSelectedEmail(data);
       else alert(data.error);
@@ -117,7 +117,7 @@ export default function EmailInbox() {
             return (
               <button
                 key={`${email.folder}-${email.uid}`}
-                onClick={() => openEmail(email.uid)}
+                onClick={() => openEmail(email.uid, email.folder)}
                 className="w-full text-left px-4 py-3 transition-colors hover:bg-gray-50"
                 style={{
                   borderBottom: "1px solid #f5f5f5",

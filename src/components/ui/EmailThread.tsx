@@ -6,6 +6,7 @@ import EmailCompose from "./EmailCompose";
 
 interface Email {
   uid: number;
+  folder: string;
   subject: string;
   from: string;
   fromEmail: string;
@@ -62,12 +63,12 @@ export default function EmailThread({ email, compact = false, entityType, entity
 
   useEffect(() => { loadEmails(); }, [email]);
 
-  async function toggleEmail(uid: number) {
+  async function toggleEmail(uid: number, folder = "INBOX") {
     if (expandedUid === uid) { setExpandedUid(null); setDetail(null); return; }
     setExpandedUid(uid);
     setLoadingDetail(true);
     try {
-      const res = await fetch(`/api/email/read?uid=${uid}`);
+      const res = await fetch(`/api/email/read?uid=${uid}&folder=${encodeURIComponent(folder)}`);
       if (res.ok) setDetail(await res.json());
     } catch { /* ignore */ }
     setLoadingDetail(false);
@@ -141,9 +142,9 @@ export default function EmailThread({ email, compact = false, entityType, entity
           const isExpanded = expandedUid === em.uid;
           const isIncoming = em.fromEmail?.toLowerCase() === email.toLowerCase();
           return (
-            <div key={em.uid} className="rounded" style={{ border: "1px solid #e4e4e4", background: "#fff" }}>
+            <div key={`${em.folder}-${em.uid}`} className="rounded" style={{ border: "1px solid #e4e4e4", background: "#fff" }}>
               <button
-                onClick={() => toggleEmail(em.uid)}
+                onClick={() => toggleEmail(em.uid, em.folder)}
                 className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
               >
                 <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
