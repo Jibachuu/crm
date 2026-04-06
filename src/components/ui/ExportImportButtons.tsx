@@ -6,7 +6,7 @@ import ImportModal from "./ImportModal";
 import { Download, Upload } from "lucide-react";
 
 interface Props {
-  entity: "leads" | "deals" | "contacts" | "companies" | "products";
+  entity: "leads" | "deals" | "contacts" | "companies" | "products" | "samples";
   onImported?: (count: number) => void;
 }
 

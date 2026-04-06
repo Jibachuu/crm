@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import * as XLSX from "xlsx";
 
-type Entity = "leads" | "deals" | "contacts" | "companies" | "products";
+type Entity = "leads" | "deals" | "contacts" | "companies" | "products" | "samples";
 
 const ENTITY_CONFIGS: Record<Entity, {
   query: (supabase: ReturnType<typeof createClient> extends Promise<infer T> ? T : never) => Promise<{ data: unknown[] | null }>;
@@ -90,6 +90,28 @@ const ENTITY_CONFIGS: Record<Entity, {
       "Активен": r.is_active ? "Да" : "Нет",
       "Описание": r.description ?? "",
       "Дата создания": r.created_at ? new Date(r.created_at).toLocaleDateString("ru-RU") : "",
+    }),
+  },
+  samples: {
+    query: async (sb) => sb.from("samples")
+      .select("*, companies(name), contacts(full_name), users!samples_assigned_to_fkey(full_name), logist:users!samples_logist_id_fkey(full_name)")
+      .order("created_at", { ascending: false }),
+    columns: ["Компания", "Заведение", "Контакт", "Телефон", "Материалы", "Тип доставки", "Адрес доставки", "Трек-номер", "Дата отправки", "Дата прибытия", "Статус", "Комментарий", "МОП", "Логист"],
+    mapper: (r) => ({
+      "Компания": r.companies?.name ?? "",
+      "Заведение": r.venue_name ?? "",
+      "Контакт": r.contacts?.full_name ?? "",
+      "Телефон": r.contact_phone ?? "",
+      "Материалы": r.materials ?? "",
+      "Тип доставки": r.delivery_type === "pvz" ? "ПВЗ" : r.delivery_type === "door" ? "До адреса" : "",
+      "Адрес доставки": r.delivery_address ?? "",
+      "Трек-номер": r.track_number ?? "",
+      "Дата отправки": r.sent_date ? new Date(r.sent_date).toLocaleDateString("ru-RU") : "",
+      "Дата прибытия": r.arrival_date ? new Date(r.arrival_date).toLocaleDateString("ru-RU") : "",
+      "Статус": ({ new: "Новый", sent: "Отправлен", in_transit: "В пути", delivered: "Доставлен", refused: "Отказ" } as Record<string, string>)[r.status] ?? r.status,
+      "Комментарий": r.comment ?? "",
+      "МОП": r.users?.full_name ?? "",
+      "Логист": r.logist?.full_name ?? "",
     }),
   },
 };

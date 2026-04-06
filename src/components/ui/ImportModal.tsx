@@ -6,7 +6,7 @@ import Modal from "./Modal";
 import Button from "./Button";
 import { Upload, ChevronRight, ChevronLeft, CheckCircle, AlertCircle, Loader } from "lucide-react";
 
-type Entity = "companies" | "contacts" | "leads" | "deals" | "products";
+type Entity = "companies" | "contacts" | "leads" | "deals" | "products" | "samples";
 
 interface CrmField {
   key: string;
@@ -94,6 +94,20 @@ const ENTITY_FIELDS: Record<Entity, CrmField[]> = {
     { key: "sku", label: "Артикул", required: true },
     { key: "base_price", label: "Базовая цена", required: true },
     { key: "description", label: "Описание" },
+  ],
+  samples: [
+    { key: "company_name", label: "Компания" },
+    { key: "venue_name", label: "Заведение" },
+    { key: "contact_name", label: "Контакт" },
+    { key: "contact_phone", label: "Телефон" },
+    { key: "materials", label: "Материалы" },
+    { key: "delivery_type", label: "Тип доставки" },
+    { key: "delivery_address", label: "Адрес доставки" },
+    { key: "track_number", label: "Трек-номер" },
+    { key: "sent_date", label: "Дата отправки" },
+    { key: "arrival_date", label: "Дата прибытия" },
+    { key: "status", label: "Статус" },
+    { key: "comment", label: "Комментарий" },
   ],
 };
 
@@ -193,6 +207,7 @@ const ENTITY_LABELS: Record<Entity, string> = {
   leads: "лидов",
   deals: "сделок",
   products: "товаров",
+  samples: "пробников",
 };
 
 export default function ImportModal({ open, onClose, entity, onImported }: Props) {

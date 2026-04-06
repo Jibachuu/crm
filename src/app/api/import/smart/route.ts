@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-type Entity = "companies" | "contacts" | "leads" | "deals";
+type Entity = "companies" | "contacts" | "leads" | "deals" | "samples";
 
 function parseDate(val: unknown): string | null {
   if (!val) return null;
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json() as { entity: Entity; rows: Record<string, unknown>[]; mode?: "skip" | "update" };
   const { entity, rows, mode = "update" } = body;
 
-  if (!["companies", "contacts", "leads", "deals"].includes(entity)) {
+  if (!["companies", "contacts", "leads", "deals", "samples"].includes(entity)) {
     return NextResponse.json({ error: "Unknown entity" }, { status: 400 });
   }
 
@@ -530,6 +530,44 @@ export async function POST(req: NextRequest) {
           }
         }
       }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  else if (entity === "samples") {
+    const toInsert: Record<string, unknown>[] = [];
+
+    for (const row of rows) {
+      const companyName = String(row.company_name ?? "").trim();
+      const contactName = String(row.contact_name ?? "").trim();
+
+      const statusMap: Record<string, string> = { "новый": "new", "отправлен": "sent", "в пути": "in_transit", "доставлен": "delivered", "отказ": "refused" };
+      const dtMap: Record<string, string> = { "пвз": "pvz", "до адреса": "door" };
+
+      const rec: Record<string, unknown> = {
+        venue_name: row.venue_name || null,
+        contact_phone: row.contact_phone || null,
+        materials: row.materials || null,
+        delivery_type: dtMap[norm(row.delivery_type)] || "pvz",
+        delivery_address: row.delivery_address || null,
+        track_number: row.track_number || null,
+        sent_date: row.sent_date ? parseDate(row.sent_date) : null,
+        arrival_date: row.arrival_date ? parseDate(row.arrival_date) : null,
+        status: statusMap[norm(row.status)] || "new",
+        comment: row.comment || null,
+        created_by: user.id,
+        company_id: companyName ? (companyMap.get(norm(companyName)) ?? null) : null,
+        contact_id: contactName ? (contactMap.get(norm(contactName)) ?? null) : null,
+      };
+
+      toInsert.push(rec);
+    }
+
+    for (let i = 0; i < toInsert.length; i += BATCH) {
+      const batch = toInsert.slice(i, i + BATCH);
+      const { error: err } = await admin.from("samples").insert(batch);
+      if (err) errors.push(`Пакет ${Math.floor(i / BATCH) + 1}: ${err.message}`);
+      else added += batch.length;
     }
   }
 

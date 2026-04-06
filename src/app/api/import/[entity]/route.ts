@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import * as XLSX from "xlsx";
 
-type Entity = "leads" | "deals" | "contacts" | "companies" | "products";
+type Entity = "leads" | "deals" | "contacts" | "companies" | "products" | "samples";
 
 // Template headers for each entity
 export const IMPORT_TEMPLATES: Record<Entity, string[]> = {
@@ -11,6 +11,7 @@ export const IMPORT_TEMPLATES: Record<Entity, string[]> = {
   contacts: ["ФИО*", "Должность", "Телефон", "Email", "Telegram", "Описание"],
   companies: ["Название*", "ИНН", "Телефон", "Email", "Сайт", "Юр. адрес", "Факт. адрес", "Описание"],
   products: ["Название*", "Артикул*", "Базовая цена*", "Описание"],
+  samples: ["Компания", "Заведение", "Контакт", "Телефон", "Материалы", "Тип доставки", "Адрес доставки", "Трек-номер", "Дата отправки", "Дата прибытия", "Статус", "Комментарий"],
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,6 +64,23 @@ function mapRow(entity: Entity, row: Record<string, any>, userId: string) {
         base_price: row["Базовая цена*"] ?? row["Базовая цена"] ?? 0,
         description: row["Описание"] || null,
       };
+    case "samples": {
+      const statusMap: Record<string, string> = { "новый": "new", "отправлен": "sent", "в пути": "in_transit", "доставлен": "delivered", "отказ": "refused" };
+      const dtMap: Record<string, string> = { "пвз": "pvz", "до адреса": "door" };
+      return {
+        venue_name: row["Заведение"] || null,
+        contact_phone: row["Телефон"] || null,
+        materials: row["Материалы"] || null,
+        delivery_type: dtMap[(row["Тип доставки"] ?? "").toLowerCase().trim()] || "pvz",
+        delivery_address: row["Адрес доставки"] || null,
+        track_number: row["Трек-номер"] || null,
+        sent_date: row["Дата отправки"] || null,
+        arrival_date: row["Дата прибытия"] || null,
+        status: statusMap[(row["Статус"] ?? "").toLowerCase().trim()] || "new",
+        comment: row["Комментарий"] || null,
+        created_by: userId,
+      };
+    }
     default:
       return {};
   }
