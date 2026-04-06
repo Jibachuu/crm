@@ -77,6 +77,7 @@ const ENTITY_FIELDS: Record<Entity, CrmField[]> = {
     { key: "product_name", label: "Товар" },
     { key: "product_price", label: "Цена товара" },
     { key: "product_qty", label: "Количество" },
+    { key: "products_raw", label: "Товары (строка)" },
     { key: "description", label: "Комментарий" },
     { key: "assigned_to_name", label: "Ответственный" },
     { key: "created_at", label: "Дата создания" },
@@ -96,6 +97,7 @@ const FIELD_ALIASES: Record<string, string[]> = {
   contact_name: ["контакт", "фио", "клиент", "contact"],
   full_name: ["фио", "имя", "full name", "имя фамилия"],
   created_at: ["дата", "дата создания", "created at", "date"],
+  products_raw: ["товары", "товары (для импорта в блок заказ)", "products", "товары для импорта"],
 };
 
 // Auto-match file columns to CRM fields by similarity

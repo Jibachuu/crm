@@ -374,9 +374,29 @@ export async function POST(req: NextRequest) {
         rec.had_call = row.had_call || null;
       }
       if (row.created_at) { const d = parseDate(row.created_at); if (d) rec.created_at = d; }
+
+      // Deal products — single product fields
       if (table === "deals" && row.product_name) {
         productRows.push({ idx: toInsert.length, name: String(row.product_name), price: parseNum(row.product_price), qty: parseNum(row.product_qty) ?? 1 });
       }
+
+      // Deal products — multi-product raw string: "Name | qty шт | price ₽ | Name2 | qty шт | price ₽"
+      if (table === "deals" && row.products_raw) {
+        const rawStr = String(row.products_raw).trim();
+        if (rawStr) {
+          const parts = rawStr.split("|").map((s) => s.trim()).filter(Boolean);
+          // Every 3 parts is one product: name, qty, price
+          for (let p = 0; p + 2 < parts.length; p += 3) {
+            const pName = parts[p].trim();
+            const pQty = parseNum(parts[p + 1].replace(/шт\.?/gi, "").trim()) ?? 1;
+            const pPrice = parseNum(parts[p + 2].replace(/[₽руб\.]/gi, "").trim()) ?? 0;
+            if (pName) {
+              productRows.push({ idx: toInsert.length, name: pName, price: pPrice, qty: pQty });
+            }
+          }
+        }
+      }
+
       toInsert.push(rec);
     }
 
@@ -400,8 +420,14 @@ export async function POST(req: NextRequest) {
 
       const missingProducts = uniqueProductNames.filter((n) => !productIdMap.has(norm(n)));
       if (missingProducts.length > 0) {
+        // Use price from first occurrence as base_price
+        const priceMap = new Map<string, number>();
+        for (const pr of productRows) {
+          const key = norm(pr.name);
+          if (!priceMap.has(key) && pr.price) priceMap.set(key, pr.price);
+        }
         const { data } = await admin.from("products")
-          .insert(missingProducts.map((n) => ({ name: n, sku: n.slice(0, 30), base_price: 0 })))
+          .insert(missingProducts.map((n) => ({ name: n, sku: n.slice(0, 30), base_price: priceMap.get(norm(n)) ?? 0 })))
           .select("id, name");
         for (const p of data ?? []) productIdMap.set(norm(p.name), p.id);
       }
