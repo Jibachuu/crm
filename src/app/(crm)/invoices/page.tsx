@@ -13,8 +13,8 @@ export default async function InvoicesPage() {
 
   const [{ data: invoices }, { data: companies }, { data: products }, { data: deals }, { data: supplier }] = await Promise.all([
     admin.from("invoices").select("*, companies:buyer_company_id(id, name), deals(id, title)").order("created_at", { ascending: false }),
-    admin.from("companies").select("id, name, inn").order("name"),
-    admin.from("products").select("id, name, sku, base_price").eq("is_active", true).order("name"),
+    admin.from("companies").select("id, name, inn, kpp, legal_address").order("name"),
+    admin.from("products").select("id, name, sku, base_price, category, subcategory, description").eq("is_active", true).order("name"),
     admin.from("deals").select("id, title").order("created_at", { ascending: false }).limit(100),
     admin.from("supplier_settings").select("*").limit(1).single(),
   ]);

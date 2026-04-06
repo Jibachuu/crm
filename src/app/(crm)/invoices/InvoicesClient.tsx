@@ -29,25 +29,40 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   const [form, setForm] = useState({
     invoice_date: new Date().toISOString().slice(0, 10),
     payment_due: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
-    buyer_company_id: "", buyer_name: "", buyer_inn: "",
+    buyer_company_id: "", buyer_name: "", buyer_inn: "", buyer_kpp: "", buyer_address: "",
     basis: "Основной договор", deal_id: "", comment: "", vat_included: false,
   });
   const [items, setItems] = useState<InvoiceItem[]>([{ product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]);
 
   function selectBuyer(companyId: string) {
-    const c = companies.find((co: { id: string }) => co.id === companyId);
-    setForm({ ...form, buyer_company_id: companyId, buyer_name: c?.name ?? "", buyer_inn: c?.inn ?? "" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const c = companies.find((co: any) => co.id === companyId);
+    setForm({ ...form, buyer_company_id: companyId, buyer_name: c?.name ?? "", buyer_inn: c?.inn ?? "", buyer_kpp: c?.kpp ?? "", buyer_address: c?.legal_address ?? "" });
   }
 
   function addItem() { setItems([...items, { product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]); }
   function removeItem(i: number) { setItems(items.filter((_, idx) => idx !== i)); }
+  function buildProductName(p: { name: string; sku?: string; category?: string; subcategory?: string; description?: string }) {
+    const parts: string[] = [];
+    if (p.category) parts.push(p.category);
+    if (p.subcategory) parts.push(p.subcategory);
+    parts.push(p.name);
+    if (p.description) {
+      const chars = p.description.split("\n").filter((l: string) => l.includes(":")).map((l: string) => l.split(":").pop()?.trim()).filter(Boolean);
+      if (chars.length) parts.push(`(${chars.join(", ")})`);
+    }
+    if (p.sku) parts.push(`арт. ${p.sku}`);
+    return parts.join(" / ");
+  }
+
   function updateItem(i: number, field: string, val: string | number) {
     setItems(items.map((item, idx) => {
       if (idx !== i) return item;
       const updated = { ...item, [field]: val };
       if (field === "product_id") {
-        const p = products.find((pr: { id: string }) => pr.id === val);
-        if (p) { updated.name = p.name; updated.price = p.base_price; }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const p = products.find((pr: any) => pr.id === val);
+        if (p) { updated.name = buildProductName(p); updated.price = p.base_price; }
       }
       updated.total = updated.quantity * updated.price;
       return updated;
@@ -82,6 +97,15 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     }).select("*").single();
 
     if (error || !invoice) { alert(error?.message ?? "Ошибка"); setSaving(false); return; }
+
+    // Save buyer requisites back to company
+    if (form.buyer_company_id && (form.buyer_kpp || form.buyer_address)) {
+      const updates: Record<string, string> = {};
+      if (form.buyer_kpp) updates.kpp = form.buyer_kpp;
+      if (form.buyer_address) updates.legal_address = form.buyer_address;
+      if (form.buyer_inn) updates.inn = form.buyer_inn;
+      await supabase.from("companies").update(updates).eq("id", form.buyer_company_id);
+    }
 
     // Insert items
     await supabase.from("invoice_items").insert(
@@ -230,7 +254,17 @@ ${supplier?.signature_url ? `<img class="signature" src="${supplier.signature_ur
 <p><strong>Предприниматель</strong> <span class="sign-line"></span> / ${supplier?.director ?? ""} /</p>
 </div>
 
-<script>window.onload=()=>window.print()</script>
+<script>
+window.onload=()=>{
+  const imgs=document.images;
+  if(imgs.length===0){window.print();return}
+  let loaded=0;
+  for(let i=0;i<imgs.length;i++){
+    if(imgs[i].complete){loaded++;if(loaded===imgs.length)window.print()}
+    else{imgs[i].onload=imgs[i].onerror=()=>{loaded++;if(loaded===imgs.length)window.print()}}
+  }
+}
+</script>
 </body></html>`;
     printWindow.document.write(html);
     printWindow.document.close();
@@ -326,6 +360,10 @@ ${supplier?.signature_url ? `<img class="signature" src="${supplier.signature_ur
             <div><label style={lblStyle}>ИНН покупателя</label><input value={form.buyer_inn} onChange={(e) => setForm({ ...form, buyer_inn: e.target.value })} style={inputStyle} /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
+            <div><label style={lblStyle}>КПП покупателя</label><input value={form.buyer_kpp} onChange={(e) => setForm({ ...form, buyer_kpp: e.target.value })} style={inputStyle} /></div>
+            <div><label style={lblStyle}>Адрес покупателя</label><input value={form.buyer_address} onChange={(e) => setForm({ ...form, buyer_address: e.target.value })} style={inputStyle} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div><label style={lblStyle}>Основание</label><input value={form.basis} onChange={(e) => setForm({ ...form, basis: e.target.value })} style={inputStyle} /></div>
             <div><label style={lblStyle}>Привязать к сделке</label>
               <select value={form.deal_id} onChange={(e) => setForm({ ...form, deal_id: e.target.value })} style={inputStyle}>
@@ -347,7 +385,8 @@ ${supplier?.signature_url ? `<img class="signature" src="${supplier.signature_ur
                   <div className="col-span-4">
                     <select value={item.product_id} onChange={(e) => updateItem(i, "product_id", e.target.value)} style={{ ...inputStyle, fontSize: 12 }}>
                       <option value="">Товар из каталога...</option>
-                      {products.map((p: { id: string; name: string }) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      {products.map((p: any) => <option key={p.id} value={p.id}>{[p.category, p.name, p.sku].filter(Boolean).join(" / ")}</option>)}
                     </select>
                     {!item.product_id && <input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Или введите название" style={{ ...inputStyle, fontSize: 11, marginTop: 2 }} />}
                   </div>
@@ -386,8 +425,8 @@ ${supplier?.signature_url ? `<img class="signature" src="${supplier.signature_ur
       </Modal>
 
       {/* Preview Modal */}
-      {previewInvoice && (
-        <Modal open onClose={() => setPreviewInvoice(null)} title={`Счёт №${previewInvoice.invoice_number}`} size="lg">
+      <Modal open={!!previewInvoice} onClose={() => setPreviewInvoice(null)} title={previewInvoice ? `Счёт №${previewInvoice.invoice_number}` : ""} size="lg">
+        {previewInvoice && (
           <div className="p-5">
             <div className="text-xs space-y-1 mb-4" style={{ color: "#666" }}>
               <p><strong>Поставщик:</strong> {supplier?.company_name}, ИНН {supplier?.inn}</p>
@@ -426,8 +465,8 @@ ${supplier?.signature_url ? `<img class="signature" src="${supplier.signature_ur
               <Button size="sm" variant="secondary" onClick={() => setPreviewInvoice(null)}>Закрыть</Button>
             </div>
           </div>
-        </Modal>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }
