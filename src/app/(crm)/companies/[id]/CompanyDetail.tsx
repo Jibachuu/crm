@@ -7,6 +7,7 @@ import { ChevronLeft, Edit2, Trash2, Building2, Phone, Mail, Globe, MapPin, Mess
 import Button from "@/components/ui/Button";
 import EmailThread from "@/components/ui/EmailThread";
 import TelegramChat from "@/components/ui/TelegramChat";
+import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
@@ -249,7 +250,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                       value={noteText}
                       onChange={(e) => setNoteText(e.target.value)}
                       placeholder="Добавить заметку..."
-                      rows={3}
+                      rows={2}
                       className="w-full text-sm border border-slate-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                     />
                     <div className="flex justify-end mt-2">
@@ -259,30 +260,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                     </div>
                   </CardBody>
                 </Card>
-                {communications.length === 0 ? (
-                  <p className="text-sm text-slate-400 text-center py-8">Коммуникации отсутствуют</p>
-                ) : (
-                  communications.map((comm: { id: string; channel: string; direction: string; body?: string; created_at: string; users?: { full_name: string } }) => (
-                    <Card key={comm.id}>
-                      <CardBody>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3">
-                            <span className="text-xl">{CHANNEL_ICONS[comm.channel]}</span>
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs font-medium text-slate-600">{CHANNEL_LABELS[comm.channel]}</span>
-                                <span className="text-xs text-slate-400">{comm.direction === "inbound" ? "Входящее" : "Исходящее"}</span>
-                                {comm.users && <span className="text-xs text-slate-400">• {comm.users.full_name}</span>}
-                              </div>
-                              {comm.body && <p className="text-sm text-slate-600 whitespace-pre-wrap">{comm.body}</p>}
-                            </div>
-                          </div>
-                          <span className="text-xs text-slate-400 flex-shrink-0">{formatDateTime(comm.created_at)}</span>
-                        </div>
-                      </CardBody>
-                    </Card>
-                  ))
-                )}
+                <CommunicationsTimeline communications={communications} />
               </div>
             )}
 
