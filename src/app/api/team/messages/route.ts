@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
@@ -9,9 +10,11 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const peerId = searchParams.get("peer");
 
+  const admin = createAdminClient();
+
   if (peerId) {
     // Fetch messages between current user and peer
-    const { data } = await supabase
+    const { data } = await admin
       .from("internal_messages")
       .select("*")
       .or(`and(from_user.eq.${user.id},to_user.eq.${peerId}),and(from_user.eq.${peerId},to_user.eq.${user.id})`)
@@ -19,7 +22,7 @@ export async function GET(req: NextRequest) {
       .limit(200);
 
     // Mark unread messages as read
-    await supabase
+    await admin
       .from("internal_messages")
       .update({ is_read: true })
       .eq("from_user", peerId)
@@ -30,7 +33,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Fetch unread counts per user
-  const { data: unread } = await supabase
+  const { data: unread } = await admin
     .from("internal_messages")
     .select("from_user")
     .eq("to_user", user.id)
@@ -54,7 +57,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Empty message" }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  // Use admin client to bypass RLS
+  const admin = createAdminClient();
+  const { data, error } = await admin
     .from("internal_messages")
     .insert({
       from_user: user.id,
