@@ -208,8 +208,11 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
     if (fileRef.current) fileRef.current.value = "";
   }
 
+  const resultRef = useRef(result);
+  resultRef.current = result;
+
   function handleClose() {
-    const hadImport = result && (result.added > 0 || result.updated > 0);
+    const hadImport = resultRef.current && (resultRef.current.added > 0 || resultRef.current.updated > 0);
     reset();
     onClose();
     if (hadImport) onImported?.(1);
@@ -247,7 +250,9 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
   async function handleImport() {
     setLoading(true);
     const mapped = applyMapping(fileRows);
+    console.log("IMPORT: sending", mapped.length, "rows, first row keys:", Object.keys(mapped[0] ?? {}));
 
+    try {
     // For products entity, use the old API
     if (entity === "products") {
       const res = await fetch(`/api/import/products`, {
@@ -265,9 +270,14 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
         body: JSON.stringify({ entity, rows: mapped, mode }),
       });
       const data = await res.json();
+      console.log("IMPORT RESULT:", JSON.stringify(data, null, 2));
       setResult(data);
     }
 
+    } catch (err) {
+      console.error("IMPORT ERROR:", err);
+      setResult({ added: 0, updated: 0, skipped: 0, errors: [`Ошибка запроса: ${err}`], total: fileRows.length });
+    }
     setLoading(false);
     setStep(4);
   }
