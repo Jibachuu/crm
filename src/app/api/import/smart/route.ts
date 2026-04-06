@@ -405,6 +405,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Handle deal products
+    const filledIds = insertedIds.filter(Boolean).length;
+    errors.push(`[debug] productRows: ${productRows.length}, insertedIds filled: ${filledIds}/${insertedIds.length}`);
     if (table === "deals" && productRows.length > 0) {
       // Pre-load/create products
       const uniqueProductNames = [...new Set(productRows.map((p) => p.name))];
