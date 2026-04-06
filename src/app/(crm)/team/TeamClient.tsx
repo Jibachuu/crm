@@ -121,9 +121,30 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
     setSending(false);
   }
 
-  function startCall() {
+  async function startCall(userId?: string) {
     const roomId = "crm-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    window.open(`https://meet.jit.si/${roomId}`, "_blank");
+    const callUrl = `https://meet.jit.si/${roomId}`;
+
+    // If calling a specific user — send them the link in chat
+    const targetId = userId || selectedUser?.id;
+    if (targetId) {
+      const res = await fetch("/api/team/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to_user: targetId,
+          body: `📞 Приглашение в видеозвонок!\nПрисоединяйтесь: ${callUrl}`,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (targetId === selectedUser?.id) {
+          setMessages((prev) => [...prev, data.message]);
+        }
+      }
+    }
+
+    window.open(callUrl, "_blank");
   }
 
   const filteredUsers = users.filter((u) =>
