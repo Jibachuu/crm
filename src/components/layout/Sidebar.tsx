@@ -19,6 +19,7 @@ import {
   UsersRound,
   Mail,
   FlaskConical,
+  Receipt,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { href: "/companies", label: "Компании", icon: Building2 },
   { href: "/products", label: "Товары", icon: Package },
   { href: "/samples", label: "Пробники", icon: FlaskConical },
+  { href: "/invoices", label: "Счета", icon: Receipt },
   { href: "/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/tasks", label: "Задачи", icon: CheckSquare },
   { href: "/analytics", label: "Аналитика", icon: BarChart3 },

@@ -1,0 +1,378 @@
+"use client";
+
+import { useState } from "react";
+import { Plus, Search, Receipt, FileDown, Eye, Trash2 } from "lucide-react";
+import Button from "@/components/ui/Button";
+import Badge from "@/components/ui/Badge";
+import Modal from "@/components/ui/Modal";
+import { formatCurrency, formatDate } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { amountToWords } from "@/lib/numToWords";
+
+const STATUS_LABELS: Record<string, string> = { issued: "Выставлен", paid: "Оплачен", overdue: "Просрочен" };
+const STATUS_VARIANTS: Record<string, "default" | "warning" | "success" | "danger"> = { issued: "warning", paid: "success", overdue: "danger" };
+
+interface InvoiceItem { product_id: string; name: string; quantity: number; unit: string; price: number; total: number }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default function InvoicesClient({ initialInvoices, companies, products, deals, supplier }: any) {
+  const [invoices, setInvoices] = useState(initialInvoices);
+  const [search, setSearch] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [previewInvoice, setPreviewInvoice] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [previewItems, setPreviewItems] = useState<any[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  // Create form state
+  const [form, setForm] = useState({
+    invoice_date: new Date().toISOString().slice(0, 10),
+    payment_due: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
+    buyer_company_id: "", buyer_name: "", buyer_inn: "",
+    basis: "Основной договор", deal_id: "", comment: "", vat_included: false,
+  });
+  const [items, setItems] = useState<InvoiceItem[]>([{ product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]);
+
+  function selectBuyer(companyId: string) {
+    const c = companies.find((co: { id: string }) => co.id === companyId);
+    setForm({ ...form, buyer_company_id: companyId, buyer_name: c?.name ?? "", buyer_inn: c?.inn ?? "" });
+  }
+
+  function addItem() { setItems([...items, { product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]); }
+  function removeItem(i: number) { setItems(items.filter((_, idx) => idx !== i)); }
+  function updateItem(i: number, field: string, val: string | number) {
+    setItems(items.map((item, idx) => {
+      if (idx !== i) return item;
+      const updated = { ...item, [field]: val };
+      if (field === "product_id") {
+        const p = products.find((pr: { id: string }) => pr.id === val);
+        if (p) { updated.name = p.name; updated.price = p.base_price; }
+      }
+      updated.total = updated.quantity * updated.price;
+      return updated;
+    }));
+  }
+
+  const totalAmount = items.reduce((s, i) => s + i.total, 0);
+
+  async function handleCreate() {
+    if (!form.buyer_name || items.length === 0) return;
+    setSaving(true);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Get next invoice number
+    const { data: maxInv } = await supabase.from("invoices").select("invoice_number").order("invoice_number", { ascending: false }).limit(1);
+    const nextNum = ((maxInv?.[0]?.invoice_number ?? 0) as number) + 1;
+
+    const { data: invoice, error } = await supabase.from("invoices").insert({
+      invoice_number: nextNum,
+      invoice_date: form.invoice_date,
+      payment_due: form.payment_due,
+      buyer_company_id: form.buyer_company_id || null,
+      buyer_name: form.buyer_name,
+      buyer_inn: form.buyer_inn || null,
+      basis: form.basis,
+      deal_id: form.deal_id || null,
+      comment: form.comment || null,
+      vat_included: form.vat_included,
+      total_amount: totalAmount,
+      created_by: user?.id,
+    }).select("*").single();
+
+    if (error || !invoice) { alert(error?.message ?? "Ошибка"); setSaving(false); return; }
+
+    // Insert items
+    await supabase.from("invoice_items").insert(
+      items.filter((i) => i.name).map((i) => ({
+        invoice_id: invoice.id,
+        product_id: i.product_id || null,
+        name: i.name,
+        quantity: i.quantity,
+        unit: i.unit,
+        price: i.price,
+        total: i.total,
+      }))
+    );
+
+    setSaving(false);
+    setCreateOpen(false);
+    window.location.reload();
+  }
+
+  async function openPreview(inv: { id: string }) {
+    const supabase = createClient();
+    const { data: items } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
+    setPreviewInvoice(inv);
+    setPreviewItems(items ?? []);
+  }
+
+  async function updateStatus(id: string, status: string) {
+    const supabase = createClient();
+    await supabase.from("invoices").update({ status }).eq("id", id);
+    setInvoices(invoices.map((inv: { id: string }) => inv.id === id ? { ...inv, status } : inv));
+  }
+
+  async function deleteInvoice(id: string) {
+    if (!confirm("Удалить счёт?")) return;
+    const supabase = createClient();
+    await supabase.from("invoices").delete().eq("id", id);
+    setInvoices(invoices.filter((inv: { id: string }) => inv.id !== id));
+  }
+
+  function printInvoice() {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow || !previewInvoice) return;
+    const inv = previewInvoice;
+    const total = previewItems.reduce((s: number, i: { total: number }) => s + i.total, 0);
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Счёт №${inv.invoice_number}</title>
+<style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px;color:#333}
+table{width:100%;border-collapse:collapse;margin:10px 0}
+td,th{border:1px solid #333;padding:5px 8px;text-align:left}
+th{background:#f5f5f5;font-weight:bold}
+.right{text-align:right}
+.header{border:none;margin-bottom:20px}
+.header td{border:none;vertical-align:top;padding:2px 0}
+h2{margin:0 0 5px;font-size:16px}
+.total-row td{font-weight:bold}
+.footer{margin-top:30px;font-size:11px}
+@media print{body{margin:15mm}}
+</style></head><body>
+<table class="header"><tr>
+<td style="width:60%">
+<p><strong>${supplier?.bank_name ?? ""}</strong></p>
+<p>БИК: ${supplier?.bik ?? ""} &nbsp; Корр. счёт: ${supplier?.corr_account ?? ""}</p>
+<p>Расч. счёт: ${supplier?.account_number ?? ""}</p>
+</td>
+<td>
+<p><strong>Получатель:</strong></p>
+<p>${supplier?.company_name ?? ""}</p>
+<p>ИНН: ${supplier?.inn ?? ""} ${supplier?.kpp ? "КПП: " + supplier.kpp : ""}</p>
+</td>
+</tr></table>
+<h2>Счёт на оплату № ${inv.invoice_number} от ${new Date(inv.invoice_date).toLocaleDateString("ru-RU")}</h2>
+<p><strong>Поставщик:</strong> ${supplier?.company_name ?? ""}, ИНН ${supplier?.inn ?? ""}, ${supplier?.address ?? ""}</p>
+<p><strong>Покупатель:</strong> ${inv.buyer_name}${inv.buyer_inn ? ", ИНН " + inv.buyer_inn : ""}</p>
+<p><strong>Основание:</strong> ${inv.basis}</p>
+<table>
+<thead><tr><th>№</th><th>Наименование</th><th>Кол-во</th><th>Ед.</th><th class="right">Цена</th><th class="right">Сумма</th></tr></thead>
+<tbody>
+${previewItems.map((item: { name: string; quantity: number; unit: string; price: number; total: number }, i: number) =>
+  `<tr><td>${i + 1}</td><td>${item.name}</td><td>${item.quantity}</td><td>${item.unit}</td><td class="right">${Number(item.price).toLocaleString("ru-RU", { minimumFractionDigits: 2 })}</td><td class="right">${Number(item.total).toLocaleString("ru-RU", { minimumFractionDigits: 2 })}</td></tr>`
+).join("")}
+</tbody>
+<tfoot>
+<tr class="total-row"><td colspan="5" class="right">Итого:</td><td class="right">${total.toLocaleString("ru-RU", { minimumFractionDigits: 2 })}</td></tr>
+<tr><td colspan="5" class="right">${inv.vat_included ? "В том числе НДС (20%):" : "Без НДС"}</td><td class="right">${inv.vat_included ? (total * 0.2 / 1.2).toLocaleString("ru-RU", { minimumFractionDigits: 2 }) : "—"}</td></tr>
+<tr class="total-row"><td colspan="5" class="right">Всего к оплате:</td><td class="right">${total.toLocaleString("ru-RU", { minimumFractionDigits: 2 })}</td></tr>
+</tfoot>
+</table>
+<p><strong>Всего наименований ${previewItems.length}, на сумму ${total.toLocaleString("ru-RU", { minimumFractionDigits: 2 })} руб.</strong></p>
+<p><em>${amountToWords(total)}</em></p>
+${inv.comment ? `<p>Комментарий: ${inv.comment}</p>` : ""}
+<p>Оплатить не позднее: <strong>${inv.payment_due ? new Date(inv.payment_due).toLocaleDateString("ru-RU") : "—"}</strong></p>
+<div class="footer">
+<p><strong>Руководитель</strong> _________________ / ${supplier?.director ?? ""} /</p>
+</div>
+<script>window.onload=()=>window.print()</script>
+</body></html>`;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  }
+
+  const inputStyle: React.CSSProperties = { border: "1px solid #d0d0d0", borderRadius: 4, padding: "6px 10px", fontSize: 13, width: "100%", outline: "none" };
+  const lblStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: "#888", display: "block", marginBottom: 4 };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const filtered = invoices.filter((inv: any) =>
+    !search ||
+    String(inv.invoice_number).includes(search) ||
+    inv.buyer_name?.toLowerCase().includes(search.toLowerCase()) ||
+    inv.companies?.name?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <div className="relative flex-1 min-w-48">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "#aaa" }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Поиск по номеру, покупателю..."
+            className="w-full pl-8 pr-3 py-1.5 text-sm focus:outline-none"
+            style={{ border: "1px solid #d0d0d0", borderRadius: 4 }} />
+        </div>
+        <Button onClick={() => setCreateOpen(true)} size="sm"><Plus size={13} /> Новый счёт</Button>
+      </div>
+
+      <div className="flex gap-4 mb-3 text-xs" style={{ color: "#888" }}>
+        <span>Счетов: <strong style={{ color: "#333" }}>{filtered.length}</strong></span>
+      </div>
+
+      <div className="bg-white overflow-hidden" style={{ border: "1px solid #e4e4e4", borderRadius: 6 }}>
+        {filtered.length === 0 ? (
+          <div className="text-center py-12" style={{ color: "#aaa" }}>
+            <Receipt size={36} className="mx-auto mb-2" style={{ color: "#ddd" }} />
+            <p className="text-sm">Счетов нет</p>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: "1px solid #e4e4e4", background: "#fafafa" }}>
+                {["№", "Покупатель", "Сумма", "Дата", "Оплатить до", "Статус", ""].map((h) => (
+                  <th key={h} className="text-left px-4 py-2 text-xs font-semibold uppercase" style={{ color: "#888" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              {filtered.map((inv: any) => (
+                <tr key={inv.id} style={{ borderBottom: "1px solid #f0f0f0" }} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 font-mono font-medium" style={{ color: "#0067a5" }}>#{inv.invoice_number}</td>
+                  <td className="px-4 py-2" style={{ color: "#333" }}>{inv.buyer_name || inv.companies?.name || "—"}</td>
+                  <td className="px-4 py-2 font-medium" style={{ color: "#2e7d32" }}>{formatCurrency(inv.total_amount)}</td>
+                  <td className="px-4 py-2 text-xs" style={{ color: "#888" }}>{formatDate(inv.invoice_date)}</td>
+                  <td className="px-4 py-2 text-xs" style={{ color: "#888" }}>{inv.payment_due ? formatDate(inv.payment_due) : "—"}</td>
+                  <td className="px-4 py-2">
+                    <select value={inv.status} onChange={(e) => updateStatus(inv.id, e.target.value)}
+                      className="text-xs px-1.5 py-0.5 rounded outline-none" style={{ border: "1px solid #e0e0e0" }}>
+                      {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openPreview(inv)} className="p-1 rounded hover:bg-blue-50" title="Просмотр"><Eye size={13} style={{ color: "#0067a5" }} /></button>
+                      <button onClick={() => deleteInvoice(inv.id)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: "#c62828" }} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Create Invoice Modal */}
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Новый счёт" size="lg">
+        <div className="p-5 space-y-3" style={{ maxHeight: "80vh", overflowY: "auto" }}>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label style={lblStyle}>Дата счёта</label><input type="date" value={form.invoice_date} onChange={(e) => setForm({ ...form, invoice_date: e.target.value })} style={inputStyle} /></div>
+            <div><label style={lblStyle}>Оплатить до</label><input type="date" value={form.payment_due} onChange={(e) => setForm({ ...form, payment_due: e.target.value })} style={inputStyle} /></div>
+          </div>
+          <div>
+            <label style={lblStyle}>Покупатель (из CRM)</label>
+            <select value={form.buyer_company_id} onChange={(e) => selectBuyer(e.target.value)} style={inputStyle}>
+              <option value="">Выберите или введите вручную</option>
+              {companies.map((c: { id: string; name: string }) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label style={lblStyle}>Название покупателя</label><input value={form.buyer_name} onChange={(e) => setForm({ ...form, buyer_name: e.target.value })} style={inputStyle} /></div>
+            <div><label style={lblStyle}>ИНН покупателя</label><input value={form.buyer_inn} onChange={(e) => setForm({ ...form, buyer_inn: e.target.value })} style={inputStyle} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label style={lblStyle}>Основание</label><input value={form.basis} onChange={(e) => setForm({ ...form, basis: e.target.value })} style={inputStyle} /></div>
+            <div><label style={lblStyle}>Привязать к сделке</label>
+              <select value={form.deal_id} onChange={(e) => setForm({ ...form, deal_id: e.target.value })} style={inputStyle}>
+                <option value="">Не привязан</option>
+                {deals.map((d: { id: string; title: string }) => <option key={d.id} value={d.id}>{d.title}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Items */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label style={{ ...lblStyle, marginBottom: 0 }}>Товары</label>
+              <button onClick={addItem} className="text-xs px-2 py-1 rounded" style={{ color: "#0067a5", border: "1px solid #0067a5" }}>+ Строка</button>
+            </div>
+            <div className="space-y-2">
+              {items.map((item, i) => (
+                <div key={i} className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-4">
+                    <select value={item.product_id} onChange={(e) => updateItem(i, "product_id", e.target.value)} style={{ ...inputStyle, fontSize: 12 }}>
+                      <option value="">Товар из каталога...</option>
+                      {products.map((p: { id: string; name: string }) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    {!item.product_id && <input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Или введите название" style={{ ...inputStyle, fontSize: 11, marginTop: 2 }} />}
+                  </div>
+                  <div className="col-span-2"><input type="number" min="0.01" step="0.01" value={item.quantity} onChange={(e) => updateItem(i, "quantity", Number(e.target.value))} style={{ ...inputStyle, fontSize: 12 }} placeholder="Кол-во" /></div>
+                  <div className="col-span-1"><input value={item.unit} onChange={(e) => updateItem(i, "unit", e.target.value)} style={{ ...inputStyle, fontSize: 12 }} /></div>
+                  <div className="col-span-2"><input type="number" min="0" step="0.01" value={item.price} onChange={(e) => updateItem(i, "price", Number(e.target.value))} style={{ ...inputStyle, fontSize: 12 }} placeholder="Цена" /></div>
+                  <div className="col-span-2 text-sm font-medium" style={{ color: "#2e7d32", paddingTop: 6 }}>{formatCurrency(item.total)}</div>
+                  <div className="col-span-1">
+                    {items.length > 1 && <button onClick={() => removeItem(i)} className="text-xs text-red-500 hover:underline">✕</button>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-3 rounded" style={{ background: "#f5f5f5", border: "1px solid #e4e4e4" }}>
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={form.vat_included} onChange={(e) => setForm({ ...form, vat_included: e.target.checked })} style={{ accentColor: "#0067a5" }} />
+              Включая НДС 20%
+            </label>
+            <div className="text-right">
+              <p className="text-xs" style={{ color: "#888" }}>Итого:</p>
+              <p className="text-lg font-bold" style={{ color: "#2e7d32" }}>{formatCurrency(totalAmount)}</p>
+            </div>
+          </div>
+
+          <div><label style={lblStyle}>Комментарий</label><textarea value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} rows={2} style={{ ...inputStyle, resize: "vertical" }} /></div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" size="sm" onClick={() => setCreateOpen(false)}>Отмена</Button>
+            <Button size="sm" onClick={handleCreate} loading={saving} disabled={!form.buyer_name || items.every((i) => !i.name)}>
+              <Receipt size={13} /> Создать счёт
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Preview Modal */}
+      {previewInvoice && (
+        <Modal open onClose={() => setPreviewInvoice(null)} title={`Счёт №${previewInvoice.invoice_number}`} size="lg">
+          <div className="p-5">
+            <div className="text-xs space-y-1 mb-4" style={{ color: "#666" }}>
+              <p><strong>Поставщик:</strong> {supplier?.company_name}, ИНН {supplier?.inn}</p>
+              <p><strong>Покупатель:</strong> {previewInvoice.buyer_name}{previewInvoice.buyer_inn ? `, ИНН ${previewInvoice.buyer_inn}` : ""}</p>
+              <p><strong>Основание:</strong> {previewInvoice.basis}</p>
+              <p><strong>Дата:</strong> {formatDate(previewInvoice.invoice_date)} &nbsp; <strong>Оплатить до:</strong> {previewInvoice.payment_due ? formatDate(previewInvoice.payment_due) : "—"}</p>
+            </div>
+            <table className="w-full text-xs mb-4" style={{ border: "1px solid #e4e4e4" }}>
+              <thead>
+                <tr style={{ background: "#fafafa" }}>
+                  <th className="px-2 py-1.5 text-left" style={{ borderBottom: "1px solid #e4e4e4" }}>№</th>
+                  <th className="px-2 py-1.5 text-left" style={{ borderBottom: "1px solid #e4e4e4" }}>Наименование</th>
+                  <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Кол-во</th>
+                  <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Цена</th>
+                  <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Сумма</th>
+                </tr>
+              </thead>
+              <tbody>
+                {previewItems.map((item: { name: string; quantity: number; unit: string; price: number; total: number }, i: number) => (
+                  <tr key={i} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                    <td className="px-2 py-1.5">{i + 1}</td>
+                    <td className="px-2 py-1.5">{item.name}</td>
+                    <td className="px-2 py-1.5 text-right">{item.quantity} {item.unit}</td>
+                    <td className="px-2 py-1.5 text-right">{formatCurrency(item.price)}</td>
+                    <td className="px-2 py-1.5 text-right font-medium">{formatCurrency(item.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="text-sm mb-2">
+              <p><strong>Итого: {formatCurrency(previewInvoice.total_amount)}</strong></p>
+              <p className="text-xs italic" style={{ color: "#666" }}>{amountToWords(previewInvoice.total_amount)}</p>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <Button size="sm" onClick={printInvoice}><FileDown size={13} /> Скачать PDF</Button>
+              <Button size="sm" variant="secondary" onClick={() => setPreviewInvoice(null)}>Закрыть</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}

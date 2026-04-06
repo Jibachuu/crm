@@ -7,6 +7,7 @@ import CustomFieldsSettings from "./CustomFieldsSettings";
 import ChannelsSettings from "./ChannelsSettings";
 import DirectoriesSettings from "./DirectoriesSettings";
 import EmailTemplatesSettings from "./EmailTemplatesSettings";
+import SupplierSettings from "./SupplierSettings";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -32,6 +33,7 @@ export default async function SettingsPage() {
           <UsersSettings users={users ?? []} permissions={permissions ?? []} />
           <DirectoriesSettings />
           <CustomFieldsSettings customFields={customFields ?? []} />
+          <SupplierSettings />
           <EmailTemplatesSettings />
           <ChannelsSettings />
         </div>
