@@ -46,19 +46,16 @@ export default function SupplierSettings() {
   async function uploadImage(file: File, field: "stamp_url" | "signature_url") {
     const setter = field === "stamp_url" ? setUploadingStamp : setUploadingSig;
     setter(true);
-    const supabase = createClient();
-    const path = `supplier/${field}_${Date.now()}.${file.name.split(".").pop()}`;
-    const { error: upErr } = await supabase.storage.from("attachments").upload(path, file, { contentType: file.type, upsert: false });
-    if (upErr) {
-      // Try create bucket
-      await supabase.storage.createBucket("attachments", { public: true });
-      await supabase.storage.from("attachments").upload(path, file, { contentType: file.type, upsert: false });
-    }
-    const { data: urlData } = supabase.storage.from("attachments").getPublicUrl(path);
-    setForm((prev) => ({ ...prev, [field]: urlData.publicUrl }));
-    // Auto-save if settings exist
-    if (form.id) {
-      await supabase.from("supplier_settings").update({ [field]: urlData.publicUrl }).eq("id", form.id);
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("field", field);
+    const res = await fetch("/api/supplier/upload", { method: "POST", body: fd });
+    if (res.ok) {
+      const { url } = await res.json();
+      setForm((prev) => ({ ...prev, [field]: url }));
+    } else {
+      const err = await res.json();
+      alert("Ошибка загрузки: " + (err.error ?? ""));
     }
     setter(false);
   }
