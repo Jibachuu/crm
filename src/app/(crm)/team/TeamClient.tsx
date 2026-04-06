@@ -122,8 +122,8 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
   }
 
   async function startCall(userId?: string) {
-    const roomId = "crm-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const callUrl = `https://8x8.vc/crm/${roomId}`;
+    const roomId = "CrmCall" + Date.now() + Math.random().toString(36).slice(2, 8);
+    const callUrl = `https://meet.jit.si/${roomId}`;
 
     // Open window first (must be synchronous to avoid popup blocker)
     const callWindow = window.open(callUrl, "_blank");
