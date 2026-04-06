@@ -13,7 +13,7 @@ export default async function AnalyticsPage() {
       supabase.from("deals").select("stage, amount, source, company_id"),
       supabase.from("companies").select("id, name"),
       supabase.from("deals").select("company_id, amount").eq("stage", "won"),
-      supabase.from("deal_products").select("product_id, quantity, total_price, products(name, sku)"),
+      supabase.from("deal_products").select("product_id, quantity, base_price, unit_price, discount_percent, total_price, products(name, sku)"),
     ]);
 
   const leads = (leadsResult.data ?? []) as { status: string; source: string | null }[];
@@ -83,12 +83,40 @@ export default async function AnalyticsPage() {
   }
   const topProducts = Array.from(productMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
 
+  // Discount analytics
+  const discountMap = new Map<string, { name: string; sku: string; basePrices: number[]; salePrices: number[]; discounts: number[] }>();
+  for (const dp of productsResult.data ?? []) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const p = (Array.isArray(dp.products) ? dp.products[0] : dp.products) as { name: string; sku: string } | null;
+    if (!p || !dp.product_id) continue;
+    const curr = discountMap.get(dp.product_id) ?? { name: p.name, sku: p.sku, basePrices: [], salePrices: [], discounts: [] };
+    if (dp.base_price) curr.basePrices.push(dp.base_price);
+    curr.salePrices.push(dp.unit_price ?? 0);
+    if (dp.discount_percent > 0) curr.discounts.push(dp.discount_percent);
+    discountMap.set(dp.product_id, curr);
+  }
+  const discountAnalytics = Array.from(discountMap.values())
+    .filter((d) => d.discounts.length > 0)
+    .map((d) => ({
+      name: d.name,
+      sku: d.sku,
+      basePrice: d.basePrices.length > 0 ? d.basePrices[0] : null,
+      minSale: Math.min(...d.salePrices),
+      maxSale: Math.max(...d.salePrices),
+      avgSale: Math.round(d.salePrices.reduce((s, v) => s + v, 0) / d.salePrices.length),
+      avgDiscount: Math.round(d.discounts.reduce((s, v) => s + v, 0) / d.discounts.length * 10) / 10,
+      maxDiscount: Math.max(...d.discounts),
+      count: d.salePrices.length,
+    }))
+    .sort((a, b) => b.avgDiscount - a.avgDiscount)
+    .slice(0, 15);
+
   return (
     <>
       <Header title="Аналитика" />
       <main className="p-5">
         <AnalyticsTabs
-          dashboard={<AnalyticsDashboard kpis={kpis} stages={stages} sources={sources} companyLTV={companyLTV} topProducts={topProducts} />}
+          dashboard={<AnalyticsDashboard kpis={kpis} stages={stages} sources={sources} companyLTV={companyLTV} topProducts={topProducts} discountAnalytics={discountAnalytics} />}
           datasets={<AnalyticsDataSets />}
         />
       </main>

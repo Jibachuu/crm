@@ -448,19 +448,21 @@ function ProductBlock({ title, description, items, total, onAdd }: { title: stri
                 <tr style={{ borderBottom: "1px solid #e4e4e4", background: "#fafafa" }}>
                   <th className="text-left px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Товар</th>
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Кол-во</th>
-                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Цена</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Баз. цена</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Цена продажи</th>
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Скидка</th>
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Сумма</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item: { id: string; products: { name: string; sku: string }; quantity: number; unit_price: number; discount_percent: number; total_price: number }) => (
+                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; quantity: number; unit_price: number; discount_percent: number; total_price: number }) => (
                   <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                     <td className="px-4 py-2">
                       <p className="font-medium" style={{ color: "#333" }}>{item.products?.name}</p>
                       <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products?.sku}</p>
                     </td>
                     <td className="px-4 py-2 text-right" style={{ color: "#555" }}>{item.quantity} шт.</td>
+                    <td className="px-4 py-2 text-right" style={{ color: "#aaa" }}>{item.base_price ? formatCurrency(item.base_price) : "—"}</td>
                     <td className="px-4 py-2 text-right" style={{ color: "#555" }}>{formatCurrency(item.unit_price)}</td>
                     <td className="px-4 py-2 text-right" style={{ color: item.discount_percent > 0 ? "#d32f2f" : "#aaa" }}>
                       {item.discount_percent > 0 ? `-${item.discount_percent}%` : "—"}
@@ -471,7 +473,7 @@ function ProductBlock({ title, description, items, total, onAdd }: { title: stri
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: "1px solid #e4e4e4", background: "#fafafa" }}>
-                  <td colSpan={4} className="px-4 py-2 text-sm font-semibold text-right" style={{ color: "#555" }}>Итого:</td>
+                  <td colSpan={5} className="px-4 py-2 text-sm font-semibold text-right" style={{ color: "#555" }}>Итого:</td>
                   <td className="px-4 py-2 text-right font-bold" style={{ color: "#333" }}>{formatCurrency(total)}</td>
                 </tr>
               </tfoot>

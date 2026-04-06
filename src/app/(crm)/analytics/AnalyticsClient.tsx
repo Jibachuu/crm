@@ -359,9 +359,9 @@ export default function AnalyticsDataSets() {
 }
 
 // Also export a simple KPI dashboard component
-export function AnalyticsDashboard({ kpis, stages, sources, companyLTV, topProducts }: {
+export function AnalyticsDashboard({ kpis, stages, sources, companyLTV, topProducts, discountAnalytics = [] }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  kpis: any[]; stages: any[]; sources: any[]; companyLTV: any[]; topProducts: any[]
+  kpis: any[]; stages: any[]; sources: any[]; companyLTV: any[]; topProducts: any[]; discountAnalytics?: any[]
 }) {
   return (
     <div>
@@ -461,6 +461,50 @@ export function AnalyticsDashboard({ kpis, stages, sources, companyLTV, topProdu
           </CardBody>
         </Card>
       </div>
+
+      {/* Discount Analytics */}
+      {discountAnalytics.length > 0 && (
+        <Card>
+          <CardBody>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: "#333" }}>Аналитика скидок</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #e4e4e4", background: "#fafafa" }}>
+                    {["Товар", "Баз. цена", "Мин. цена", "Макс. цена", "Сред. цена", "Сред. скидка", "Макс. скидка", "Продаж"].map((h) => (
+                      <th key={h} className="text-left px-3 py-2 font-semibold" style={{ color: "#888" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {discountAnalytics.map((d) => (
+                    <tr key={d.sku} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                      <td className="px-3 py-2">
+                        <p className="font-medium" style={{ color: "#333" }}>{d.name}</p>
+                        <p style={{ color: "#aaa" }}>Арт. {d.sku}</p>
+                      </td>
+                      <td className="px-3 py-2" style={{ color: "#888" }}>{d.basePrice ? formatCurrency(d.basePrice) : "—"}</td>
+                      <td className="px-3 py-2" style={{ color: "#2e7d32" }}>{formatCurrency(d.minSale)}</td>
+                      <td className="px-3 py-2" style={{ color: "#c62828" }}>{formatCurrency(d.maxSale)}</td>
+                      <td className="px-3 py-2 font-medium" style={{ color: "#333" }}>{formatCurrency(d.avgSale)}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-12 h-2 rounded-full" style={{ background: "#f0f0f0" }}>
+                            <div className="h-2 rounded-full" style={{ width: `${Math.min(100, d.avgDiscount * 2)}%`, background: d.avgDiscount > 20 ? "#c62828" : d.avgDiscount > 10 ? "#e65c00" : "#2e7d32" }} />
+                          </div>
+                          <span style={{ color: d.avgDiscount > 20 ? "#c62828" : "#e65c00" }}>{d.avgDiscount}%</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2" style={{ color: "#c62828" }}>{d.maxDiscount}%</td>
+                      <td className="px-3 py-2" style={{ color: "#888" }}>{d.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardBody>
+        </Card>
+      )}
     </div>
   );
 }
