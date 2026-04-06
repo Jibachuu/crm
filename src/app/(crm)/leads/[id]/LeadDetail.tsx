@@ -332,7 +332,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
             )}
 
             {activeTab === "email" && lead.contacts?.email && (
-              <EmailThread email={lead.contacts.email} compact />
+              <EmailThread email={lead.contacts.email} compact entityType="lead" entityId={lead.id} />
             )}
 
             {activeTab === "telegram" && lead.contacts?.telegram_id && (

@@ -274,7 +274,7 @@ export default function ContactDetail({ contact: initialContact, communications:
             )}
 
             {activeTab === "email" && contact.email && (
-              <EmailThread email={contact.email} compact />
+              <EmailThread email={contact.email} compact entityType="contact" entityId={contact.id} />
             )}
 
             {activeTab === "telegram" && contact.telegram_id && (

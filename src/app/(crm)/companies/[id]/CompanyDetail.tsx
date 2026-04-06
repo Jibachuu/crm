@@ -267,7 +267,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
             )}
 
             {activeTab === "email" && company.email && (
-              <EmailThread email={company.email} compact />
+              <EmailThread email={company.email} compact entityType="company" entityId={company.id} />
             )}
           </div>
         </div>

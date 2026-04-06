@@ -273,7 +273,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
             )}
 
             {activeTab === "email" && deal.contacts?.email && (
-              <EmailThread email={deal.contacts.email} compact />
+              <EmailThread email={deal.contacts.email} compact entityType="deal" entityId={deal.id} />
             )}
 
             {activeTab === "telegram" && deal.contacts?.telegram_id && (

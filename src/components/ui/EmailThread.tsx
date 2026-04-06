@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Mail, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { Mail, RefreshCw, ChevronDown, ChevronUp, PenSquare } from "lucide-react";
+import EmailCompose from "./EmailCompose";
 
 interface Email {
   uid: number;
@@ -31,13 +32,14 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }) + " " + time;
 }
 
-export default function EmailThread({ email, compact = false }: { email: string; compact?: boolean }) {
+export default function EmailThread({ email, compact = false, entityType, entityId }: { email: string; compact?: boolean; entityType?: string; entityId?: string }) {
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedUid, setExpandedUid] = useState<number | null>(null);
   const [detail, setDetail] = useState<EmailDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   async function loadEmails() {
     setLoading(true);
@@ -89,7 +91,16 @@ export default function EmailThread({ email, compact = false }: { email: string;
       <div className="text-center py-8">
         <Mail size={24} className="mx-auto mb-2" style={{ color: "#ddd" }} />
         <p className="text-xs" style={{ color: "#aaa" }}>Нет переписки с {email}</p>
-        <button onClick={loadEmails} className="text-xs underline mt-2" style={{ color: "#0067a5" }}>Обновить</button>
+        <button onClick={() => setComposeOpen(true)} className="flex items-center gap-1 text-xs mt-2 mx-auto px-3 py-1.5 rounded"
+          style={{ background: "#0067a5", color: "#fff" }}>
+          <PenSquare size={11} /> Написать письмо
+        </button>
+        {composeOpen && (
+          <div className="mt-3 text-left">
+            <EmailCompose to={email} entityType={entityType} entityId={entityId} compact
+              onClose={() => setComposeOpen(false)} onSent={() => { setComposeOpen(false); loadEmails(); }} />
+          </div>
+        )}
       </div>
     );
   }
@@ -100,10 +111,30 @@ export default function EmailThread({ email, compact = false }: { email: string;
         <p className="text-xs" style={{ color: "#888" }}>
           Переписка с <strong style={{ color: "#333" }}>{email}</strong> · {emails.length} писем
         </p>
-        <button onClick={loadEmails} className="p-1 rounded hover:bg-gray-100" title="Обновить">
-          <RefreshCw size={12} style={{ color: "#888" }} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setComposeOpen(!composeOpen)}
+            className="flex items-center gap-1 text-xs px-2.5 py-1 rounded transition-colors"
+            style={{ border: "1px solid #0067a5", color: "#0067a5" }}>
+            <PenSquare size={11} /> Написать
+          </button>
+          <button onClick={loadEmails} className="p-1 rounded hover:bg-gray-100" title="Обновить">
+            <RefreshCw size={12} style={{ color: "#888" }} />
+          </button>
+        </div>
       </div>
+
+      {composeOpen && (
+        <div className="mb-3">
+          <EmailCompose
+            to={email}
+            entityType={entityType}
+            entityId={entityId}
+            compact
+            onClose={() => setComposeOpen(false)}
+            onSent={() => { setComposeOpen(false); loadEmails(); }}
+          />
+        </div>
+      )}
 
       <div className="space-y-2" style={{ maxHeight: compact ? 400 : 600, overflowY: "auto" }}>
         {emails.map((em) => {
