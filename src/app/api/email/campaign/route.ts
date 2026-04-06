@@ -197,13 +197,19 @@ export async function POST(req: NextRequest) {
   if (action === "check_replies") {
     const { campaign_id } = body;
 
+    const { data: campaign } = await admin
+      .from("email_campaigns")
+      .select("subject")
+      .eq("id", campaign_id)
+      .single();
+
     const { data: recipients } = await admin
       .from("email_recipients")
       .select("id, email, message_id, replied_at")
       .eq("campaign_id", campaign_id)
       .eq("status", "sent");
 
-    const pending = (recipients ?? []).filter((r) => r.message_id && !r.replied_at);
+    const pending = (recipients ?? []).filter((r) => !r.replied_at);
     if (!pending.length) return NextResponse.json({ replied: 0, message: "Нет получателей для проверки" });
 
     const imapHost = process.env.IMAP_HOST || process.env.SMTP_HOST;
@@ -215,10 +221,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "IMAP не настроен" }, { status: 503 });
     }
 
-    const messageIdMap = new Map(pending.map((r) => [r.message_id!, r.id]));
+    // Match by message_id (In-Reply-To header)
+    const messageIdMap = new Map<string, string>();
+    // Match by email address (fallback for old campaigns without message_id)
+    const emailMap = new Map<string, string>();
+    const campaignSubject = (campaign?.subject ?? "").toLowerCase();
+
+    for (const r of pending) {
+      if (r.message_id) messageIdMap.set(r.message_id, r.id);
+      emailMap.set(r.email.toLowerCase(), r.id);
+    }
 
     let client: ImapFlow | null = null;
     let repliedCount = 0;
+    const matched = new Set<string>();
 
     try {
       client = new ImapFlow({
@@ -242,14 +258,27 @@ export async function POST(req: NextRequest) {
         for await (const msg of client.fetch(`${startSeq}:*`, { uid: true, source: true })) {
           try {
             const parsed = await simpleParser(msg.source as Buffer);
+            const fromEmail = parsed.from?.value?.[0]?.address?.toLowerCase() ?? "";
             const inReplyTo = parsed.inReplyTo?.replace(/^<|>$/g, "");
+            const subj = (parsed.subject ?? "").toLowerCase();
+
+            let recipientId: string | undefined;
+
+            // Method 1: In-Reply-To header matches message_id
             if (inReplyTo && messageIdMap.has(inReplyTo)) {
-              const recipientId = messageIdMap.get(inReplyTo)!;
+              recipientId = messageIdMap.get(inReplyTo);
+            }
+            // Method 2: From email matches recipient + subject contains campaign subject (Re: ...)
+            if (!recipientId && emailMap.has(fromEmail) && subj.includes(campaignSubject)) {
+              recipientId = emailMap.get(fromEmail);
+            }
+
+            if (recipientId && !matched.has(recipientId)) {
+              matched.add(recipientId);
               await admin
                 .from("email_recipients")
                 .update({ replied_at: parsed.date?.toISOString() ?? new Date().toISOString() })
                 .eq("id", recipientId);
-              messageIdMap.delete(inReplyTo);
               repliedCount++;
             }
           } catch { /* skip unparseable */ }
