@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Mail, RefreshCw, ArrowLeft, Paperclip } from "lucide-react";
+import { Mail, RefreshCw, ArrowLeft, Paperclip, Reply } from "lucide-react";
+import EmailCompose from "@/components/ui/EmailCompose";
 
 interface Email {
   uid: number;
@@ -45,6 +46,7 @@ export default function EmailInbox() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState<EmailDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [showReply, setShowReply] = useState(false);
 
   async function loadEmails() {
     setLoading(true);
@@ -70,6 +72,7 @@ export default function EmailInbox() {
 
   async function openEmail(uid: number) {
     setLoadingDetail(true);
+    setShowReply(false);
     try {
       const res = await fetch(`/api/email/read?uid=${uid}`);
       const data = await res.json();
@@ -200,6 +203,27 @@ export default function EmailInbox() {
                   {selectedEmail.text}
                 </pre>
               )}
+
+              {/* Reply */}
+              <div className="mt-4" style={{ maxWidth: 800 }}>
+                {!showReply ? (
+                  <button
+                    onClick={() => setShowReply(true)}
+                    className="flex items-center gap-1.5 text-xs px-3 py-2 rounded transition-colors hover:bg-white"
+                    style={{ border: "1px solid #d0d0d0", color: "#555" }}
+                  >
+                    <Reply size={13} /> Ответить
+                  </button>
+                ) : (
+                  <EmailCompose
+                    to={selectedEmail.fromEmail}
+                    defaultSubject={`Re: ${selectedEmail.subject.replace(/^Re:\s*/i, "")}`}
+                    onSent={() => setShowReply(false)}
+                    onClose={() => setShowReply(false)}
+                    compact
+                  />
+                )}
+              </div>
             </div>
           </>
         )}

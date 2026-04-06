@@ -2,9 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import nodemailer from "nodemailer";
+import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
 
 function replaceVariables(template: string, variables: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (match, key) => variables[key] ?? match);
+}
+
+interface AttachmentMeta {
+  filename: string;
+  url: string;
+  contentType: string;
+  size: number;
 }
 
 export async function POST(req: NextRequest) {
@@ -12,15 +21,59 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
-  const { action } = body;
   const admin = createAdminClient();
+  const contentType = req.headers.get("content-type") ?? "";
 
-  // ── Create campaign ─────────────────────────────────────────────────
-  if (action === "create") {
-    const { name, subject, body_template, from_name, from_email, recipients } = body;
-    if (!name || !subject || !body_template || !recipients?.length) {
+  // ── Create campaign (FormData — may include files) ──────────────────
+  if (contentType.includes("multipart/form-data")) {
+    const formData = await req.formData();
+    const action = formData.get("action") as string;
+    if (action !== "create") return NextResponse.json({ error: "FormData only for create" }, { status: 400 });
+
+    const name = formData.get("name") as string;
+    const subject = formData.get("subject") as string;
+    const body_template = formData.get("body_template") as string;
+    const from_name = formData.get("from_name") as string | null;
+    const from_email = formData.get("from_email") as string | null;
+    const recipientsJson = formData.get("recipients") as string;
+    const files = formData.getAll("files") as File[];
+
+    const recipients = JSON.parse(recipientsJson || "[]");
+    if (!name || !subject || !body_template || !recipients.length) {
       return NextResponse.json({ error: "Заполните все поля" }, { status: 400 });
+    }
+
+    // Upload attachment files to Supabase Storage
+    const attachments: AttachmentMeta[] = [];
+    for (const file of files) {
+      if (file.size === 0) continue;
+      const ext = file.name.split(".").pop() ?? "bin";
+      const path = `campaigns/${user.id}/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
+      const buffer = Buffer.from(await file.arrayBuffer());
+
+      const { error: uploadErr } = await admin.storage
+        .from("attachments")
+        .upload(path, buffer, { contentType: file.type, upsert: false });
+
+      if (uploadErr) {
+        if (uploadErr.message?.includes("not found") || uploadErr.message?.includes("Bucket")) {
+          await admin.storage.createBucket("attachments", { public: true });
+          const { error: retryErr } = await admin.storage
+            .from("attachments")
+            .upload(path, buffer, { contentType: file.type, upsert: false });
+          if (retryErr) return NextResponse.json({ error: retryErr.message }, { status: 500 });
+        } else {
+          return NextResponse.json({ error: uploadErr.message }, { status: 500 });
+        }
+      }
+
+      const { data: urlData } = admin.storage.from("attachments").getPublicUrl(path);
+      attachments.push({
+        filename: file.name,
+        url: urlData.publicUrl,
+        contentType: file.type,
+        size: file.size,
+      });
     }
 
     const { data: campaign, error } = await admin
@@ -31,6 +84,7 @@ export async function POST(req: NextRequest) {
         from_email: from_email || null,
         total_recipients: recipients.length,
         created_by: user.id,
+        attachments,
       })
       .select("*")
       .single();
@@ -46,6 +100,10 @@ export async function POST(req: NextRequest) {
     await admin.from("email_recipients").insert(recipientRows);
     return NextResponse.json({ campaign });
   }
+
+  // ── JSON actions ────────────────────────────────────────────────────
+  const body = await req.json();
+  const { action } = body;
 
   // ── Send campaign ───────────────────────────────────────────────────
   if (action === "send") {
@@ -83,37 +141,39 @@ export async function POST(req: NextRequest) {
       .eq("campaign_id", campaign_id)
       .eq("status", "pending");
 
+    // Prepare attachments: download from storage once
+    const campaignAttachments = (campaign.attachments as AttachmentMeta[]) ?? [];
+    const mailAttachments = await Promise.all(
+      campaignAttachments.map(async (a) => {
+        const res = await fetch(a.url);
+        return {
+          filename: a.filename,
+          content: Buffer.from(await res.arrayBuffer()),
+          contentType: a.contentType,
+        };
+      })
+    );
+
     let sentCount = 0;
     let failedCount = 0;
     const fromAddr = campaign.from_email || smtpUser;
     const fromName = campaign.from_name || "CRM";
 
-    // Build base URL for tracking pixel
-    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).origin
-      : process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : "http://localhost:3000";
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || baseUrl;
-
     for (const recipient of recipients ?? []) {
       const vars = recipient.variables as Record<string, string>;
       const subj = replaceVariables(campaign.subject, vars);
-      let html = replaceVariables(campaign.body_template, vars).replace(/\n/g, "<br>");
-
-      // Add tracking pixel + tracking link
-      const trackUrl = `${appUrl}/api/email/track?rid=${recipient.id}`;
-      html += `<img src="${trackUrl}" width="1" height="1" style="display:none" alt="" />`;
-      html += `<br><br><p style="font-size:11px;color:#999;text-align:center;"><a href="${trackUrl}&click=1" style="color:#999;">Открыть в браузере</a></p>`;
+      const html = replaceVariables(campaign.body_template, vars).replace(/\n/g, "<br>");
 
       try {
-        await transporter.sendMail({
+        const info = await transporter.sendMail({
           from: `"${fromName}" <${fromAddr}>`,
           to: recipient.email,
           subject: subj,
           html,
+          attachments: mailAttachments,
         });
-        await admin.from("email_recipients").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", recipient.id);
+        const messageId = info.messageId?.replace(/^<|>$/g, "") ?? null;
+        await admin.from("email_recipients").update({ status: "sent", sent_at: new Date().toISOString(), message_id: messageId }).eq("id", recipient.id);
         sentCount++;
       } catch (err: unknown) {
         const msg = (err as { message?: string }).message ?? String(err);
@@ -129,13 +189,100 @@ export async function POST(req: NextRequest) {
       sent_at: new Date().toISOString(),
     }).eq("id", campaign_id);
 
-    return NextResponse.json({ sent: sentCount, failed: failedCount, trackingUrl: appUrl });
+    return NextResponse.json({ sent: sentCount, failed: failedCount });
+  }
+
+  // ── Check replies (IMAP scan) ────────────────────────────────────────
+  if (action === "check_replies") {
+    const { campaign_id } = body;
+
+    const { data: recipients } = await admin
+      .from("email_recipients")
+      .select("id, email, message_id, replied_at")
+      .eq("campaign_id", campaign_id)
+      .eq("status", "sent");
+
+    const pending = (recipients ?? []).filter((r) => r.message_id && !r.replied_at);
+    if (!pending.length) return NextResponse.json({ replied: 0, message: "Нет получателей для проверки" });
+
+    const imapHost = process.env.IMAP_HOST || process.env.SMTP_HOST;
+    const imapPort = Number(process.env.IMAP_PORT || 993);
+    const imapUser = process.env.IMAP_USER || process.env.SMTP_USER;
+    const imapPass = process.env.IMAP_PASS || process.env.SMTP_PASS;
+
+    if (!imapHost || !imapUser || !imapPass) {
+      return NextResponse.json({ error: "IMAP не настроен" }, { status: 503 });
+    }
+
+    const messageIdMap = new Map(pending.map((r) => [r.message_id!, r.id]));
+
+    let client: ImapFlow | null = null;
+    let repliedCount = 0;
+
+    try {
+      client = new ImapFlow({
+        host: imapHost,
+        port: imapPort,
+        secure: true,
+        auth: { user: imapUser, pass: imapPass },
+        logger: false,
+      });
+
+      await client.connect();
+      const lock = await client.getMailboxLock("INBOX");
+
+      try {
+        const mailbox = client.mailbox as { exists?: number } | false;
+        const total = (mailbox && typeof mailbox === "object") ? (mailbox.exists ?? 0) : 0;
+        if (total === 0) return NextResponse.json({ replied: 0 });
+
+        const startSeq = Math.max(1, total - 200 + 1);
+
+        for await (const msg of client.fetch(`${startSeq}:*`, { uid: true, source: true })) {
+          try {
+            const parsed = await simpleParser(msg.source as Buffer);
+            const inReplyTo = parsed.inReplyTo?.replace(/^<|>$/g, "");
+            if (inReplyTo && messageIdMap.has(inReplyTo)) {
+              const recipientId = messageIdMap.get(inReplyTo)!;
+              await admin
+                .from("email_recipients")
+                .update({ replied_at: parsed.date?.toISOString() ?? new Date().toISOString() })
+                .eq("id", recipientId);
+              messageIdMap.delete(inReplyTo);
+              repliedCount++;
+            }
+          } catch { /* skip unparseable */ }
+        }
+      } finally {
+        lock.release();
+      }
+
+      if (repliedCount > 0) {
+        const { data: cam } = await admin
+          .from("email_campaigns")
+          .select("replied_count")
+          .eq("id", campaign_id)
+          .single();
+        await admin
+          .from("email_campaigns")
+          .update({ replied_count: (cam?.replied_count ?? 0) + repliedCount })
+          .eq("id", campaign_id);
+      }
+
+      return NextResponse.json({ replied: repliedCount });
+    } catch (err: unknown) {
+      const msg = (err as { message?: string }).message ?? String(err);
+      return NextResponse.json({ error: `IMAP: ${msg}` }, { status: 500 });
+    } finally {
+      if (client) {
+        try { await client.logout(); } catch { /* ignore */ }
+      }
+    }
   }
 
   // ── Delete campaign ──────────────────────────────────────────────────
   if (action === "delete") {
     const { campaign_id } = body;
-    // Recipients cascade-deleted via FK
     const { error: delErr } = await admin.from("email_campaigns").delete().eq("id", campaign_id);
     if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
     return NextResponse.json({ ok: true });

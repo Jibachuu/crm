@@ -1,35 +1,52 @@
 "use client";
 
-import { useState } from "react";
-import { Send, X } from "lucide-react";
+import { useState, useRef } from "react";
+import { Send, X, Paperclip } from "lucide-react";
 import Button from "./Button";
 
 interface Props {
   to: string;
   entityType?: string;
   entityId?: string;
+  defaultSubject?: string;
   onSent?: () => void;
   onClose?: () => void;
   compact?: boolean;
 }
 
-export default function EmailCompose({ to, entityType, entityId, onSent, onClose, compact = false }: Props) {
-  const [subject, setSubject] = useState("");
+export default function EmailCompose({ to, entityType, entityId, defaultSubject, onSent, onClose, compact = false }: Props) {
+  const [subject, setSubject] = useState(defaultSubject ?? "");
   const [body, setBody] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function addFiles(newFiles: FileList | null) {
+    if (!newFiles) return;
+    setFiles((prev) => [...prev, ...Array.from(newFiles)]);
+  }
+
+  function removeFile(idx: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
+  }
 
   async function handleSend() {
     if (!subject.trim() || !body.trim()) return;
     setSending(true);
-    const res = await fetch("/api/email/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to, subject, body, entityType, entityId }),
-    });
+
+    const fd = new FormData();
+    fd.append("to", to);
+    fd.append("subject", subject);
+    fd.append("body", body);
+    if (entityType) fd.append("entityType", entityType);
+    if (entityId) fd.append("entityId", entityId);
+    for (const f of files) fd.append("files", f);
+
+    const res = await fetch("/api/email/send", { method: "POST", body: fd });
     if (res.ok) {
       setSent(true);
-      setTimeout(() => { setSent(false); setSubject(""); setBody(""); onSent?.(); }, 2000);
+      setTimeout(() => { setSent(false); setSubject(""); setBody(""); setFiles([]); onSent?.(); }, 2000);
     } else {
       const data = await res.json();
       alert("Ошибка: " + (data.error ?? "не удалось отправить"));
@@ -74,7 +91,25 @@ export default function EmailCompose({ to, entityType, entityId, onSent, onClose
           rows={compact ? 4 : 6}
           style={{ ...inputStyle, resize: "vertical" }}
         />
-        <div className="flex justify-end">
+        {/* Attachments */}
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {files.map((f, i) => (
+              <span key={i} className="flex items-center gap-1 text-xs px-2 py-1 rounded"
+                style={{ background: "#f0f0f0", color: "#555" }}>
+                <Paperclip size={10} /> {f.name} ({(f.size / 1024).toFixed(0)} КБ)
+                <button onClick={() => removeFile(i)} className="ml-1 hover:text-red-600"><X size={10} /></button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center justify-between">
+          <div>
+            <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+            <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-gray-100 transition-colors" style={{ color: "#888" }}>
+              <Paperclip size={13} /> Прикрепить файл
+            </button>
+          </div>
           <Button size="sm" onClick={handleSend} loading={sending} disabled={!subject.trim() || !body.trim()}>
             <Send size={13} /> Отправить
           </Button>

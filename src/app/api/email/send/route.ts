@@ -3,7 +3,17 @@ import nodemailer from "nodemailer";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: NextRequest) {
-  const { to, subject, body, entityType, entityId } = await req.json();
+  const formData = await req.formData();
+  const to = formData.get("to") as string;
+  const subject = formData.get("subject") as string;
+  const body = formData.get("body") as string;
+  const entityType = formData.get("entityType") as string | null;
+  const entityId = formData.get("entityId") as string | null;
+  const files = formData.getAll("files") as File[];
+
+  if (!to || !subject || !body) {
+    return NextResponse.json({ error: "to, subject, body обязательны" }, { status: 400 });
+  }
 
   const host = process.env.SMTP_HOST;
   const port = Number(process.env.SMTP_PORT ?? "587");
@@ -23,7 +33,22 @@ export async function POST(req: NextRequest) {
       auth: { user, pass },
     });
 
-    await transporter.sendMail({ from, to, subject, text: body, html: body.replace(/\n/g, "<br>") });
+    const attachments = await Promise.all(
+      files.filter((f) => f.size > 0).map(async (f) => ({
+        filename: f.name,
+        content: Buffer.from(await f.arrayBuffer()),
+        contentType: f.type,
+      }))
+    );
+
+    await transporter.sendMail({
+      from,
+      to,
+      subject,
+      text: body,
+      html: body.replace(/\n/g, "<br>"),
+      attachments,
+    });
 
     // Log to communications
     if (entityType && entityId) {

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Send, Mail, CheckCircle, XCircle, Clock, Eye, Upload } from "lucide-react";
+import { useRef } from "react";
+import { Plus, Send, Mail, CheckCircle, XCircle, Clock, Eye, Upload, Paperclip, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
@@ -61,7 +62,7 @@ export default function CampaignsClient({ initialCampaigns, contacts }: { initia
     });
     const data = await res.json();
     if (res.ok) {
-      alert(`Отправлено: ${data.sent}, ошибок: ${data.failed}\nTracking URL: ${data.trackingUrl ?? "не задан"}`);
+      alert(`Отправлено: ${data.sent}, ошибок: ${data.failed}`);
       setCampaigns((prev) => prev.map((c) =>
         c.id === id ? { ...c, status: "sent", sent_count: data.sent, failed_count: data.failed, sent_at: new Date().toISOString() } : c
       ));
@@ -156,10 +157,13 @@ function CreateCampaignModal({ open, onClose, contacts, onCreated }: { open: boo
   const [source, setSource] = useState<"contacts" | "file">("contacts");
   const [loading, setLoading] = useState(false);
   const [searchContacts, setSearchContacts] = useState("");
+  const [attachFiles, setAttachFiles] = useState<File[]>([]);
+  const attachRef = useRef<HTMLInputElement>(null);
 
   function reset() {
     setStep(1); setName(""); setSubject(""); setBodyTemplate("");
     setSelectedContacts(new Set()); setImportedRecipients([]); setSource("contacts");
+    setAttachFiles([]);
   }
 
   function handleClose() { reset(); onClose(); }
@@ -222,11 +226,15 @@ function CreateCampaignModal({ open, onClose, contacts, onCreated }: { open: boo
   async function handleCreate() {
     setLoading(true);
     const recipients = getRecipients();
-    const res = await fetch("/api/email/campaign", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "create", name, subject, body_template: bodyTemplate, recipients }),
-    });
+    const fd = new FormData();
+    fd.append("action", "create");
+    fd.append("name", name);
+    fd.append("subject", subject);
+    fd.append("body_template", bodyTemplate);
+    fd.append("recipients", JSON.stringify(recipients));
+    for (const f of attachFiles) fd.append("files", f);
+
+    const res = await fetch("/api/email/campaign", { method: "POST", body: fd });
     const data = await res.json();
     if (res.ok) {
       onCreated(data.campaign);
@@ -298,6 +306,25 @@ function CreateCampaignModal({ open, onClose, contacts, onCreated }: { open: boo
                 ))}
               </div>
             </div>
+            {/* Attachments */}
+            <div>
+              <label style={lbl}>Вложения</label>
+              <input ref={attachRef} type="file" multiple className="hidden" onChange={(e) => { if (e.target.files) setAttachFiles((prev) => [...prev, ...Array.from(e.target.files!)]); e.target.value = ""; }} />
+              <button onClick={() => attachRef.current?.click()} className="flex items-center gap-1.5 text-xs px-3 py-2 rounded hover:bg-gray-50 transition-colors" style={{ border: "1px solid #d0d0d0", color: "#555" }}>
+                <Paperclip size={13} /> Прикрепить файлы
+              </button>
+              {attachFiles.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {attachFiles.map((f, i) => (
+                    <span key={i} className="flex items-center gap-1 text-xs px-2 py-1 rounded" style={{ background: "#f0f0f0", color: "#555" }}>
+                      <Paperclip size={10} /> {f.name} ({(f.size / 1024).toFixed(0)} КБ)
+                      <button onClick={() => setAttachFiles((prev) => prev.filter((_, j) => j !== i))} className="ml-1 hover:text-red-600"><X size={10} /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-end">
               <Button size="sm" onClick={() => setStep(2)} disabled={!name || !subject || !bodyTemplate}>Далее →</Button>
             </div>
@@ -391,6 +418,7 @@ function CreateCampaignModal({ open, onClose, contacts, onCreated }: { open: boo
                 <div className="grid grid-cols-2 gap-4 text-xs">
                   <div><span style={{ color: "#888" }}>Название:</span> <strong>{name}</strong></div>
                   <div><span style={{ color: "#888" }}>Получателей:</span> <strong>{recipients.length}</strong></div>
+                  {attachFiles.length > 0 && <div className="col-span-2"><span style={{ color: "#888" }}>Вложений:</span> <strong>{attachFiles.length} ({(attachFiles.reduce((s, f) => s + f.size, 0) / 1024).toFixed(0)} КБ)</strong></div>}
                   <div className="col-span-2"><span style={{ color: "#888" }}>Тема:</span> <strong>{subject}</strong></div>
                 </div>
               </CardBody>

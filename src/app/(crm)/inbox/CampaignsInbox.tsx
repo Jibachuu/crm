@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Send, CheckCircle, XCircle, Clock, Eye, Mail, ChevronDown, ChevronUp, RefreshCw, Trash2, MailOpen } from "lucide-react";
+import { Send, CheckCircle, XCircle, Clock, Eye, Mail, ChevronDown, ChevronUp, RefreshCw, Trash2, Reply } from "lucide-react";
 import Badge from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -15,7 +15,7 @@ interface Campaign {
   total_recipients: number;
   sent_count: number;
   failed_count: number;
-  opened_count: number;
+  replied_count: number;
   created_at: string;
   sent_at: string | null;
 }
@@ -27,8 +27,7 @@ interface Recipient {
   status: string;
   error: string | null;
   sent_at: string | null;
-  opened_at: string | null;
-  open_count: number;
+  replied_at: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -46,6 +45,7 @@ export default function CampaignsInbox() {
   const [loadingRecipients, setLoadingRecipients] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [checkingReplies, setCheckingReplies] = useState(false);
 
   async function loadCampaigns() {
     setLoading(true);
@@ -88,11 +88,29 @@ export default function CampaignsInbox() {
     setDeleting(null);
   }
 
+  async function checkReplies(campaignId: string) {
+    setCheckingReplies(true);
+    const res = await fetch("/api/email/campaign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "check_replies", campaign_id: campaignId }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.replied > 0) {
+        // Refresh campaign and recipients
+        await loadCampaigns();
+        if (selectedCampaign) await selectCampaign({ ...selectedCampaign, replied_count: (selectedCampaign.replied_count ?? 0) + data.replied });
+      }
+    }
+    setCheckingReplies(false);
+  }
+
   const sentRecipients = recipients.filter((r) => r.status === "sent");
   const failedRecipients = recipients.filter((r) => r.status === "failed");
   const pendingRecipients = recipients.filter((r) => r.status === "pending");
-  const openedRecipients = recipients.filter((r) => r.opened_at);
-  const openRate = sentRecipients.length > 0 ? Math.round((openedRecipients.length / sentRecipients.length) * 100) : 0;
+  const repliedRecipients = recipients.filter((r) => r.replied_at);
+  const replyRate = sentRecipients.length > 0 ? Math.round((repliedRecipients.length / sentRecipients.length) * 100) : 0;
 
   return (
     <div className="flex h-full">
@@ -129,7 +147,7 @@ export default function CampaignsInbox() {
                 <div className="flex gap-3 mt-1 text-xs" style={{ color: "#aaa" }}>
                   <span>{c.total_recipients} получ.</span>
                   {c.sent_count > 0 && <span style={{ color: "#2e7d32" }}>{c.sent_count} отпр.</span>}
-                  {(c.opened_count ?? 0) > 0 && <span style={{ color: "#e65c00" }}>{c.opened_count} откр.</span>}
+                  {(c.replied_count ?? 0) > 0 && <span style={{ color: "#0067a5" }}>{c.replied_count} отв.</span>}
                 </div>
               </button>
               <button
@@ -179,10 +197,10 @@ export default function CampaignsInbox() {
             <div className="grid grid-cols-5 gap-3 mb-4">
               {[
                 { label: "Отправлено", value: selectedCampaign.sent_count, pct: null, icon: Send, color: "#2e7d32", bg: "#e8f5e9" },
-                { label: "Открыли", value: openedRecipients.length, pct: `${openRate}%`, icon: MailOpen, color: "#e65c00", bg: "#fff3e0" },
-                { label: "Не открыли", value: sentRecipients.length - openedRecipients.length, pct: sentRecipients.length > 0 ? `${100 - openRate}%` : null, icon: Mail, color: "#888", bg: "#f5f5f5" },
+                { label: "Ответили", value: repliedRecipients.length, pct: `${replyRate}%`, icon: Reply, color: "#0067a5", bg: "#e8f4fd" },
+                { label: "Без ответа", value: sentRecipients.length - repliedRecipients.length, pct: sentRecipients.length > 0 ? `${100 - replyRate}%` : null, icon: Mail, color: "#888", bg: "#f5f5f5" },
                 { label: "Ошибки", value: failedRecipients.length, pct: null, icon: XCircle, color: "#c62828", bg: "#fdecea" },
-                { label: "Ожидают", value: pendingRecipients.length, pct: null, icon: Clock, color: "#0067a5", bg: "#e8f4fd" },
+                { label: "Ожидают", value: pendingRecipients.length, pct: null, icon: Clock, color: "#e65c00", bg: "#fff3e0" },
               ].map((s) => {
                 const Icon = s.icon;
                 return (
@@ -200,19 +218,30 @@ export default function CampaignsInbox() {
               })}
             </div>
 
-            {/* Open rate bar */}
+            {/* Reply rate bar + check replies button */}
             {sentRecipients.length > 0 && (
               <div className="mb-4 rounded-lg p-4" style={{ background: "#fff", border: "1px solid #e4e4e4" }}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold" style={{ color: "#555" }}>Открытия</span>
-                  <span className="text-xs" style={{ color: "#888" }}>{openedRecipients.length} из {sentRecipients.length}</span>
+                  <span className="text-xs font-semibold" style={{ color: "#555" }}>Ответы</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs" style={{ color: "#888" }}>{repliedRecipients.length} из {sentRecipients.length}</span>
+                    <button
+                      onClick={() => checkReplies(selectedCampaign.id)}
+                      disabled={checkingReplies}
+                      className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors hover:bg-blue-50"
+                      style={{ border: "1px solid #0067a5", color: "#0067a5" }}
+                    >
+                      <RefreshCw size={11} className={checkingReplies ? "animate-spin" : ""} />
+                      {checkingReplies ? "Проверка..." : "Проверить"}
+                    </button>
+                  </div>
                 </div>
                 <div className="w-full h-3 rounded-full" style={{ background: "#f0f0f0" }}>
-                  <div className="h-3 rounded-full transition-all" style={{ width: `${openRate}%`, background: openRate > 50 ? "#2e7d32" : openRate > 20 ? "#e65c00" : "#c62828", minWidth: openRate > 0 ? 8 : 0 }} />
+                  <div className="h-3 rounded-full transition-all" style={{ width: `${replyRate}%`, background: replyRate > 30 ? "#2e7d32" : replyRate > 10 ? "#0067a5" : "#888", minWidth: replyRate > 0 ? 8 : 0 }} />
                 </div>
                 <div className="flex justify-between mt-1">
                   <span className="text-xs" style={{ color: "#aaa" }}>0%</span>
-                  <span className="text-xs font-semibold" style={{ color: "#e65c00" }}>{openRate}% открытий</span>
+                  <span className="text-xs font-semibold" style={{ color: "#0067a5" }}>{replyRate}% ответов</span>
                   <span className="text-xs" style={{ color: "#aaa" }}>100%</span>
                 </div>
               </div>
@@ -246,7 +275,7 @@ export default function CampaignsInbox() {
                         <th className="text-left px-3 py-2 font-semibold" style={{ color: "#888" }}>Email</th>
                         <th className="text-left px-3 py-2 font-semibold" style={{ color: "#888" }}>Имя</th>
                         <th className="text-left px-3 py-2 font-semibold" style={{ color: "#888" }}>Доставка</th>
-                        <th className="text-left px-3 py-2 font-semibold" style={{ color: "#888" }}>Прочитано</th>
+                        <th className="text-left px-3 py-2 font-semibold" style={{ color: "#888" }}>Ответ</th>
                         <th className="text-left px-3 py-2 font-semibold" style={{ color: "#888" }}>Отправлено</th>
                       </tr>
                     </thead>
@@ -265,13 +294,13 @@ export default function CampaignsInbox() {
                             {r.status === "pending" && <span style={{ color: "#aaa" }}>Ожидает</span>}
                           </td>
                           <td className="px-3 py-2">
-                            {r.opened_at ? (
-                              <span className="flex items-center gap-1" style={{ color: "#e65c00" }}>
-                                <MailOpen size={11} /> Да ({r.open_count}x)
-                                <span className="text-xs" style={{ color: "#aaa" }}>{formatDateTime(r.opened_at)}</span>
+                            {r.replied_at ? (
+                              <span className="flex items-center gap-1" style={{ color: "#0067a5" }}>
+                                <Reply size={11} /> Да
+                                <span className="text-xs" style={{ color: "#aaa" }}>{formatDateTime(r.replied_at)}</span>
                               </span>
                             ) : r.status === "sent" ? (
-                              <span style={{ color: "#aaa" }}>Не прочитано</span>
+                              <span style={{ color: "#aaa" }}>Нет</span>
                             ) : (
                               <span style={{ color: "#ddd" }}>—</span>
                             )}
