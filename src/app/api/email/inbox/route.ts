@@ -3,6 +3,19 @@ import { createClient } from "@/lib/supabase/server";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 
+interface EmailItem {
+  uid: number;
+  folder: string;
+  subject: string;
+  from: string;
+  fromEmail: string;
+  to: string;
+  date: string;
+  preview: string;
+  seen: boolean;
+  hasAttachments: boolean;
+}
+
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -14,7 +27,7 @@ export async function GET(req: NextRequest) {
   const imapPass = process.env.IMAP_PASS || process.env.SMTP_PASS;
 
   if (!host || !imapUser || !imapPass) {
-    return NextResponse.json({ error: "IMAP не настроен. Добавьте IMAP_HOST, IMAP_USER, IMAP_PASS (или используются SMTP_*)" }, { status: 503 });
+    return NextResponse.json({ error: "IMAP не настроен" }, { status: 503 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -26,40 +39,23 @@ export async function GET(req: NextRequest) {
 
   try {
     client = new ImapFlow({
-      host,
-      port,
-      secure: true,
+      host, port, secure: true,
       auth: { user: imapUser, pass: imapPass },
       logger: false,
     });
 
     await client.connect();
 
-    const emails: {
-      uid: number;
-      folder: string;
-      subject: string;
-      from: string;
-      fromEmail: string;
-      to: string;
-      date: string;
-      preview: string;
-      seen: boolean;
-    }[] = [];
+    const emails: EmailItem[] = [];
 
     // Fetch from primary folder
     await fetchFromFolder(client, folder, limit, emails);
 
-    // Optionally fetch from Sent folder too
+    // Auto-detect and fetch from Sent folder
     if (includeSent) {
-      const sentFolders = ["Sent", "INBOX.Sent", "Отправленные", "INBOX.Отправленные", "Sent Messages", "INBOX.Sent Messages"];
-      for (const sf of sentFolders) {
-        try {
-          await fetchFromFolder(client, sf, Math.min(limit, 50), emails);
-          break; // found the sent folder
-        } catch {
-          // folder doesn't exist, try next
-        }
+      const sentFolder = await findSentFolder(client);
+      if (sentFolder) {
+        await fetchFromFolder(client, sentFolder, Math.min(limit, 50), emails);
       }
     }
 
@@ -77,12 +73,25 @@ export async function GET(req: NextRequest) {
   }
 }
 
-async function fetchFromFolder(
-  client: ImapFlow,
-  folder: string,
-  limit: number,
-  emails: { uid: number; folder: string; subject: string; from: string; fromEmail: string; to: string; date: string; preview: string; seen: boolean }[]
-) {
+/** List all IMAP folders and find the Sent folder by special-use flag or name */
+async function findSentFolder(client: ImapFlow): Promise<string | null> {
+  try {
+    const folders = await client.list();
+    // First try special-use \Sent flag
+    for (const f of folders) {
+      if (f.specialUse === "\\Sent") return f.path;
+    }
+    // Fallback: match by common name patterns
+    const sentNames = ["sent", "отправленные", "sent messages", "sent items", "sent mail"];
+    for (const f of folders) {
+      const name = f.name.toLowerCase();
+      if (sentNames.includes(name)) return f.path;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+async function fetchFromFolder(client: ImapFlow, folder: string, limit: number, emails: EmailItem[]) {
   const lock = await client.getMailboxLock(folder);
   try {
     const mailbox = client.mailbox as { exists?: number } | false;
@@ -94,7 +103,6 @@ async function fetchFromFolder(
     for await (const msg of client.fetch(`${startSeq}:*`, {
       uid: true,
       flags: true,
-      envelope: true,
       source: true,
     })) {
       try {
@@ -109,10 +117,9 @@ async function fetchFromFolder(
           date: parsed.date?.toISOString() ?? new Date().toISOString(),
           preview: (parsed.text ?? "").slice(0, 200),
           seen: msg.flags?.has("\\Seen") ?? false,
+          hasAttachments: (parsed.attachments?.length ?? 0) > 0,
         });
-      } catch {
-        // Skip unparseable messages
-      }
+      } catch { /* skip */ }
     }
   } finally {
     lock.release();
