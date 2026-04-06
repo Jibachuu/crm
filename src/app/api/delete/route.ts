@@ -45,6 +45,10 @@ export async function POST(req: NextRequest) {
         await admin.from("leads").update({ contact_id: null }).in("contact_id", chunk);
         await admin.from("deals").update({ contact_id: null }).in("contact_id", chunk);
       }
+      if (table === "products") {
+        await admin.from("deal_products").delete().in("product_id", chunk);
+        await admin.from("lead_products").delete().in("product_id", chunk);
+      }
     }
 
     // Delete in batches to stay within PostgREST URL length limit

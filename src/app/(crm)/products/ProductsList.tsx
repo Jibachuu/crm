@@ -57,8 +57,17 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
 
   async function handleDelete(id: string) {
     if (!confirm("Удалить товар?")) return;
-    await createClient().from("products").delete().eq("id", id);
-    setProducts((prev: typeof products) => prev.filter((p: { id: string }) => p.id !== id));
+    const res = await fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ table: "products", ids: [id] }),
+    });
+    if (res.ok) {
+      setProducts((prev: typeof products) => prev.filter((p: { id: string }) => p.id !== id));
+    } else {
+      const d = await res.json();
+      alert("Ошибка: " + (d.error ?? ""));
+    }
   }
 
   async function bulkDelete() {
