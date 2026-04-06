@@ -441,17 +441,24 @@ export async function POST(req: NextRequest) {
         }))
         .filter((dp) => dp.product_id);
 
+      errors.push(`[debug] dealProductsToInsert: ${dealProductsToInsert.length}, productIdMap size: ${productIdMap.size}, sample: ${JSON.stringify(dealProductsToInsert[0] ?? {})}`);
+
       if (dealProductsToInsert.length > 0) {
-        const { error: dpErr } = await admin.from("deal_products").insert(dealProductsToInsert);
-        if (dpErr) {
-          // Retry without product_block if column doesn't exist yet
-          if (dpErr.message?.includes("product_block") || dpErr.message?.includes("schema")) {
-            const fallback = dealProductsToInsert.map(({ product_block: _, ...rest }) => rest);
-            const { error: dpErr2 } = await admin.from("deal_products").insert(fallback);
-            if (dpErr2) errors.push(`Товары сделок: ${dpErr2.message}`);
-            else errors.push("⚠️ Колонка product_block отсутствует — запустите migration_v2.sql. Товары добавлены без блока.");
-          } else {
-            errors.push(`Товары сделок: ${dpErr.message}`);
+        // Insert in batches of 100
+        for (let b = 0; b < dealProductsToInsert.length; b += 100) {
+          const dpBatch = dealProductsToInsert.slice(b, b + 100);
+          const { error: dpErr } = await admin.from("deal_products").insert(dpBatch);
+          if (dpErr) {
+            errors.push(`[debug] deal_products insert error: ${JSON.stringify(dpErr)}`);
+            // Retry without product_block if column doesn't exist yet
+            if (dpErr.message?.includes("product_block") || dpErr.message?.includes("schema")) {
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const fallback = dpBatch.map(({ product_block: _, ...rest }) => rest);
+              const { error: dpErr2 } = await admin.from("deal_products").insert(fallback);
+              if (dpErr2) errors.push(`Товары сделок: ${dpErr2.message}`);
+              else errors.push("⚠️ Колонка product_block отсутствует — товары добавлены без блока.");
+            }
+            break;
           }
         }
       }
