@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Save, Building2 } from "lucide-react";
+import { Save, Building2, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const inputStyle: React.CSSProperties = { border: "1px solid #d0d0d0", borderRadius: 4, padding: "6px 10px", fontSize: 13, width: "100%", outline: "none" };
@@ -11,7 +11,10 @@ export default function SupplierSettings() {
   const [form, setForm] = useState({
     id: "", company_name: "", inn: "", kpp: "", address: "",
     bank_name: "", bik: "", account_number: "", corr_account: "", director: "",
+    stamp_url: "", signature_url: "",
   });
+  const [uploadingStamp, setUploadingStamp] = useState(false);
+  const [uploadingSig, setUploadingSig] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -27,12 +30,37 @@ export default function SupplierSettings() {
     setSaving(true);
     const supabase = createClient();
     if (form.id) {
-      await supabase.from("supplier_settings").update({ ...form, updated_at: new Date().toISOString() }).eq("id", form.id);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id, ...payload } = form;
+      await supabase.from("supplier_settings").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", form.id);
     } else {
-      const { data } = await supabase.from("supplier_settings").insert(form).select("*").single();
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id, ...payload } = form;
+      const { data, error } = await supabase.from("supplier_settings").insert(payload).select("*").single();
       if (data) setForm(data);
+      if (error) alert("Ошибка: " + error.message);
     }
     setSaving(false);
+  }
+
+  async function uploadImage(file: File, field: "stamp_url" | "signature_url") {
+    const setter = field === "stamp_url" ? setUploadingStamp : setUploadingSig;
+    setter(true);
+    const supabase = createClient();
+    const path = `supplier/${field}_${Date.now()}.${file.name.split(".").pop()}`;
+    const { error: upErr } = await supabase.storage.from("attachments").upload(path, file, { contentType: file.type, upsert: false });
+    if (upErr) {
+      // Try create bucket
+      await supabase.storage.createBucket("attachments", { public: true });
+      await supabase.storage.from("attachments").upload(path, file, { contentType: file.type, upsert: false });
+    }
+    const { data: urlData } = supabase.storage.from("attachments").getPublicUrl(path);
+    setForm((prev) => ({ ...prev, [field]: urlData.publicUrl }));
+    // Auto-save if settings exist
+    if (form.id) {
+      await supabase.from("supplier_settings").update({ [field]: urlData.publicUrl }).eq("id", form.id);
+    }
+    setter(false);
   }
 
   if (loading) return <p className="text-xs py-4" style={{ color: "#aaa" }}>Загрузка...</p>;
@@ -60,6 +88,44 @@ export default function SupplierSettings() {
           <div><label style={lblStyle}>Расчётный счёт</label><input value={form.account_number ?? ""} onChange={(e) => setForm({ ...form, account_number: e.target.value })} style={inputStyle} /></div>
           <div><label style={lblStyle}>Корр. счёт</label><input value={form.corr_account ?? ""} onChange={(e) => setForm({ ...form, corr_account: e.target.value })} style={inputStyle} /></div>
         </div>
+        {/* Stamp & Signature */}
+        <div className="grid grid-cols-2 gap-3 pt-2" style={{ borderTop: "1px solid #f0f0f0" }}>
+          <div>
+            <label style={lblStyle}>Печать (изображение)</label>
+            {form.stamp_url ? (
+              <div className="flex items-center gap-2">
+                <img src={form.stamp_url} alt="Печать" className="h-16 rounded" style={{ border: "1px solid #e0e0e0" }} />
+                <label className="flex items-center gap-1 text-xs px-2 py-1 rounded cursor-pointer hover:bg-gray-50" style={{ border: "1px solid #d0d0d0", color: "#888" }}>
+                  <Upload size={11} /> Заменить
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f, "stamp_url"); }} />
+                </label>
+              </div>
+            ) : (
+              <label className="flex items-center gap-1.5 text-xs px-3 py-2 rounded cursor-pointer hover:bg-gray-50" style={{ border: "1px dashed #d0d0d0", color: "#888" }}>
+                <Upload size={13} /> {uploadingStamp ? "Загрузка..." : "Загрузить печать"}
+                <input type="file" accept="image/*" className="hidden" disabled={uploadingStamp} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f, "stamp_url"); }} />
+              </label>
+            )}
+          </div>
+          <div>
+            <label style={lblStyle}>Подпись (изображение)</label>
+            {form.signature_url ? (
+              <div className="flex items-center gap-2">
+                <img src={form.signature_url} alt="Подпись" className="h-16 rounded" style={{ border: "1px solid #e0e0e0" }} />
+                <label className="flex items-center gap-1 text-xs px-2 py-1 rounded cursor-pointer hover:bg-gray-50" style={{ border: "1px solid #d0d0d0", color: "#888" }}>
+                  <Upload size={11} /> Заменить
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f, "signature_url"); }} />
+                </label>
+              </div>
+            ) : (
+              <label className="flex items-center gap-1.5 text-xs px-3 py-2 rounded cursor-pointer hover:bg-gray-50" style={{ border: "1px dashed #d0d0d0", color: "#888" }}>
+                <Upload size={13} /> {uploadingSig ? "Загрузка..." : "Загрузить подпись"}
+                <input type="file" accept="image/*" className="hidden" disabled={uploadingSig} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f, "signature_url"); }} />
+              </label>
+            )}
+          </div>
+        </div>
+
         <button onClick={save} disabled={saving} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded text-white disabled:opacity-50" style={{ background: "#0067a5" }}>
           <Save size={12} /> {saving ? "Сохранение..." : "Сохранить реквизиты"}
         </button>

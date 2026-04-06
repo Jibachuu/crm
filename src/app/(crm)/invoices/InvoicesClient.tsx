@@ -102,10 +102,11 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   }
 
   async function openPreview(inv: { id: string }) {
-    const supabase = createClient();
-    const { data: items } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
     setPreviewInvoice(inv);
-    setPreviewItems(items ?? []);
+    setPreviewItems([]);
+    const supabase = createClient();
+    const { data: loadedItems } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
+    setPreviewItems(loadedItems ?? []);
   }
 
   async function updateStatus(id: string, status: string) {
