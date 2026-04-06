@@ -1,0 +1,478 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { ChevronLeft, Edit2, Trash2, MessageSquare, CheckSquare, Phone, Mail, Building2, Plus, Package, ArrowRightCircle } from "lucide-react";
+import TelegramChat from "@/components/ui/TelegramChat";
+import { formatCurrency } from "@/lib/utils";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import { Card, CardBody } from "@/components/ui/Card";
+import CreateTaskModal from "@/components/ui/CreateTaskModal";
+import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
+import AddProductModal from "@/components/ui/AddProductModal";
+import EditLeadModal from "../EditLeadModal";
+import { formatDate, formatDateTime, getInitials } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+
+export const LEAD_STATUSES = [
+  { key: "new", label: "Новая" },
+  { key: "callback", label: "Перезвонить/написать" },
+  { key: "in_progress", label: "В работе" },
+  { key: "samples", label: "Пробники" },
+  { key: "samples_shipped", label: "Пробники отгружены" },
+  { key: "invoice", label: "Счёт на предоплату" },
+  { key: "rejected", label: "Отказ" },
+];
+
+export const LEAD_STATUS_LABELS: Record<string, string> = Object.fromEntries(
+  LEAD_STATUSES.map((s) => [s.key, s.label])
+);
+LEAD_STATUS_LABELS["converted"] = "Конвертирован";
+
+const CHANNEL_LABELS: Record<string, string> = {
+  email: "Email", telegram: "Telegram", phone: "Звонок", maks: "МАКС", note: "Заметка",
+};
+const CHANNEL_ICONS: Record<string, string> = {
+  email: "✉️", telegram: "💬", phone: "📞", maks: "🔵", note: "📝",
+};
+const PRIORITY_LABELS: Record<string, string> = { low: "Низкий", medium: "Средний", high: "Высокий" };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default function LeadDetail({ lead: initialLead, communications: initialComms, tasks: initialTasks, leadProducts: initialProducts }: any) {
+  const router = useRouter();
+  const [lead, setLead] = useState(initialLead);
+  const [communications, setCommunications] = useState(initialComms);
+  const [tasks, setTasks] = useState(initialTasks);
+  const [leadProducts, setLeadProducts] = useState(initialProducts ?? []);
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "telegram">("info");
+  const [noteText, setNoteText] = useState("");
+  const [noteLoading, setNoteLoading] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [addProductBlock, setAddProductBlock] = useState<"request" | "order" | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [convertLoading, setConvertLoading] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
+
+  const requestProducts = leadProducts.filter((p: { product_block: string }) => p.product_block !== "order");
+  const orderProducts = leadProducts.filter((p: { product_block: string }) => p.product_block === "order");
+
+  async function addNote() {
+    if (!noteText.trim()) return;
+    setNoteLoading(true);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data } = await supabase
+      .from("communications")
+      .insert({ entity_type: "lead", entity_id: lead.id, channel: "note", direction: "outbound", body: noteText.trim(), created_by: user?.id ?? null })
+      .select("*, users!communications_created_by_fkey(full_name)")
+      .single();
+    if (data) { setCommunications((prev: unknown[]) => [data, ...prev]); setNoteText(""); }
+    setNoteLoading(false);
+  }
+
+  async function updateStatus(status: string) {
+    if (lead.status === status || statusSaving) return;
+    setStatusSaving(true);
+    setLead((prev: typeof lead) => ({ ...prev, status }));
+    const supabase = createClient();
+    await supabase.from("leads").update({ status }).eq("id", lead.id);
+    setStatusSaving(false);
+  }
+
+  async function deleteLead() {
+    if (!confirm("Удалить лид? Это действие нельзя отменить.")) return;
+    setDeleteLoading(true);
+    const res = await fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ table: "leads", ids: [lead.id] }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert("Не удалось удалить: " + (data.error ?? "неизвестная ошибка"));
+      setDeleteLoading(false);
+      return;
+    }
+    router.push("/leads");
+  }
+
+  async function convertToDeal() {
+    if (!confirm("Конвертировать лид в сделку?")) return;
+    setConvertLoading(true);
+    const res = await fetch(`/api/leads/${lead.id}/convert`, { method: "POST" });
+    const data = await res.json();
+    if (data.dealId) {
+      router.push(`/deals/${data.dealId}`);
+    } else {
+      alert("Ошибка конвертации: " + (data.error ?? "неизвестная ошибка"));
+      setConvertLoading(false);
+    }
+  }
+
+  const totalRequest = requestProducts.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
+  const totalOrder = orderProducts.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
+
+  const tabs = [
+    { id: "info", label: "Информация" },
+    { id: "communications", label: `Коммуникации (${communications.length})` },
+    { id: "tasks", label: `Задачи (${tasks.length})` },
+    { id: "products", label: `Товары (${leadProducts.length})` },
+    ...(lead.contacts?.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
+  ];
+
+  const isConverted = lead.status === "converted";
+  const visibleStatuses = isConverted
+    ? [{ key: "converted", label: "Конвертирован" }]
+    : LEAD_STATUSES;
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      {/* Nav row */}
+      <div className="flex items-center justify-between mb-4">
+        <Link href="/leads" className="flex items-center gap-1 text-xs hover:underline" style={{ color: "#666" }}>
+          <ChevronLeft size={14} /> Все лиды
+        </Link>
+        <div className="flex items-center gap-2">
+          {!isConverted && (
+            <Button variant="secondary" size="sm" onClick={convertToDeal} loading={convertLoading}>
+              <ArrowRightCircle size={13} /> В сделку
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
+            <Edit2 size={13} /> Редактировать
+          </Button>
+          <Button variant="danger" size="sm" onClick={deleteLead} loading={deleteLoading}>
+            <Trash2 size={13} />
+          </Button>
+        </div>
+      </div>
+
+      {/* Stage bar */}
+      <div className="mb-4 rounded overflow-hidden" style={{ border: "1px solid #e0e0e0", display: "flex" }}>
+        {visibleStatuses.map((s, idx) => {
+          const isActive = lead.status === s.key;
+          const isRejected = s.key === "rejected";
+          const isConvertedStage = s.key === "converted";
+          const activeColor = isRejected || isConvertedStage ? "#e74c3c" : "#0067a5";
+          return (
+            <button
+              key={s.key}
+              onClick={() => updateStatus(s.key)}
+              disabled={isConvertedStage}
+              style={{
+                flex: 1,
+                padding: "9px 6px",
+                fontSize: 11,
+                fontWeight: isActive ? 700 : 400,
+                background: isActive ? activeColor : "#f8f8f8",
+                color: isActive ? "#fff" : isRejected ? "#e74c3c" : "#555",
+                borderRight: idx < visibleStatuses.length - 1 ? "1px solid #e0e0e0" : "none",
+                cursor: isConvertedStage ? "default" : "pointer",
+                transition: "background 0.12s",
+                textAlign: "center",
+                lineHeight: 1.3,
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive && !isConvertedStage) (e.currentTarget as HTMLButtonElement).style.background = "#ebebeb";
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "#f8f8f8";
+              }}
+            >
+              {s.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 space-y-4">
+          <Card>
+            <CardBody>
+              <h2 className="text-base font-semibold mb-1" style={{ color: "#333" }}>{lead.title}</h2>
+              {lead.description && <p className="text-sm" style={{ color: "#666" }}>{lead.description}</p>}
+            </CardBody>
+          </Card>
+
+          {/* Tabs */}
+          <div>
+            <div className="flex" style={{ borderBottom: "1px solid #e4e4e4", marginBottom: 16 }}>
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                  className="px-4 py-2 text-sm font-medium transition-colors"
+                  style={{
+                    borderBottom: activeTab === tab.id ? "2px solid #0067a5" : "2px solid transparent",
+                    color: activeTab === tab.id ? "#0067a5" : "#666",
+                    marginBottom: -1,
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {activeTab === "info" && (
+              <div className="text-sm space-y-2" style={{ color: "#555" }}>
+                <p>Создан: {formatDateTime(lead.created_at)}</p>
+                <p>Обновлён: {formatDateTime(lead.updated_at)}</p>
+                {lead.source && <p>Источник: {lead.source}</p>}
+                {lead.telegram_username && (
+                  <p>💬 Telegram: <span style={{ color: "#0067a5" }}>@{lead.telegram_username}</span></p>
+                )}
+                {lead.had_call && (
+                  <p>📞 Был ли звонок: <strong>{lead.had_call}</strong></p>
+                )}
+              </div>
+            )}
+
+            {activeTab === "communications" && (
+              <div className="space-y-3">
+                <Card>
+                  <CardBody>
+                    <textarea
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      placeholder="Добавить заметку..."
+                      rows={3}
+                      className="w-full text-sm p-3 resize-none focus:outline-none"
+                      style={{ border: "1px solid #ddd", borderRadius: 4 }}
+                    />
+                    <div className="flex justify-end mt-2">
+                      <Button size="sm" onClick={addNote} loading={noteLoading} disabled={!noteText.trim()}>
+                        <MessageSquare size={13} /> Добавить заметку
+                      </Button>
+                    </div>
+                  </CardBody>
+                </Card>
+                {communications.length === 0 ? (
+                  <p className="text-sm text-center py-8" style={{ color: "#aaa" }}>Коммуникации отсутствуют</p>
+                ) : (
+                  communications.map((comm: { id: string; channel: string; direction: string; subject?: string; body?: string; created_at: string; users?: { full_name: string } }) => (
+                    <Card key={comm.id}>
+                      <CardBody>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3">
+                            <span className="text-lg mt-0.5">{CHANNEL_ICONS[comm.channel]}</span>
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-medium" style={{ color: "#555" }}>{CHANNEL_LABELS[comm.channel]}</span>
+                                <span className="text-xs" style={{ color: "#999" }}>{comm.direction === "inbound" ? "Входящее" : "Исходящее"}</span>
+                                {comm.users && <span className="text-xs" style={{ color: "#999" }}>• {comm.users.full_name}</span>}
+                              </div>
+                              {comm.subject && <p className="text-sm font-medium" style={{ color: "#333" }}>{comm.subject}</p>}
+                              {comm.body && <p className="text-sm whitespace-pre-wrap" style={{ color: "#555" }}>{comm.body}</p>}
+                            </div>
+                          </div>
+                          <span className="text-xs flex-shrink-0" style={{ color: "#aaa" }}>{formatDateTime(comm.created_at)}</span>
+                        </div>
+                      </CardBody>
+                    </Card>
+                  ))
+                )}
+              </div>
+            )}
+
+            {activeTab === "tasks" && (
+              <div className="space-y-3">
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={() => setTaskOpen(true)}>
+                    <Plus size={13} /> Создать задачу
+                  </Button>
+                </div>
+                {tasks.length === 0 ? (
+                  <p className="text-sm text-center py-8" style={{ color: "#aaa" }}>Задачи отсутствуют</p>
+                ) : (
+                  tasks.map((task: { id: string; title: string; status: string; priority: string; due_date?: string; users?: { full_name: string } }) => (
+                    <Card key={task.id}>
+                      <CardBody className="py-3">
+                        <div className="flex items-center gap-3">
+                          <CheckSquare size={15} style={{ color: "#aaa", flexShrink: 0 }} />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium" style={{ color: "#333" }}>{task.title}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {task.due_date && <span className="text-xs" style={{ color: "#999" }}>до {formatDate(task.due_date)}</span>}
+                              {task.users && <span className="text-xs" style={{ color: "#999" }}>• {task.users.full_name}</span>}
+                            </div>
+                          </div>
+                          <Badge variant={task.priority === "high" ? "danger" : task.priority === "medium" ? "warning" : "default"}>
+                            {PRIORITY_LABELS[task.priority]}
+                          </Badge>
+                        </div>
+                      </CardBody>
+                    </Card>
+                  ))
+                )}
+              </div>
+            )}
+
+            {activeTab === "products" && (
+              <div className="space-y-5">
+                <ProductBlock
+                  title="Запрос"
+                  description="С чем пришёл клиент"
+                  items={requestProducts}
+                  total={totalRequest}
+                  onAdd={() => setAddProductBlock("request")}
+                />
+                <ProductBlock
+                  title="Заказ"
+                  description="Что реально купил"
+                  items={orderProducts}
+                  total={totalOrder}
+                  onAdd={() => setAddProductBlock("order")}
+                />
+              </div>
+            )}
+
+            {activeTab === "telegram" && lead.contacts?.telegram_id && (
+              <div>
+                <p className="text-xs mb-2" style={{ color: "#888" }}>
+                  Переписка с <strong>{lead.contacts.full_name}</strong>
+                  {lead.contacts.telegram_id && <> · <span style={{ color: "#0067a5" }}>@{lead.contacts.telegram_id}</span></>}
+                </p>
+                <TelegramChat peer={lead.contacts.telegram_id} compact />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar */}
+        <div className="space-y-3">
+          {lead.contacts && (
+            <Card>
+              <CardBody>
+                <h3 className="text-xs font-semibold uppercase mb-3" style={{ color: "#888", letterSpacing: "0.05em" }}>Контакт</h3>
+                <Link href={`/contacts/${lead.contacts.id}`} className="flex items-center gap-3 hover:opacity-80">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: "#e8f4fd", color: "#0067a5" }}>
+                    {getInitials(lead.contacts.full_name)}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: "#333" }}>{lead.contacts.full_name}</p>
+                    {lead.contacts.phone && <p className="text-xs flex items-center gap-1" style={{ color: "#888" }}><Phone size={10} /> {lead.contacts.phone}</p>}
+                    {lead.contacts.email && <p className="text-xs flex items-center gap-1" style={{ color: "#888" }}><Mail size={10} /> {lead.contacts.email}</p>}
+                  </div>
+                </Link>
+              </CardBody>
+            </Card>
+          )}
+
+          {lead.companies && (
+            <Card>
+              <CardBody>
+                <h3 className="text-xs font-semibold uppercase mb-2" style={{ color: "#888", letterSpacing: "0.05em" }}>Компания</h3>
+                <Link href={`/companies/${lead.companies.id}`} className="flex items-center gap-2 text-sm hover:underline" style={{ color: "#0067a5" }}>
+                  <Building2 size={13} /> {lead.companies.name}
+                </Link>
+              </CardBody>
+            </Card>
+          )}
+
+          {lead.users && (
+            <Card>
+              <CardBody>
+                <h3 className="text-xs font-semibold uppercase mb-2" style={{ color: "#888", letterSpacing: "0.05em" }}>Ответственный</h3>
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "#e8f4fd", color: "#0067a5" }}>
+                    {getInitials(lead.users.full_name)}
+                  </div>
+                  <span className="text-sm" style={{ color: "#333" }}>{lead.users.full_name}</span>
+                </div>
+              </CardBody>
+            </Card>
+          )}
+
+          <Card>
+            <CardBody>
+              <CustomFieldsSection entityType="lead" entityId={lead.id} />
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+
+      <EditLeadModal open={editOpen} onClose={() => setEditOpen(false)} lead={lead} onSaved={setLead} />
+      <AddProductModal
+        open={addProductBlock !== null}
+        onClose={() => setAddProductBlock(null)}
+        entityType="lead"
+        entityId={lead.id}
+        productBlock={addProductBlock ?? "request"}
+        onAdded={(item) => setLeadProducts((p: unknown[]) => [...p, item])}
+      />
+      <CreateTaskModal
+        open={taskOpen}
+        onClose={() => setTaskOpen(false)}
+        entityType="lead"
+        entityId={lead.id}
+        onCreated={(task) => setTasks((p: unknown[]) => [task, ...p])}
+      />
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ProductBlock({ title, description, items, total, onAdd }: { title: string; description: string; items: any[]; total: number; onAdd: () => void }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h3 className="text-sm font-semibold" style={{ color: "#333" }}>{title}</h3>
+          <p className="text-xs" style={{ color: "#999" }}>{description}</p>
+        </div>
+        <Button size="sm" variant="secondary" onClick={onAdd}>
+          <Plus size={12} /> Добавить
+        </Button>
+      </div>
+      <Card>
+        {items.length === 0 ? (
+          <CardBody>
+            <p className="text-sm text-center py-4" style={{ color: "#aaa" }}>
+              <Package size={20} className="mx-auto mb-2 opacity-40" />
+              Товары не добавлены
+            </p>
+          </CardBody>
+        ) : (
+          <div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: "1px solid #e4e4e4", background: "#fafafa" }}>
+                  <th className="text-left px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Товар</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Кол-во</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Цена</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Скидка</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Сумма</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item: { id: string; products: { name: string; sku: string }; quantity: number; unit_price: number; discount_percent: number; total_price: number }) => (
+                  <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                    <td className="px-4 py-2">
+                      <p className="font-medium" style={{ color: "#333" }}>{item.products?.name}</p>
+                      <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products?.sku}</p>
+                    </td>
+                    <td className="px-4 py-2 text-right" style={{ color: "#555" }}>{item.quantity} шт.</td>
+                    <td className="px-4 py-2 text-right" style={{ color: "#555" }}>{formatCurrency(item.unit_price)}</td>
+                    <td className="px-4 py-2 text-right" style={{ color: item.discount_percent > 0 ? "#d32f2f" : "#aaa" }}>
+                      {item.discount_percent > 0 ? `-${item.discount_percent}%` : "—"}
+                    </td>
+                    <td className="px-4 py-2 text-right font-semibold" style={{ color: "#333" }}>{formatCurrency(item.total_price)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: "1px solid #e4e4e4", background: "#fafafa" }}>
+                  <td colSpan={4} className="px-4 py-2 text-sm font-semibold text-right" style={{ color: "#555" }}>Итого:</td>
+                  <td className="px-4 py-2 text-right font-bold" style={{ color: "#333" }}>{formatCurrency(total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}

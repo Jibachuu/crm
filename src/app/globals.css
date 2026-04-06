@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f5f5f5;
+  --foreground: #333333;
+  --sidebar-bg: #1e2330;
+  --primary: #0067a5;
+  --primary-hover: #005a8e;
+  --border: #e4e4e4;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Helvetica Neue", Arial, system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #c8c8c8;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a0a0a0;
+}
+
+/* Interactive hover feedback */
+button, a, [role="button"] {
+  transition: opacity 0.15s, transform 0.1s, background-color 0.15s, box-shadow 0.15s;
+}
+button:hover:not(:disabled), [role="button"]:hover {
+  opacity: 0.88;
+}
+button:active:not(:disabled), [role="button"]:active {
+  transform: scale(0.97);
+}
+
+/* Table row hover */
+tbody tr {
+  transition: background-color 0.12s;
+}
+tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+/* Card hover */
+.card-hover:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
