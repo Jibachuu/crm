@@ -428,13 +428,25 @@ export async function POST(req: NextRequest) {
           product_id: productIdMap.get(norm(pr.name)),
           quantity: pr.qty ?? 1,
           unit_price: pr.price ?? 0,
+          discount_percent: 0,
           total_price: (pr.qty ?? 1) * (pr.price ?? 0),
           product_block: "order",
         }))
         .filter((dp) => dp.product_id);
 
       if (dealProductsToInsert.length > 0) {
-        await admin.from("deal_products").insert(dealProductsToInsert);
+        const { error: dpErr } = await admin.from("deal_products").insert(dealProductsToInsert);
+        if (dpErr) {
+          // Retry without product_block if column doesn't exist yet
+          if (dpErr.message?.includes("product_block") || dpErr.message?.includes("schema")) {
+            const fallback = dealProductsToInsert.map(({ product_block: _, ...rest }) => rest);
+            const { error: dpErr2 } = await admin.from("deal_products").insert(fallback);
+            if (dpErr2) errors.push(`Товары сделок: ${dpErr2.message}`);
+            else errors.push("⚠️ Колонка product_block отсутствует — запустите migration_v2.sql. Товары добавлены без блока.");
+          } else {
+            errors.push(`Товары сделок: ${dpErr.message}`);
+          }
+        }
       }
     }
   }
