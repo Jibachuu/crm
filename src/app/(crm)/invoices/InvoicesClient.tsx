@@ -152,22 +152,15 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     setInvoices(invoices.filter((inv: { id: string }) => inv.id !== id));
   }
 
-  async function imgToBase64(url: string): Promise<string> {
-    try {
-      const res = await fetch(`/api/image-proxy?url=${encodeURIComponent(url)}`);
-      if (res.ok) { const { data } = await res.json(); return data; }
-    } catch { /* ignore */ }
-    return url;
+  function proxyUrl(url: string) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`;
   }
 
-  async function printInvoice() {
+  function printInvoice() {
     if (!previewInvoice) return;
 
-    // Pre-convert images to base64 to avoid CORS issues
-    let stampB64 = "";
-    let sigB64 = "";
-    if (supplier?.stamp_url) stampB64 = await imgToBase64(supplier.stamp_url);
-    if (supplier?.signature_url) sigB64 = await imgToBase64(supplier.signature_url);
+    const stampSrc = supplier?.stamp_url ? proxyUrl(supplier.stamp_url) : "";
+    const sigSrc = supplier?.signature_url ? proxyUrl(supplier.signature_url) : "";
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) { alert("Браузер заблокировал окно"); return; }
@@ -274,14 +267,23 @@ ${dueDateStr ? `<p style="margin-top:10px">Оплатить не позднее 
 </div>
 
 <div class="sign-block">
-${stampB64 ? `<img class="stamp" src="${stampB64}" />` : ""}
-${sigB64 ? `<img class="signature" src="${sigB64}" />` : ""}
+${stampSrc ? `<img class="stamp" src="${stampSrc}" />` : ""}
+${sigSrc ? `<img class="signature" src="${sigSrc}" />` : ""}
 <p><strong>Предприниматель</strong> <span class="sign-line"></span> / ${supplier?.director ?? ""} /</p>
 </div>
 
 <script>
 document.title='Счёт ${inv.invoice_number}';
-window.onload=()=>setTimeout(()=>window.print(),300);
+function tryPrint(){
+  var imgs=document.images,loaded=0,total=imgs.length;
+  if(!total){window.print();return}
+  function check(){loaded++;if(loaded>=total)setTimeout(()=>window.print(),100)}
+  for(var i=0;i<total;i++){
+    if(imgs[i].complete)check();
+    else{imgs[i].onload=check;imgs[i].onerror=check}
+  }
+}
+window.onload=tryPrint;
 </script>
 </body></html>`;
     printWindow.document.write(html);
