@@ -27,7 +27,9 @@ export async function POST(req: NextRequest) {
   const port = Number(process.env.SMTP_PORT ?? "587");
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM ?? user;
+  const fromAddr = process.env.SMTP_FROM ?? user;
+  const fromName = process.env.SMTP_FROM_NAME ?? "CRM";
+  const from = `"${fromName}" <${fromAddr}>`;
 
   if (!host || !user || !pass) {
     return NextResponse.json({ error: "Email (SMTP) не настроен" }, { status: 503 });

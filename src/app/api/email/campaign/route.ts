@@ -158,7 +158,7 @@ export async function POST(req: NextRequest) {
     let sentCount = 0;
     let failedCount = 0;
     const fromAddr = campaign.from_email || smtpUser;
-    const fromName = campaign.from_name || "CRM";
+    const fromName = campaign.from_name || process.env.SMTP_FROM_NAME || "CRM";
 
     for (const recipient of recipients ?? []) {
       const vars = recipient.variables as Record<string, string>;
