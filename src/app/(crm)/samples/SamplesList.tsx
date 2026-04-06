@@ -24,6 +24,8 @@ export default function SamplesList({ initialSamples, companies, contacts, users
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [assignedFilter, setAssignedFilter] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editing, setEditing] = useState<any>(null);
@@ -133,6 +135,20 @@ export default function SamplesList({ initialSamples, companies, contacts, users
     window.location.reload();
   }
 
+  async function bulkDelete() {
+    if (!confirm(`Удалить ${selected.size} пробников?`)) return;
+    setBulkDeleting(true);
+    const ids = Array.from(selected);
+    const res = await fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ table: "samples", ids }),
+    });
+    if (res.ok) { setSamples((p: { id: string }[]) => p.filter((s) => !ids.includes(s.id))); setSelected(new Set()); }
+    else { const d = await res.json(); alert("Ошибка: " + (d.error ?? "")); }
+    setBulkDeleting(false);
+  }
+
   async function deleteSample(id: string) {
     if (!confirm("Удалить пробник?")) return;
     const supabase = createClient();
@@ -186,6 +202,15 @@ export default function SamplesList({ initialSamples, companies, contacts, users
         <Button onClick={openCreate} size="sm"><Plus size={13} /> Новый пробник</Button>
       </div>
 
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2 mb-3 rounded" style={{ background: "#e8f4fd", border: "1px solid #b3d4f0" }}>
+          <span className="text-sm font-medium" style={{ color: "#0067a5" }}>Выбрано: {selected.size}</span>
+          <button onClick={() => setSelected(new Set())} className="text-xs hover:underline" style={{ color: "#0067a5" }}>Снять</button>
+          <div className="flex-1" />
+          <Button size="sm" variant="danger" onClick={bulkDelete} loading={bulkDeleting}><Trash2 size={13} /> Удалить</Button>
+        </div>
+      )}
+
       <div className="flex gap-4 mb-3 text-xs" style={{ color: "#888" }}>
         <span>Пробников: <strong style={{ color: "#333" }}>{filtered.length}</strong></span>
       </div>
@@ -201,6 +226,19 @@ export default function SamplesList({ initialSamples, companies, contacts, users
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ borderBottom: "1px solid #e4e4e4", background: "#fafafa" }}>
+                  <th className="px-2 py-2 w-8">
+                    <input type="checkbox"
+                      checked={filtered.length > 0 && filtered.every((s: { id: string }) => selected.has(s.id))}
+                      onChange={() => {
+                        const ids = filtered.map((s: { id: string }) => s.id);
+                        if (ids.every((id: string) => selected.has(id))) {
+                          setSelected((p) => { const s = new Set(p); ids.forEach((id: string) => s.delete(id)); return s; });
+                        } else {
+                          setSelected((p) => { const s = new Set(p); ids.forEach((id: string) => s.add(id)); return s; });
+                        }
+                      }}
+                      style={{ accentColor: "#0067a5" }} />
+                  </th>
                   {["Компания", "Заведение", "Контакт", "Материалы", "Доставка", "Трек", "Даты", "Статус", "МОП", "Логист", ""].map((h) => (
                     <th key={h} className="text-left px-3 py-2 font-semibold uppercase tracking-wide" style={{ color: "#888", fontSize: 10 }}>{h}</th>
                   ))}
@@ -209,7 +247,12 @@ export default function SamplesList({ initialSamples, companies, contacts, users
               <tbody>
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {filtered.map((s: any) => (
-                  <tr key={s.id} style={{ borderBottom: "1px solid #f0f0f0" }} className="hover:bg-gray-50">
+                  <tr key={s.id} style={{ borderBottom: "1px solid #f0f0f0", background: selected.has(s.id) ? "#f0f7ff" : "transparent" }} className="hover:bg-gray-50">
+                    <td className="px-2 py-2">
+                      <input type="checkbox" checked={selected.has(s.id)}
+                        onChange={() => setSelected((p) => { const n = new Set(p); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; })}
+                        style={{ accentColor: "#0067a5" }} />
+                    </td>
                     <td className="px-3 py-2">
                       {s.companies ? (
                         <Link href={`/companies/${s.companies.id}`} className="hover:underline" style={{ color: "#0067a5" }}>{s.companies.name}</Link>
