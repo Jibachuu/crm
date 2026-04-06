@@ -375,34 +375,14 @@ export async function POST(req: NextRequest) {
       }
       if (row.created_at) { const d = parseDate(row.created_at); if (d) rec.created_at = d; }
 
-      // Deal products — single product fields
-      if (table === "deals" && row.product_name) {
-        productRows.push({ idx: toInsert.length, name: String(row.product_name), price: parseNum(row.product_price), qty: parseNum(row.product_qty) ?? 1 });
-      }
-
-      // Deal products — multi-product raw string
-      // Formats seen in real data:
-      //   "Мыло 1000мл (арт. HS1000) 1 шт 800 ₽"
-      //   "Мыло 1000мл (арт. HS1000) 1шт по 800 ₽"
-      //   "Крем 1000мл (арт. KR1000) Cherry - 1 шт по 1 000 ₽"
-      if (table === "deals" && row.products_raw) {
-        const rawStr = String(row.products_raw).trim();
-        if (rawStr) {
-          // Match: anything ... N шт [по] PRICE ₽
-          const regex = /(.+?)\s*[-–—]?\s*(\d+)\s*шт\.?\s*(?:по\s*)?([\d\s.,]+)\s*₽/gi;
-          let m: RegExpExecArray | null;
-          while ((m = regex.exec(rawStr)) !== null) {
-            let pName = m[1].trim();
-            // Remove leading numbering "1." "1)" "2."
-            pName = pName.replace(/^\d+[.)]\s*/, "").trim();
-            // Remove trailing punctuation
-            pName = pName.replace(/[-–—,.\s]+$/, "").trim();
-            const pQty = parseNum(m[2]) ?? 1;
-            const pPrice = parseNum(m[3]) ?? 0;
-            if (pName) {
-              productRows.push({ idx: toInsert.length, name: pName, price: pPrice, qty: pQty });
-            }
-          }
+      // Deal products — structured columns: product_1_name, product_1_qty, product_1_price, product_1_total ... up to 10
+      if (table === "deals") {
+        for (let p = 1; p <= 10; p++) {
+          const pName = String(row[`product_${p}_name`] ?? "").trim();
+          if (!pName) continue;
+          const pQty = parseNum(row[`product_${p}_qty`]) ?? 1;
+          const pPrice = parseNum(row[`product_${p}_price`]) ?? 0;
+          productRows.push({ idx: toInsert.length, name: pName, price: pPrice, qty: pQty });
         }
       }
 
@@ -420,9 +400,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Handle deal products
-    if (table === "deals") {
-      errors.push(`ℹ️ Найдено товарных позиций для привязки: ${productRows.length}`);
-    }
     if (table === "deals" && productRows.length > 0) {
       // Pre-load/create products
       const uniqueProductNames = [...new Set(productRows.map((p) => p.name))];

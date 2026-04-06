@@ -69,15 +69,17 @@ const ENTITY_FIELDS: Record<Entity, CrmField[]> = {
     { key: "title", label: "Название", required: true },
     { key: "stage", label: "Стадия" },
     { key: "source", label: "Источник" },
-    { key: "amount", label: "Сумма" },
+    { key: "amount", label: "Сумма итого" },
     { key: "company_name", label: "Компания" },
     { key: "contact_name", label: "Контакт (имя)" },
     { key: "contact_phone", label: "Телефон контакта" },
     { key: "contact_email", label: "Email контакта" },
-    { key: "product_name", label: "Товар" },
-    { key: "product_price", label: "Цена товара" },
-    { key: "product_qty", label: "Количество" },
-    { key: "products_raw", label: "Товары (строка)" },
+    ...Array.from({ length: 10 }, (_, i) => [
+      { key: `product_${i + 1}_name`, label: `Товар ${i + 1} — название` },
+      { key: `product_${i + 1}_qty`, label: `Товар ${i + 1} — кол-во` },
+      { key: `product_${i + 1}_price`, label: `Товар ${i + 1} — цена за шт` },
+      { key: `product_${i + 1}_total`, label: `Товар ${i + 1} — сумма` },
+    ]).flat(),
     { key: "description", label: "Комментарий" },
     { key: "assigned_to_name", label: "Ответственный" },
     { key: "created_at", label: "Дата создания" },
@@ -97,7 +99,7 @@ const FIELD_ALIASES: Record<string, string[]> = {
   contact_name: ["контакт", "фио", "клиент", "contact"],
   full_name: ["фио", "имя", "full name", "имя фамилия"],
   created_at: ["дата", "дата создания", "created at", "date"],
-  products_raw: ["товары", "товары (для импорта в блок заказ)", "products", "товары для импорта"],
+  amount: ["сумма", "сумма итого", "сумма итого (посчитана из товаров)", "total", "amount"],
 };
 
 // Auto-match file columns to CRM fields by similarity
