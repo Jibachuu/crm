@@ -513,22 +513,36 @@ export function AnalyticsDashboard({ kpis, stages, sources, companyLTV, topProdu
 }
 
 function AIObjectionsBlock() {
-  const [analysis, setAnalysis] = useState("");
+  const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
 
-  async function analyze() {
-    setLoading(true); setError("");
-    try {
-      const res = await fetch("/api/ai/analyze", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "objections" }),
-      });
-      const data = await res.json();
-      if (!res.ok) setError(data.error ?? "Ошибка");
-      else setAnalysis(data.analysis);
-    } catch (e) { setError(String(e)); }
+  async function gather() {
+    setLoading(true);
+    const supabase = createClient();
+    const { data: deals } = await supabase.from("deals").select("objections, stage, amount, created_at").not("objections", "is", null);
+    const objections = (deals ?? []).filter((d) => d.objections?.trim());
+
+    const text = `Проанализируй возражения клиентов из CRM.
+
+=== ВОЗРАЖЕНИЯ ИЗ СДЕЛОК (${objections.length}) ===
+${objections.map((d) => `[${new Date(d.created_at).toLocaleDateString("ru-RU")}] ${d.stage} | ${d.amount ?? 0} ₽ | "${d.objections}"`).join("\n") || "Нет данных"}
+
+=== ЗАДАНИЕ ===
+Дай отчёт по пунктам:
+1. Топ-5 причин отказов с примерами цитат
+2. Распределение по категориям (цена / конкурент / не нужно / отложил / другое)
+3. Динамика — стало ли возражений больше/меньше
+4. Рекомендации как работать с каждым типом возражений`;
+
+    setPrompt(text);
     setLoading(false);
+  }
+
+  async function copy() {
+    await navigator.clipboard.writeText(prompt);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   return (
@@ -536,21 +550,28 @@ function AIObjectionsBlock() {
       <CardBody>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold flex items-center gap-1.5" style={{ color: "#333" }}>
-            <Bot size={14} style={{ color: "#7b1fa2" }} /> Анализ возражений (ИИ)
+            <Bot size={14} style={{ color: "#7b1fa2" }} /> Анализ возражений
           </h3>
-          <button onClick={analyze} disabled={loading}
+          <button onClick={gather} disabled={loading}
             className="flex items-center gap-1 text-xs px-3 py-1.5 rounded transition-colors hover:bg-purple-50 disabled:opacity-50"
             style={{ border: "1px solid #7b1fa2", color: "#7b1fa2" }}>
             {loading ? <RefreshCw size={12} className="animate-spin" /> : <Bot size={12} />}
-            {loading ? "Анализ..." : analysis ? "Обновить" : "Запустить анализ"}
+            {loading ? "Сбор..." : prompt ? "Обновить данные" : "Собрать данные"}
           </button>
         </div>
-        {error && <p className="text-xs px-3 py-1.5 rounded mb-2" style={{ background: "#fdecea", color: "#c62828" }}>{error}</p>}
-        {analysis ? (
-          <div className="text-xs whitespace-pre-wrap" style={{ color: "#333", lineHeight: 1.6 }}>{analysis}</div>
-        ) : !loading ? (
-          <p className="text-xs" style={{ color: "#aaa" }}>Нажмите "Запустить анализ" чтобы ИИ проанализировал возражения из всех сделок</p>
-        ) : null}
+        {prompt ? (
+          <div className="rounded" style={{ border: "1px solid #ce93d8" }}>
+            <div className="flex items-center justify-between px-3 py-2" style={{ background: "#f3e5f5", borderBottom: "1px solid #ce93d8" }}>
+              <span className="text-xs" style={{ color: "#7b1fa2" }}>Скопируйте и вставьте в Claude</span>
+              <button onClick={copy} className="flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-purple-100" style={{ color: "#7b1fa2" }}>
+                {copied ? "✓ Скопировано!" : "Копировать"}
+              </button>
+            </div>
+            <pre className="p-3 text-xs whitespace-pre-wrap overflow-y-auto" style={{ maxHeight: 250, color: "#333", background: "#fafafa" }}>{prompt}</pre>
+          </div>
+        ) : (
+          <p className="text-xs" style={{ color: "#aaa" }}>Нажмите чтобы собрать данные о возражениях для анализа в Claude</p>
+        )}
       </CardBody>
     </Card>
   );
