@@ -121,22 +121,9 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
     setSending(false);
   }
 
-  const [creatingCall, setCreatingCall] = useState(false);
-
-  async function openTelemost() {
-    setCreatingCall(true);
-    try {
-      const res = await fetch("/api/telemost", { method: "POST" });
-      const data = await res.json();
-      if (data.join_url) {
-        window.open(data.join_url, "_blank");
-      } else {
-        alert(data.error || "Не удалось создать звонок");
-      }
-    } catch {
-      alert("Ошибка создания звонка");
-    }
-    setCreatingCall(false);
+  function startCall() {
+    const roomId = "crm-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    window.open(`https://meet.jit.si/${roomId}`, "_blank");
   }
 
   const filteredUsers = users.filter((u) =>
@@ -208,11 +195,11 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
         {/* Telemost button */}
         <div className="p-3" style={{ borderTop: "1px solid #f0f0f0" }}>
           <button
-            onClick={openTelemost}
+            onClick={startCall}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded transition-colors"
             style={{ background: "#5b57d1", color: "#fff", borderRadius: 6 }}
           >
-            <Phone size={14} /> {creatingCall ? "Создаём..." : "Создать звонок (Telemost)"}
+            <Phone size={14} /> Создать звонок
           </button>
         </div>
       </div>
@@ -224,11 +211,11 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
             <Send size={48} style={{ color: "#ddd" }} />
             <p className="text-sm" style={{ color: "#aaa" }}>Выберите сотрудника для начала переписки</p>
             <button
-              onClick={openTelemost}
+              onClick={startCall}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded transition-colors mt-4"
               style={{ background: "#5b57d1", color: "#fff", borderRadius: 6 }}
             >
-              <Phone size={14} /> Или начните видеозвонок через Telemost
+              <Phone size={14} /> Или начните видеозвонок
             </button>
           </div>
         ) : (
@@ -246,7 +233,7 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
                 </div>
               </div>
               <button
-                onClick={openTelemost}
+                onClick={startCall}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors"
                 style={{ background: "#5b57d1", color: "#fff", borderRadius: 4 }}
               >
