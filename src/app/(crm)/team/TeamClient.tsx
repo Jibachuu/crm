@@ -216,7 +216,7 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
         {/* Telemost button */}
         <div className="p-3" style={{ borderTop: "1px solid #f0f0f0" }}>
           <button
-            onClick={startCall}
+            onClick={() => startCall()}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded transition-colors"
             style={{ background: "#5b57d1", color: "#fff", borderRadius: 6 }}
           >
@@ -232,7 +232,7 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
             <Send size={48} style={{ color: "#ddd" }} />
             <p className="text-sm" style={{ color: "#aaa" }}>Выберите сотрудника для начала переписки</p>
             <button
-              onClick={startCall}
+              onClick={() => startCall()}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded transition-colors mt-4"
               style={{ background: "#5b57d1", color: "#fff", borderRadius: 6 }}
             >
@@ -254,7 +254,7 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
                 </div>
               </div>
               <button
-                onClick={startCall}
+                onClick={() => startCall()}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors"
                 style={{ background: "#5b57d1", color: "#fff", borderRadius: 4 }}
               >
