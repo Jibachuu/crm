@@ -3,13 +3,21 @@ import nodemailer from "nodemailer";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+interface FilePayload {
+  name: string;
+  type: string;
+  data: string; // base64
+}
+
 export async function POST(req: NextRequest) {
-  const formData = await req.formData();
-  const to = formData.get("to") as string;
-  const subject = formData.get("subject") as string;
-  const body = formData.get("body") as string;
-  const entityType = formData.get("entityType") as string | null;
-  const entityId = formData.get("entityId") as string | null;
+  const { to, subject, body, entityType, entityId, files } = await req.json() as {
+    to: string;
+    subject: string;
+    body: string;
+    entityType?: string;
+    entityId?: string;
+    files?: FilePayload[];
+  };
 
   if (!to || !subject || !body) {
     return NextResponse.json({ error: "to, subject, body обязательны" }, { status: 400 });
@@ -27,39 +35,26 @@ export async function POST(req: NextRequest) {
 
   try {
     const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
+      host, port, secure: port === 465,
       auth: { user, pass },
     });
 
-    // Collect file attachments from FormData
-    const attachments: { filename: string; content: Buffer; contentDisposition: "attachment" }[] = [];
-    for (const [key, value] of formData.entries()) {
-      if (key !== "files") continue;
-      if (typeof value === "string") continue;
-      const file = value as File;
-      if (!file.size || !file.name) continue;
-      const arrayBuf = await file.arrayBuffer();
-      const buf = Buffer.from(new Uint8Array(arrayBuf));
-      if (buf.length === 0) continue;
-      attachments.push({
-        filename: file.name,
-        content: buf,
-        contentDisposition: "attachment",
-      });
-    }
+    const attachments = (files ?? [])
+      .filter((f) => f.data && f.name)
+      .map((f) => ({
+        filename: f.name,
+        content: Buffer.from(f.data, "base64"),
+        contentType: f.type || "application/octet-stream",
+      }));
 
     await transporter.sendMail({
-      from,
-      to,
-      subject,
+      from, to, subject,
       text: body,
       html: body.replace(/\n/g, "<br>"),
       attachments,
     });
 
-    // Save sent email to DB (IMAP server has no Sent folder)
+    // Save sent email to DB
     const supabase = await createClient();
     const { data: { user: authUser } } = await supabase.auth.getUser();
     if (authUser) {
@@ -80,8 +75,7 @@ export async function POST(req: NextRequest) {
         entity_id: entityId,
         channel: "email",
         direction: "outbound",
-        subject,
-        body,
+        subject, body,
         from_address: from,
         to_address: to,
       });

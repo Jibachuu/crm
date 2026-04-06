@@ -36,15 +36,26 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
     if (!subject.trim() || !body.trim()) return;
     setSending(true);
 
-    const fd = new FormData();
-    fd.append("to", to);
-    fd.append("subject", subject);
-    fd.append("body", body);
-    if (entityType) fd.append("entityType", entityType);
-    if (entityId) fd.append("entityId", entityId);
-    for (const f of files) fd.append("files", f);
+    // Convert files to base64 for reliable upload
+    const fileData: { name: string; type: string; data: string }[] = [];
+    for (const f of files) {
+      const buf = await f.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      fileData.push({ name: f.name, type: f.type, data: btoa(binary) });
+    }
 
-    const res = await fetch("/api/email/send", { method: "POST", body: fd });
+    const res = await fetch("/api/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to, subject, body,
+        entityType: entityType || undefined,
+        entityId: entityId || undefined,
+        files: fileData,
+      }),
+    });
     const data = await res.json();
     if (res.ok) {
       const fileInfo = files.length > 0 ? ` (файлов: ${data.attachmentCount ?? 0})` : "";
