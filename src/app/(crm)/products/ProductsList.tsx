@@ -22,11 +22,18 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingStock, setEditingStock] = useState<Record<string, string>>({});
 
-  const filtered = products.filter((p: { name: string; sku: string }) =>
-    !search ||
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.sku.toLowerCase().includes(search.toLowerCase())
-  );
+  const [categoryFilter, setCategoryFilter] = useState("");
+
+  // Get unique categories
+  const categories = [...new Set(products.map((p: { category?: string }) => p.category).filter(Boolean))] as string[];
+
+  const filtered = products.filter((p: { name: string; sku: string; category?: string }) => {
+    const matchSearch = !search ||
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.sku.toLowerCase().includes(search.toLowerCase());
+    const matchCategory = !categoryFilter || p.category === categoryFilter;
+    return matchSearch && matchCategory;
+  });
 
   const filteredIds = filtered.map((p: { id: string }) => p.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id: string) => selected.has(id));
@@ -136,6 +143,13 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
             style={{ border: "1px solid #d0d0d0", borderRadius: 4 }}
           />
         </div>
+        {categories.length > 0 && (
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}
+            className="text-xs px-2 py-1.5 rounded outline-none" style={{ border: "1px solid #d0d0d0", color: categoryFilter ? "#333" : "#888" }}>
+            <option value="">Все категории</option>
+            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
         <ExportImportButtons entity="products" onImported={() => window.location.reload()} />
         <PurgeButton table="products" onPurged={() => window.location.reload()} />
         <Button size="sm" onClick={() => { setEditing(null); setModalOpen(true); }}>
@@ -175,7 +189,7 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                   <th className="px-3 py-2.5 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleAll} className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
                   </th>
-                  {["Товар", "Артикул", "Цена", "Наличие", "Статус", ""].map((h) => (
+                  {["Товар", "Категория", "Артикул", "Цена", "Наличие", "Статус", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>{h}</th>
                   ))}
                 </tr>
@@ -183,6 +197,7 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
               <tbody>
                 {filtered.map((product: {
                   id: string; name: string; sku: string; base_price: number; is_active: boolean;
+                  category?: string; subcategory?: string;
                   product_variants?: { id: string; stock: number }[];
                 }) => {
                   const isSel = selected.has(product.id);
@@ -195,6 +210,14 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                       </td>
                       <td className="px-4 py-2.5">
                         <p className="font-medium" style={{ color: "#333" }}>{product.name}</p>
+                      </td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>
+                        {product.category ? (
+                          <div>
+                            <span>{product.category}</span>
+                            {product.subcategory && <span style={{ color: "#aaa" }}> → {product.subcategory}</span>}
+                          </div>
+                        ) : "—"}
                       </td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.sku}</td>
                       <td className="px-4 py-2.5 font-medium" style={{ color: "#333" }}>{formatCurrency(product.base_price)}</td>

@@ -69,6 +69,8 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
     const payload = {
       sku: fd.get("sku") as string,
       name: fd.get("name") as string,
+      category: (fd.get("category") as string) || null,
+      subcategory: (fd.get("subcategory") as string) || null,
       description: (fd.get("description") as string) || null,
       base_price: Number(fd.get("base_price")) || 0,
       is_active: true,
@@ -145,6 +147,10 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
           <Input label="Базовая цена (₽)" name="base_price" type="number" defaultValue={product?.base_price ?? ""} min="0" step="0.01" />
         </div>
         <Input label="Название товара" name="name" defaultValue={product?.name} required placeholder="Название" />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Категория" name="category" defaultValue={product?.category ?? ""} placeholder="Диффузоры" />
+          <Input label="Подкатегория" name="subcategory" defaultValue={product?.subcategory ?? ""} placeholder="Настольные" />
+        </div>
         <Textarea label="Описание" name="description" defaultValue={product?.description ?? ""} />
 
         {/* Attributes */}
