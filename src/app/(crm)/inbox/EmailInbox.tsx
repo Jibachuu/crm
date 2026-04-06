@@ -15,6 +15,10 @@ interface Email {
   preview: string;
   seen: boolean;
   hasAttachments: boolean;
+  // DB sent emails
+  dbId?: string;
+  body?: string;
+  dbAttachments?: { filename: string; size: number }[];
 }
 
 interface EmailDetail {
@@ -115,15 +119,30 @@ export default function EmailInbox() {
     setShowReply(false);
     setLoadingDetails(true);
 
-    // Load details for all emails in the thread
     const details = new Map<string, EmailDetail>();
     await Promise.all(
       threadEmails.map(async (em) => {
+        const key = em.dbId ? `SENT-${em.dbId}` : `${em.folder}-${em.uid}`;
+        // DB sent emails — use data directly, no IMAP fetch needed
+        if (em.dbId) {
+          details.set(key, {
+            uid: 0,
+            subject: em.subject,
+            from: em.from,
+            fromEmail: em.fromEmail,
+            to: em.to,
+            date: em.date,
+            html: null,
+            text: em.body ?? "",
+            attachments: (em.dbAttachments ?? []).map((a) => ({ filename: a.filename, contentType: "", size: a.size })),
+          });
+          return;
+        }
+        // IMAP emails — fetch from server
         try {
           const res = await fetch(`/api/email/read?uid=${em.uid}&folder=${encodeURIComponent(em.folder)}`);
           if (res.ok) {
-            const data = await res.json();
-            details.set(`${em.folder}-${em.uid}`, data);
+            details.set(key, await res.json());
           }
         } catch { /* skip */ }
       })
@@ -246,10 +265,11 @@ export default function EmailInbox() {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {selectedThread.map((em) => {
-                const detail = threadDetails.get(`${em.folder}-${em.uid}`);
+                const detailKey = em.dbId ? `SENT-${em.dbId}` : `${em.folder}-${em.uid}`;
+                const detail = threadDetails.get(detailKey);
                 const isSent = em.folder !== "INBOX";
                 return (
-                  <div key={`${em.folder}-${em.uid}`}
+                  <div key={detailKey}
                     className="rounded-lg p-4"
                     style={{
                       background: "#fff",

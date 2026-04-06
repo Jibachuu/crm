@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -58,9 +59,22 @@ export async function POST(req: NextRequest) {
       attachments,
     });
 
+    // Save sent email to DB (IMAP server has no Sent folder)
+    const supabase = await createClient();
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (authUser) {
+      const admin = createAdminClient();
+      await admin.from("sent_emails").insert({
+        user_id: authUser.id,
+        to_address: to,
+        subject,
+        body,
+        attachments: attachments.map((a) => ({ filename: a.filename, size: a.content.length })),
+      });
+    }
+
     // Log to communications
     if (entityType && entityId) {
-      const supabase = await createClient();
       await supabase.from("communications").insert({
         entity_type: entityType,
         entity_id: entityId,

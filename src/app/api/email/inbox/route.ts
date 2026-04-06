@@ -14,6 +14,10 @@ interface EmailItem {
   preview: string;
   seen: boolean;
   hasAttachments: boolean;
+  // For sent_emails from DB
+  dbId?: string;
+  body?: string;
+  dbAttachments?: { filename: string; size: number }[];
 }
 
 export async function GET(req: NextRequest) {
@@ -25,6 +29,7 @@ export async function GET(req: NextRequest) {
   const port = Number(process.env.IMAP_PORT || 993);
   const imapUser = process.env.IMAP_USER || process.env.SMTP_USER;
   const imapPass = process.env.IMAP_PASS || process.env.SMTP_PASS;
+  const smtpFrom = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "";
 
   if (!host || !imapUser || !imapPass) {
     return NextResponse.json({ error: "IMAP не настроен" }, { status: 503 });
@@ -32,7 +37,6 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const limit = Number(searchParams.get("limit") || 30);
-  const folder = searchParams.get("folder") || "INBOX";
   const includeSent = searchParams.get("sent") === "1";
 
   let client: ImapFlow | null = null;
@@ -48,14 +52,60 @@ export async function GET(req: NextRequest) {
 
     const emails: EmailItem[] = [];
 
-    // Fetch from primary folder
-    await fetchFromFolder(client, folder, limit, emails);
+    // Fetch from INBOX via IMAP
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      const mailbox = client.mailbox as { exists?: number } | false;
+      const total = (mailbox && typeof mailbox === "object") ? (mailbox.exists ?? 0) : 0;
+      if (total > 0) {
+        const startSeq = Math.max(1, total - limit + 1);
+        for await (const msg of client.fetch(`${startSeq}:*`, { uid: true, flags: true, source: true })) {
+          try {
+            const parsed = await simpleParser(msg.source as Buffer);
+            emails.push({
+              uid: msg.uid,
+              folder: "INBOX",
+              subject: parsed.subject ?? "(без темы)",
+              from: parsed.from?.text ?? "",
+              fromEmail: parsed.from?.value?.[0]?.address ?? "",
+              to: parsed.to ? (Array.isArray(parsed.to) ? parsed.to.map((t) => t.text).join(", ") : parsed.to.text) : "",
+              date: parsed.date?.toISOString() ?? new Date().toISOString(),
+              preview: (parsed.text ?? "").slice(0, 200),
+              seen: msg.flags?.has("\\Seen") ?? false,
+              hasAttachments: (parsed.attachments?.length ?? 0) > 0,
+            });
+          } catch { /* skip */ }
+        }
+      }
+    } finally {
+      lock.release();
+    }
 
-    // Auto-detect and fetch from Sent folder
+    // Fetch sent emails from Supabase DB
     if (includeSent) {
-      const sentFolder = await findSentFolder(client);
-      if (sentFolder) {
-        await fetchFromFolder(client, sentFolder, Math.min(limit, 50), emails);
+      const { data: sentEmails } = await supabase
+        .from("sent_emails")
+        .select("*")
+        .order("sent_at", { ascending: false })
+        .limit(limit);
+
+      for (const se of sentEmails ?? []) {
+        const attArr = (se.attachments ?? []) as { filename: string; size: number }[];
+        emails.push({
+          uid: 0,
+          folder: "SENT",
+          subject: se.subject,
+          from: smtpFrom,
+          fromEmail: smtpFrom,
+          to: se.to_address,
+          date: se.sent_at,
+          preview: (se.body ?? "").slice(0, 200),
+          seen: true,
+          hasAttachments: attArr.length > 0,
+          dbId: se.id,
+          body: se.body,
+          dbAttachments: attArr,
+        });
       }
     }
 
@@ -70,58 +120,5 @@ export async function GET(req: NextRequest) {
     if (client) {
       try { await client.logout(); } catch { /* ignore */ }
     }
-  }
-}
-
-/** List all IMAP folders and find the Sent folder by special-use flag or name */
-async function findSentFolder(client: ImapFlow): Promise<string | null> {
-  try {
-    const folders = await client.list();
-    // First try special-use \Sent flag
-    for (const f of folders) {
-      if (f.specialUse === "\\Sent") return f.path;
-    }
-    // Fallback: match by common name patterns
-    const sentNames = ["sent", "отправленные", "sent messages", "sent items", "sent mail"];
-    for (const f of folders) {
-      const name = f.name.toLowerCase();
-      if (sentNames.includes(name)) return f.path;
-    }
-  } catch { /* ignore */ }
-  return null;
-}
-
-async function fetchFromFolder(client: ImapFlow, folder: string, limit: number, emails: EmailItem[]) {
-  const lock = await client.getMailboxLock(folder);
-  try {
-    const mailbox = client.mailbox as { exists?: number } | false;
-    const total = (mailbox && typeof mailbox === "object") ? (mailbox.exists ?? 0) : 0;
-    if (total === 0) return;
-
-    const startSeq = Math.max(1, total - limit + 1);
-
-    for await (const msg of client.fetch(`${startSeq}:*`, {
-      uid: true,
-      flags: true,
-      source: true,
-    })) {
-      try {
-        const parsed = await simpleParser(msg.source as Buffer);
-        emails.push({
-          uid: msg.uid,
-          folder,
-          subject: parsed.subject ?? "(без темы)",
-          from: parsed.from?.text ?? "",
-          fromEmail: parsed.from?.value?.[0]?.address ?? "",
-          to: parsed.to ? (Array.isArray(parsed.to) ? parsed.to.map((t) => t.text).join(", ") : parsed.to.text) : "",
-          date: parsed.date?.toISOString() ?? new Date().toISOString(),
-          preview: (parsed.text ?? "").slice(0, 200),
-          seen: msg.flags?.has("\\Seen") ?? false,
-          hasAttachments: (parsed.attachments?.length ?? 0) > 0,
-        });
-      } catch { /* skip */ }
-    }
-  } finally {
-    lock.release();
   }
 }
