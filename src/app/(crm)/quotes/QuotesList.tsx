@@ -51,19 +51,38 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   }
 
   async function openEdit(quoteId: string) {
-    const res = await fetch(`/api/quotes?action=get&id=${quoteId}`);
-    // Load items from DB
     setEditing({ id: quoteId });
     const q = quotes.find((qq: { id: string }) => qq.id === quoteId);
     if (q) {
       setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "" });
     }
-    // TODO: load items - for now open editor
+    // Load items from DB
+    const supabase = (await import("@/lib/supabase/client")).createClient();
+    const { data: loadedItems } = await supabase.from("quote_items").select("*").eq("quote_id", quoteId).order("sort_order");
+    setItems((loadedItems ?? []).map((i: QuoteItem & { id?: string }) => ({
+      product_id: i.product_id ?? "",
+      name: i.name,
+      article: i.article ?? "",
+      base_price: i.base_price,
+      client_price: i.client_price,
+      discount_pct: i.discount_pct,
+      qty: i.qty,
+      sum: i.sum,
+      image_url: i.image_url ?? "",
+      description: i.description ?? "",
+    })));
     setEditorOpen(true);
   }
 
   function addProduct(p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; description?: string; image_url?: string }) {
+    // Build full name: category + subcategory + name
     const fullName = [p.category, p.subcategory, p.name].filter(Boolean).join(" / ");
+    // Extract characteristics from description (lines with ":")
+    const chars = (p.description ?? "").split("\n")
+      .filter((l) => l.includes(":"))
+      .map((l) => l.trim())
+      .join("; ");
+
     setItems([...items, {
       product_id: p.id,
       name: fullName,
@@ -74,7 +93,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       qty: 1,
       sum: p.base_price,
       image_url: p.image_url ?? "",
-      description: p.description ?? "",
+      description: chars || p.description || "",
     }]);
     setProductSearch("");
   }
@@ -296,40 +315,86 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
             {items.length === 0 ? (
               <p className="text-xs text-center py-6" style={{ color: "#aaa" }}>Добавьте товары из каталога или вручную</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs" style={{ minWidth: 800 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid #e4e4e4", background: "#fafafa" }}>
-                      {["Фото", "Название", "Артикул", "Обычная цена", "Цена клиенту", "Скидка %", "Кол-во", "Сумма", ""].map((h) => (
-                        <th key={h} className="text-left px-2 py-1.5 font-semibold" style={{ color: "#888", fontSize: 10 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, idx) => (
-                      <tr key={idx} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                        <td className="px-2 py-1.5" style={{ width: 50 }}>
-                          {item.image_url ? (
-                            <img src={item.image_url} alt="" className="w-10 h-10 rounded object-cover" style={{ border: "1px solid #e0e0e0" }} />
-                          ) : item.product_id ? (
+              <div className="space-y-3">
+                {items.map((item, idx) => (
+                  <div key={idx} className="flex gap-3 p-3 rounded" style={{ border: "1px solid #e4e4e4", background: "#fafafa" }}>
+                    {/* Photo */}
+                    <div className="flex-shrink-0">
+                      {item.image_url ? (
+                        <div className="relative group">
+                          <img src={item.image_url} alt="" className="w-20 h-20 rounded object-cover" style={{ border: "1px solid #e0e0e0" }} />
+                          {item.product_id && (
                             <button onClick={() => { uploadProductIdRef.current = item.product_id; fileRef.current?.click(); }}
-                              className="w-10 h-10 rounded flex items-center justify-center" style={{ background: "#f5f5f5", border: "1px dashed #ccc" }} title="Загрузить фото">
-                              {uploadingImage === item.product_id ? <span className="text-xs">...</span> : <ImagePlus size={14} style={{ color: "#aaa" }} />}
+                              className="absolute inset-0 bg-black/40 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                              <ImagePlus size={16} style={{ color: "#fff" }} />
                             </button>
-                          ) : <div className="w-10 h-10 rounded" style={{ background: "#f5f5f5" }} />}
-                        </td>
-                        <td className="px-2 py-1.5"><input value={item.name} onChange={(e) => updateItem(idx, "name", e.target.value)} className="w-full text-xs px-1 py-0.5 rounded outline-none" style={{ border: "1px solid #e0e0e0" }} /></td>
-                        <td className="px-2 py-1.5" style={{ width: 90 }}><input value={item.article} onChange={(e) => updateItem(idx, "article", e.target.value)} className="w-full text-xs px-1 py-0.5 rounded outline-none" style={{ border: "1px solid #e0e0e0" }} /></td>
-                        <td className="px-2 py-1.5 text-right" style={{ color: "#aaa", width: 80 }}>{formatCurrency(item.base_price)}</td>
-                        <td className="px-2 py-1.5" style={{ width: 90 }}><input type="number" value={item.client_price} onChange={(e) => updateItem(idx, "client_price", Number(e.target.value))} className="w-full text-xs px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #e0e0e0" }} /></td>
-                        <td className="px-2 py-1.5" style={{ width: 70 }}><input type="number" value={item.discount_pct} onChange={(e) => updateItem(idx, "discount_pct", Number(e.target.value))} className="w-full text-xs px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #e0e0e0" }} /></td>
-                        <td className="px-2 py-1.5" style={{ width: 60 }}><input type="number" min="1" value={item.qty} onChange={(e) => updateItem(idx, "qty", Number(e.target.value))} className="w-full text-xs px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #e0e0e0" }} /></td>
-                        <td className="px-2 py-1.5 text-right font-medium" style={{ color: "#2e7d32", width: 90 }}>{formatCurrency(item.sum)}</td>
-                        <td className="px-2 py-1.5"><button onClick={() => removeItem(idx)} className="p-1 rounded hover:bg-red-50"><X size={12} style={{ color: "#c62828" }} /></button></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          )}
+                        </div>
+                      ) : (
+                        <button onClick={() => { if (item.product_id) { uploadProductIdRef.current = item.product_id; fileRef.current?.click(); } }}
+                          className="w-20 h-20 rounded flex flex-col items-center justify-center gap-1 transition-colors hover:bg-gray-100"
+                          style={{ background: "#f0f0f0", border: "1px dashed #ccc" }}
+                          disabled={!item.product_id || uploadingImage === item.product_id}>
+                          {uploadingImage === item.product_id ? (
+                            <span className="text-xs" style={{ color: "#888" }}>...</span>
+                          ) : (
+                            <>
+                              <ImagePlus size={18} style={{ color: "#aaa" }} />
+                              <span style={{ fontSize: 9, color: "#aaa" }}>Фото</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="flex items-start gap-2">
+                        <input value={item.name} onChange={(e) => updateItem(idx, "name", e.target.value)}
+                          className="flex-1 text-xs font-medium px-2 py-1 rounded outline-none" style={{ border: "1px solid #e0e0e0" }}
+                          placeholder="Название товара" />
+                        <button onClick={() => removeItem(idx)} className="p-1 rounded hover:bg-red-50 flex-shrink-0"><X size={12} style={{ color: "#c62828" }} /></button>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs">
+                        <span style={{ color: "#888" }}>Арт:</span>
+                        <input value={item.article} onChange={(e) => updateItem(idx, "article", e.target.value)}
+                          className="w-24 px-1 py-0.5 rounded outline-none" style={{ border: "1px solid #e0e0e0", fontSize: 11 }} />
+                        {item.description && <span className="truncate" style={{ color: "#888", maxWidth: 200 }} title={item.description}>{item.description}</span>}
+                      </div>
+
+                      {/* Description editable */}
+                      <textarea value={item.description} onChange={(e) => updateItem(idx, "description", e.target.value)}
+                        className="w-full text-xs px-2 py-1 rounded outline-none" rows={1}
+                        style={{ border: "1px solid #e0e0e0", resize: "vertical", fontSize: 11 }}
+                        placeholder="Описание / характеристики товара" />
+
+                      <div className="flex items-center gap-3 text-xs">
+                        <div className="flex items-center gap-1">
+                          <span style={{ color: "#888" }}>Каталог:</span>
+                          <span style={{ color: "#aaa", textDecoration: item.discount_pct > 0 ? "line-through" : "none" }}>{formatCurrency(item.base_price)}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span style={{ color: "#333" }}>Цена:</span>
+                          <input type="number" value={item.client_price} onChange={(e) => updateItem(idx, "client_price", Number(e.target.value))}
+                            className="w-20 px-1 py-0.5 rounded outline-none text-right font-medium" style={{ border: "1px solid #d0d0d0", color: "#2e7d32" }} />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span style={{ color: "#888" }}>Скидка:</span>
+                          <input type="number" value={item.discount_pct} onChange={(e) => updateItem(idx, "discount_pct", Number(e.target.value))}
+                            className="w-14 px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #e0e0e0", color: "#e65c00" }} />
+                          <span style={{ color: "#e65c00" }}>%</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span style={{ color: "#888" }}>Кол-во:</span>
+                          <input type="number" min="1" value={item.qty} onChange={(e) => updateItem(idx, "qty", Number(e.target.value))}
+                            className="w-14 px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #e0e0e0" }} />
+                        </div>
+                        <div className="ml-auto font-medium" style={{ color: "#2e7d32" }}>= {formatCurrency(item.sum)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
