@@ -1,0 +1,78 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  const { action } = body;
+  const admin = createAdminClient();
+
+  if (action === "create" || action === "update") {
+    const { id, company_id, contact_id, deal_id, manager_id, payment_terms, delivery_terms, comment, status, items } = body;
+
+    const totalAmount = (items ?? []).reduce((s: number, i: { sum: number }) => s + (i.sum ?? 0), 0);
+
+    const payload = {
+      company_id: company_id || null,
+      contact_id: contact_id || null,
+      deal_id: deal_id || null,
+      manager_id: manager_id || user.id,
+      payment_terms: payment_terms || null,
+      delivery_terms: delivery_terms || null,
+      comment: comment || null,
+      status: status || "draft",
+      total_amount: totalAmount,
+      updated_at: new Date().toISOString(),
+    };
+
+    let quoteId = id;
+
+    if (action === "update" && id) {
+      await admin.from("quotes").update(payload).eq("id", id);
+    } else {
+      const { data, error } = await admin.from("quotes").insert(payload).select("id").single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      quoteId = data.id;
+    }
+
+    // Replace items
+    await admin.from("quote_items").delete().eq("quote_id", quoteId);
+    if (items?.length) {
+      const itemRows = items.map((i: { product_id?: string; name: string; article?: string; base_price: number; client_price: number; discount_pct: number; qty: number; sum: number; image_url?: string; description?: string }, idx: number) => ({
+        quote_id: quoteId,
+        product_id: i.product_id || null,
+        name: i.name,
+        article: i.article || null,
+        base_price: i.base_price ?? 0,
+        client_price: i.client_price ?? 0,
+        discount_pct: i.discount_pct ?? 0,
+        qty: i.qty ?? 1,
+        sum: i.sum ?? 0,
+        image_url: i.image_url || null,
+        description: i.description || null,
+        sort_order: idx,
+      }));
+      await admin.from("quote_items").insert(itemRows);
+    }
+
+    return NextResponse.json({ id: quoteId });
+  }
+
+  if (action === "delete") {
+    const { id } = body;
+    await admin.from("quotes").delete().eq("id", id);
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "update_status") {
+    const { id, status } = body;
+    await admin.from("quotes").update({ status }).eq("id", id);
+    return NextResponse.json({ ok: true });
+  }
+
+  return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+}
