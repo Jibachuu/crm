@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Building2, Clock, CheckSquare, FileText } from "lucide-react";
+import { Search, Building2, Clock, CheckSquare, FileText, UserCircle, Phone } from "lucide-react";
 import Badge from "@/components/ui/Badge";
 import ClientTimeIndicator from "@/components/ui/ClientTimeIndicator";
 import { formatCurrency } from "@/lib/utils";
@@ -86,14 +86,21 @@ export default function MyClientsGrid({ companies, users, currentUserId, isAdmin
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        {filtered.map((c: any) => (
-          <Link key={c.id} href={`/my-clients/${c.id}`}
+        {filtered.map((c: any) => {
+          const isContact = c.clientType === "contact";
+          const href = isContact ? `/contacts/${c.id}` : `/my-clients/${c.id}`;
+          return (
+          <Link key={`${c.clientType}_${c.id}`} href={href}
             className="block rounded-lg p-4 transition-shadow hover:shadow-md"
-            style={{ border: "1px solid #e4e4e4", background: "#fff" }}>
+            style={{ border: `1px solid ${isContact ? "#ffe0b2" : "#e4e4e4"}`, background: "#fff" }}>
             <div className="flex items-start justify-between mb-2">
-              <div>
-                <h3 className="text-sm font-semibold" style={{ color: "#333" }}>{c.name}</h3>
-                {c.company_type && <p className="text-xs" style={{ color: "#888" }}>{c.company_type}</p>}
+              <div className="flex items-center gap-2">
+                {isContact ? <UserCircle size={14} style={{ color: "#e65c00" }} /> : <Building2 size={14} style={{ color: "#0067a5" }} />}
+                <div>
+                  <h3 className="text-sm font-semibold" style={{ color: "#333" }}>{c.name}</h3>
+                  {isContact && c.phone && <p className="text-xs" style={{ color: "#888" }}>{c.phone}</p>}
+                  {!isContact && c.company_type && <p className="text-xs" style={{ color: "#888" }}>{c.company_type}</p>}
+                </div>
               </div>
               <ClientTimeIndicator timezone={c.timezone} region={c.city || c.region} />
             </div>
@@ -107,27 +114,35 @@ export default function MyClientsGrid({ companies, users, currentUserId, isAdmin
                 <span style={{ color: "#888" }}>LTV</span>
                 <span style={{ color: "#2e7d32", fontWeight: 600 }}>{c.ltv > 0 ? formatCurrency(c.ltv) : "—"}</span>
               </div>
-              <div className="flex justify-between">
-                <span style={{ color: "#888" }}>Договор</span>
-                <Badge variant={CONTRACT_VARIANTS[c.contract_status ?? "none"] ?? "default"}>
-                  {CONTRACT_LABELS[c.contract_status ?? "none"]}
-                </Badge>
-              </div>
+              {!isContact && (
+                <div className="flex justify-between">
+                  <span style={{ color: "#888" }}>Договор</span>
+                  <Badge variant={CONTRACT_VARIANTS[c.contract_status ?? "none"] ?? "default"}>
+                    {CONTRACT_LABELS[c.contract_status ?? "none"]}
+                  </Badge>
+                </div>
+              )}
               {c.activeTasks > 0 && (
                 <div className="flex justify-between">
                   <span style={{ color: "#888" }}>Активных задач</span>
                   <span className="flex items-center gap-1" style={{ color: "#0067a5" }}><CheckSquare size={10} /> {c.activeTasks}</span>
                 </div>
               )}
-              {c.users && (
+              {!isContact && c.users && (
                 <div className="flex justify-between">
                   <span style={{ color: "#888" }}>Менеджер</span>
                   <span style={{ color: "#666" }}>{c.users.full_name}</span>
                 </div>
               )}
+              {isContact && (
+                <div className="flex justify-between">
+                  <span style={{ color: "#e65c00", fontSize: 10 }}>Контакт без компании</span>
+                </div>
+              )}
             </div>
           </Link>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
