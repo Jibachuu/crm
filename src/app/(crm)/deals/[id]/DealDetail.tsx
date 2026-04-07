@@ -481,7 +481,7 @@ function DealQuotes({ dealId }: { dealId: string }) {
             <Badge variant={q.status === "accepted" ? "success" : q.status === "rejected" ? "danger" : q.status === "sent" ? "warning" : "default"}>
               {SL[q.status] ?? q.status}
             </Badge>
-            <a href={"/quotes/" + q.id} target="_blank" rel="noopener noreferrer" className="text-xs hover:underline" style={{ color: "#0067a5" }}>Открыть</a>
+            <a href={"/q/" + q.id} target="_blank" rel="noopener noreferrer" className="text-xs hover:underline" style={{ color: "#0067a5" }}>Открыть</a>
           </div>
         </div>
       ))}

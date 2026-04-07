@@ -238,8 +238,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1">
                       <button onClick={() => openEdit(q.id)} className="p-1 rounded hover:bg-blue-50" title="Открыть"><Eye size={12} style={{ color: "#0067a5" }} /></button>
-                      <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/quotes/${q.id}`); }} className="p-1 rounded hover:bg-blue-50" title="Копировать ссылку"><Copy size={12} style={{ color: "#888" }} /></button>
-                      <a href={`/quotes/${q.id}`} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-blue-50" title="Открыть публичную страницу"><Send size={12} style={{ color: "#2e7d32" }} /></a>
+                      <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/q/${q.id}`); }} className="p-1 rounded hover:bg-blue-50" title="Копировать ссылку"><Copy size={12} style={{ color: "#888" }} /></button>
+                      <a href={`/q/${q.id}`} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-blue-50" title="Открыть публичную страницу"><Send size={12} style={{ color: "#2e7d32" }} /></a>
                       <button onClick={() => deleteQuote(q.id)} className="p-1 rounded hover:bg-red-50" title="Удалить"><Trash2 size={12} style={{ color: "#c62828" }} /></button>
                     </div>
                   </td>
@@ -431,19 +431,19 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
             <Button size="sm" variant="secondary" onClick={() => {
               const qid = editing?.id;
               if (!qid) { alert("Сначала сохраните КП"); return; }
-              window.open(`/quotes/${qid}`, "_blank");
+              window.open(`/q/${qid}`, "_blank");
             }}><Eye size={13} /> Страница КП</Button>
             <Button size="sm" variant="secondary" onClick={() => {
               const qid = editing?.id;
               if (!qid) { alert("Сначала сохраните КП"); return; }
               // Open quote page in print mode for PDF
-              const w = window.open(`/quotes/${qid}`, "_blank");
+              const w = window.open(`/q/${qid}`, "_blank");
               if (w) setTimeout(() => w.print(), 2000);
             }}><Download size={13} /> Скачать PDF</Button>
             <Button size="sm" variant="secondary" onClick={() => {
               const qid = editing?.id;
               if (!qid) { alert("Сначала сохраните КП"); return; }
-              navigator.clipboard.writeText(`${window.location.origin}/quotes/${qid}`);
+              navigator.clipboard.writeText(`${window.location.origin}/q/${qid}`);
               setCopied(true); setTimeout(() => setCopied(false), 2000);
             }}><Copy size={13} /> Ссылка</Button>
             <div className="flex-1" />

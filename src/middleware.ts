@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes
-  const publicRoutes = ["/login", "/register", "/forgot-password", "/reset-password", "/quotes/", "/api/image-proxy"];
+  const publicRoutes = ["/login", "/register", "/forgot-password", "/reset-password", "/q/", "/api/image-proxy"];
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
   if (!user && !isPublicRoute) {
