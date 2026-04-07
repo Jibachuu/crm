@@ -95,6 +95,14 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
       }
     }
 
+    // Trigger automations
+    if (newStage === "proposal") {
+      fetch("/api/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deal_stage_change", deal_id: deal.id }) });
+    }
+    if (newStage === "won" && oldStage !== "won") {
+      fetch("/api/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deal_won", deal_id: deal.id }) });
+    }
+
     setDeal((p: typeof deal) => ({ ...p, stage: newStage }));
   }
 
@@ -332,6 +340,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   items={orderProducts}
                   total={totalOrder}
                   onAdd={() => setAddProductBlock("order")}
+                  block="order"
                 />
               </div>
             )}
@@ -405,7 +414,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function DealProductBlock({ title, description, items, total, onAdd }: { title: string; description: string; items: any[]; total: number; onAdd: () => void }) {
+function DealProductBlock({ title, description, items, total, onAdd, block = "request" }: { title: string; description: string; items: any[]; total: number; onAdd: () => void; block?: string }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -447,8 +456,18 @@ function DealProductBlock({ title, description, items, total, onAdd }: { title: 
                       {(item.category || item.subcategory) && (
                         <p className="text-xs" style={{ color: "#0067a5" }}>{[item.category, item.subcategory].filter(Boolean).join(" → ")}</p>
                       )}
-                      {item.lifecycle_days && item.lifecycle_days > 0 && (
-                        <p className="text-xs mt-0.5" style={{ color: "#e65c00" }}>🔄 Повтор через {item.lifecycle_days} дн.</p>
+                      {item.category?.toLowerCase().includes("косметик") && block === "order" && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-xs" style={{ color: "#e65c00" }}>🔄</span>
+                          <input type="number" min="0" placeholder="дн." defaultValue={item.lifecycle_days ?? ""}
+                            className="w-12 text-xs px-1 py-0.5 rounded outline-none" style={{ border: "1px solid #ffe0b2", color: "#e65c00" }}
+                            onBlur={async (e) => {
+                              const val = Number(e.target.value) || null;
+                              await createClient().from("deal_products").update({ lifecycle_days: val }).eq("id", item.id);
+                            }}
+                          />
+                          <span className="text-xs" style={{ color: "#bf7600" }}>дн.</span>
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-2 text-right" style={{ color: "#555" }}>{item.quantity} шт.</td>

@@ -23,8 +23,13 @@ const SECTIONS = [
   { key: "contacts", label: "Контакты" },
   { key: "companies", label: "Компании" },
   { key: "products", label: "Товары" },
+  { key: "samples", label: "Пробники" },
+  { key: "invoices", label: "Счета" },
+  { key: "quotes", label: "КП" },
   { key: "tasks", label: "Задачи" },
   { key: "inbox", label: "Inbox" },
+  { key: "team", label: "Команда" },
+  { key: "campaigns", label: "Рассылки" },
   { key: "analytics", label: "Аналитика" },
 ];
 
