@@ -99,5 +99,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // Delete
+  if (action === "delete") {
+    const { id } = body;
+    await admin.from("order_production").delete().eq("id", id);
+    return NextResponse.json({ ok: true });
+  }
+
+  // Get log
+  if (action === "get_log") {
+    const { production_id } = body;
+    const { data: log } = await admin.from("production_log").select("*").eq("production_id", production_id).order("created_at", { ascending: true });
+    return NextResponse.json({ log: log ?? [] });
+  }
+
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }

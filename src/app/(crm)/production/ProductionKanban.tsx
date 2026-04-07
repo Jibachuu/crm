@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Search, Package, Truck, X, Check } from "lucide-react";
+import { Plus, Search, Package, Truck, X, Check, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { formatDate } from "@/lib/utils";
@@ -240,59 +240,141 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
 
       {/* Detail Panel */}
       {detailOrder && (
-        <div className="fixed top-0 right-0 z-50 h-full flex flex-col shadow-2xl" style={{ width: 420, background: "#fff", borderLeft: "1px solid #e4e4e4" }}>
-          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid #e4e4e4" }}>
-            <h3 className="text-sm font-semibold">Заказ: {detailOrder.companies?.name}</h3>
-            <button onClick={() => setDetailOrder(null)} className="p-1 rounded hover:bg-gray-100"><X size={16} /></button>
+        <DetailPanel
+          order={detailOrder}
+          users={users}
+          userRole={userRole}
+          onClose={() => setDetailOrder(null)}
+          onUpdated={(updated) => {
+            setOrders(orders.map((o: { id: string }) => o.id === updated.id ? { ...o, ...updated } : o));
+            setDetailOrder({ ...detailOrder, ...updated });
+          }}
+          onDeleted={(id) => { setOrders(orders.filter((o: { id: string }) => o.id !== id)); setDetailOrder(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function DetailPanel({ order, users, userRole, onClose, onUpdated, onDeleted }: { order: any; users: any[]; userRole: string; onClose: () => void; onUpdated: (u: any) => void; onDeleted: (id: string) => void }) {
+  const [comments, setComments] = useState<{ id: string; action: string; comment?: string; from_stage?: string; to_stage?: string; created_at: string; user_id?: string }[]>([]);
+  const [newComment, setNewComment] = useState("");
+  const [trackEdit, setTrackEdit] = useState(order.tracking_number ?? "");
+  const [arrivalEdit, setArrivalEdit] = useState(order.estimated_arrival ?? "");
+  const [notesEdit, setNotesEdit] = useState(order.notes ?? "");
+
+  const isAdmin = userRole === "admin";
+  const STAGE_LABELS: Record<string, string> = { new: "Передан", in_progress: "В работе", discussion: "Обсуждение", packing: "Упаковка", shipped: "Отправлен", delivered: "Доставлен", review_requested: "Отзыв" };
+
+  // Load comments/log
+  useState(() => {
+    fetch("/api/production", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "get_log", production_id: order.id }) })
+      .then((r) => r.json()).then((d) => setComments(d.log ?? [])).catch(() => {});
+  });
+
+  async function updateField(field: string, value: string) {
+    await fetch("/api/production", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", id: order.id, [field]: value || null }) });
+    onUpdated({ id: order.id, [field]: value || null });
+  }
+
+  async function addComment() {
+    if (!newComment.trim()) return;
+    await fetch("/api/production", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "comment", production_id: order.id, comment: newComment }) });
+    setComments([...comments, { id: Date.now().toString(), action: "comment", comment: newComment, created_at: new Date().toISOString() }]);
+    setNewComment("");
+  }
+
+  async function deleteOrder() {
+    if (!confirm("Удалить заказ из производства?")) return;
+    await fetch("/api/production", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", id: order.id }) });
+    onDeleted(order.id);
+  }
+
+  const inputStyle: React.CSSProperties = { border: "1px solid #d0d0d0", borderRadius: 4, padding: "4px 8px", fontSize: 12, width: "100%", outline: "none" };
+
+  return (
+    <div className="fixed top-0 right-0 z-50 h-full flex flex-col shadow-2xl" style={{ width: 420, background: "#fff", borderLeft: "1px solid #e4e4e4" }}>
+      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid #e4e4e4" }}>
+        <h3 className="text-sm font-semibold">{order.companies?.name ?? "Заказ"}</h3>
+        <div className="flex items-center gap-1">
+          {isAdmin && <button onClick={deleteOrder} className="p-1 rounded hover:bg-red-50" title="Удалить"><Trash2 size={14} style={{ color: "#c62828" }} /></button>}
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={16} /></button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+        {/* Info */}
+        <div className="space-y-2">
+          {order.companies && <div className="flex justify-between"><span style={{ color: "#888" }}>Компания</span><Link href={"/companies/" + order.companies.id} className="hover:underline" style={{ color: "#0067a5" }}>{order.companies.name}</Link></div>}
+          {order.deals && <div className="flex justify-between"><span style={{ color: "#888" }}>Сделка</span><Link href={"/deals/" + order.deals.id} className="hover:underline" style={{ color: "#0067a5" }}>{order.deals.title}</Link></div>}
+
+          <div>
+            <span className="block mb-1" style={{ color: "#888" }}>МОП</span>
+            <select defaultValue={order.manager_id ?? ""} onChange={(e) => updateField("manager_id", e.target.value)} style={inputStyle}>
+              <option value="">Не назначен</option>
+              {users.map((u: { id: string; full_name: string }) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+            </select>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
-            {/* Info */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between"><span style={{ color: "#888" }}>Компания</span>
-                {detailOrder.companies ? <Link href={`/companies/${detailOrder.companies.id}`} className="hover:underline" style={{ color: "#0067a5" }}>{detailOrder.companies.name}</Link> : "—"}
-              </div>
-              <div className="flex justify-between"><span style={{ color: "#888" }}>Сделка</span>
-                {detailOrder.deals ? <Link href={`/deals/${detailOrder.deals.id}`} className="hover:underline" style={{ color: "#0067a5" }}>{detailOrder.deals.title}</Link> : "—"}
-              </div>
-              <div className="flex justify-between"><span style={{ color: "#888" }}>МОП</span><span>{detailOrder.manager?.full_name ?? "—"}</span></div>
-              <div className="flex justify-between"><span style={{ color: "#888" }}>Работник</span><span>{detailOrder.worker?.full_name ?? "Не назначен"}</span></div>
-              <div className="flex justify-between"><span style={{ color: "#888" }}>Этап</span><span style={{ color: STAGES.find((s) => s.key === detailOrder.stage)?.color }}>{STAGES.find((s) => s.key === detailOrder.stage)?.label}</span></div>
-            </div>
-
-            {/* Products */}
-            <div>
-              <h4 className="font-semibold mb-1" style={{ color: "#888" }}>Товары</h4>
-              {(detailOrder.deals?.deal_products ?? []).map((dp: { quantity: number; products: { name: string; sku: string } | { name: string; sku: string }[] }, i: number) => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const p = Array.isArray(dp.products) ? dp.products[0] : dp.products as any;
-                return <p key={i} style={{ color: "#333" }}>{p?.name} (арт. {p?.sku}) × {dp.quantity}</p>;
-              })}
-            </div>
-
-            {/* Logistics */}
-            <div className="space-y-1.5">
-              <h4 className="font-semibold" style={{ color: "#888" }}>Логистика</h4>
-              <div className="flex justify-between"><span style={{ color: "#888" }}>Трек-номер</span><span className="font-mono" style={{ color: "#7b1fa2" }}>{detailOrder.tracking_number ?? "—"}</span></div>
-              <div className="flex justify-between"><span style={{ color: "#888" }}>Отправлен</span><span>{detailOrder.shipped_at ? formatDate(detailOrder.shipped_at) : "—"}</span></div>
-              <div className="flex justify-between"><span style={{ color: "#888" }}>Прибытие</span><span>{detailOrder.estimated_arrival ? formatDate(detailOrder.estimated_arrival) : "—"}</span></div>
-            </div>
-
-            {/* Notes */}
-            {detailOrder.notes && (
-              <div><h4 className="font-semibold mb-1" style={{ color: "#888" }}>Примечание</h4><p style={{ color: "#333" }}>{detailOrder.notes}</p></div>
-            )}
-
-            {/* Comment */}
-            <div>
-              <h4 className="font-semibold mb-1" style={{ color: "#888" }}>Комментарий</h4>
-              <div className="flex gap-2">
-                <input value={detailComment} onChange={(e) => setDetailComment(e.target.value)} placeholder="Добавить комментарий..." className="flex-1 px-2 py-1 text-xs rounded outline-none" style={{ border: "1px solid #d0d0d0" }} />
-                <button onClick={addComment} disabled={!detailComment.trim()} className="px-2 py-1 rounded text-white text-xs disabled:opacity-40" style={{ background: "#0067a5" }}>→</button>
-              </div>
-            </div>
+          <div>
+            <span className="block mb-1" style={{ color: "#888" }}>Работник</span>
+            <select defaultValue={order.worker_id ?? ""} onChange={(e) => updateField("worker_id", e.target.value)} style={inputStyle}>
+              <option value="">Не назначен</option>
+              {users.map((u: { id: string; full_name: string }) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+            </select>
           </div>
         </div>
-      )}
+
+        {/* Products */}
+        <div>
+          <h4 className="font-semibold mb-1" style={{ color: "#888" }}>Товары</h4>
+          {(order.deals?.deal_products ?? []).map((dp: { quantity: number; products: any }, i: number) => {
+            const p = Array.isArray(dp.products) ? dp.products[0] : dp.products;
+            return <p key={i} style={{ color: "#333" }}>{p?.name} (арт. {p?.sku}) × {dp.quantity}</p>;
+          })}
+        </div>
+
+        {/* Logistics — editable for admin */}
+        <div className="space-y-2">
+          <h4 className="font-semibold" style={{ color: "#888" }}>Логистика</h4>
+          <div>
+            <span className="block mb-1" style={{ color: "#888" }}>Трек-номер</span>
+            <input value={trackEdit} onChange={(e) => setTrackEdit(e.target.value)} onBlur={() => updateField("tracking_number", trackEdit)} style={inputStyle} placeholder="ABC123..." />
+          </div>
+          <div>
+            <span className="block mb-1" style={{ color: "#888" }}>Дата прибытия</span>
+            <input type="date" value={arrivalEdit} onChange={(e) => { setArrivalEdit(e.target.value); updateField("estimated_arrival", e.target.value); }} style={inputStyle} />
+          </div>
+        </div>
+
+        {/* Notes — editable */}
+        <div>
+          <h4 className="font-semibold mb-1" style={{ color: "#888" }}>Примечание</h4>
+          <textarea value={notesEdit} onChange={(e) => setNotesEdit(e.target.value)} onBlur={() => updateField("notes", notesEdit)} rows={2} style={{ ...inputStyle, resize: "vertical" }} />
+        </div>
+
+        {/* Comments log */}
+        <div>
+          <h4 className="font-semibold mb-2" style={{ color: "#888" }}>История и комментарии</h4>
+          {comments.length === 0 && <p style={{ color: "#aaa" }}>Нет записей</p>}
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {comments.map((c) => (
+              <div key={c.id} className="px-2 py-1.5 rounded" style={{ background: c.action === "comment" ? "#f0f7ff" : "#f5f5f5" }}>
+                <p style={{ color: "#333" }}>
+                  {c.action === "comment" && c.comment}
+                  {c.action === "stage_change" && `Этап: ${STAGE_LABELS[c.from_stage ?? ""] ?? c.from_stage} → ${STAGE_LABELS[c.to_stage ?? ""] ?? c.to_stage}`}
+                  {c.action === "created" && "Заказ создан"}
+                </p>
+                <p style={{ color: "#aaa", fontSize: 10 }}>{new Date(c.created_at).toLocaleString("ru-RU")}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-2">
+            <input value={newComment} onChange={(e) => setNewComment(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addComment(); }}
+              placeholder="Добавить комментарий..." className="flex-1 px-2 py-1.5 rounded outline-none" style={{ border: "1px solid #d0d0d0", fontSize: 12 }} />
+            <button onClick={addComment} disabled={!newComment.trim()} className="px-3 py-1.5 rounded text-white disabled:opacity-40" style={{ background: "#0067a5", fontSize: 11 }}>→</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
