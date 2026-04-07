@@ -66,7 +66,6 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
         company_id: (fd.get("company_id") as string) || null,
         assigned_to: (fd.get("assigned_to") as string) || null,
         telegram_username: (fd.get("telegram_username") as string) || null,
-        had_call: (fd.get("had_call") as string) || null,
         description: (fd.get("description") as string) || null,
       })
       .eq("id", lead.id)
@@ -110,10 +109,7 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
           placeholder="Выберите сотрудника"
           defaultValue={lead?.assigned_to ?? ""}
         />
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Telegram контакта" name="telegram_username" defaultValue={lead?.telegram_username ?? ""} placeholder="@username" />
-          <Input label="Был ли звонок" name="had_call" defaultValue={lead?.had_call ?? ""} placeholder="да / нет / дата" />
-        </div>
+        <Input label="Telegram контакта" name="telegram_username" defaultValue={lead?.telegram_username ?? ""} placeholder="@username" />
         <Textarea label="Описание" name="description" defaultValue={lead?.description ?? ""} />
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Отмена</Button>
