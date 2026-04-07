@@ -202,10 +202,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск по компании, контакту..."
             className="w-full pl-8 pr-3 py-1.5 text-sm focus:outline-none" style={{ border: "1px solid #d0d0d0", borderRadius: 4 }} />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="text-xs px-2 py-1.5 rounded outline-none" style={{ border: "1px solid #d0d0d0" }}>
-          <option value="">Все статусы</option>
-          {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
+        {/* filters can be added here */}
         <Button onClick={openCreate} size="sm"><Plus size={13} /> Новое КП</Button>
       </div>
 
@@ -220,7 +217,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: "1px solid #e4e4e4", background: "#fafafa" }}>
-                {["№", "Компания", "Контакт", "Менеджер", "Сумма", "Статус", "Дата", ""].map((h) => (
+                {["№", "Компания", "Контакт", "Менеджер", "Сумма", "Дата", ""].map((h) => (
                   <th key={h} className="text-left px-3 py-2 text-xs font-semibold uppercase" style={{ color: "#888" }}>{h}</th>
                 ))}
               </tr>
@@ -234,7 +231,6 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                   <td className="px-3 py-2 text-xs" style={{ color: "#666" }}>{q.contacts?.full_name ?? "—"}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: "#666" }}>{q.users?.full_name ?? "—"}</td>
                   <td className="px-3 py-2 font-medium" style={{ color: "#2e7d32" }}>{formatCurrency(q.total_amount)}</td>
-                  <td className="px-3 py-2"><Badge variant={STATUS_VARIANTS[q.status] ?? "default"}>{STATUS_LABELS[q.status] ?? q.status}</Badge></td>
                   <td className="px-3 py-2 text-xs" style={{ color: "#888" }}>{formatDate(q.created_at)}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1">
@@ -425,17 +421,20 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
 
           {/* Actions */}
           <div className="flex items-center gap-2 pt-2 flex-wrap">
-            <Button size="sm" onClick={() => handleSave("draft")} loading={saving}><FileSpreadsheet size={13} /> Черновик</Button>
-            <Button size="sm" onClick={() => handleSave("sent")} loading={saving} style={{ background: "#2e7d32" }}><Send size={13} /> Отправлено</Button>
+            <Button size="sm" onClick={() => handleSave("draft")} loading={saving}><FileSpreadsheet size={13} /> Сохранить</Button>
             <Button size="sm" variant="secondary" onClick={copySummary}>
               {copied ? <><Check size={13} /> Скопировано!</> : <><Copy size={13} /> Саммари</>}
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => {
+            <Button size="sm" variant="secondary" onClick={async () => {
+              if (!editing?.id) { await handleSave("draft"); }
               if (editing?.id) window.open(`/quotes/${editing.id}`, "_blank");
+            }}><Eye size={13} /> Страница КП</Button>
+            <Button size="sm" variant="secondary" onClick={() => {
+              if (editing?.id) { navigator.clipboard.writeText(`${window.location.origin}/quotes/${editing.id}`); setCopied(true); setTimeout(() => setCopied(false), 2000); }
               else alert("Сначала сохраните КП");
-            }}><Eye size={13} /> Просмотр</Button>
+            }}><Copy size={13} /> Ссылка</Button>
             <div className="flex-1" />
-            <Button size="sm" variant="secondary" onClick={() => setEditorOpen(false)}>Отмена</Button>
+            <Button size="sm" variant="secondary" onClick={() => setEditorOpen(false)}>Закрыть</Button>
           </div>
         </div>
       </Modal>

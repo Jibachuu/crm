@@ -18,7 +18,7 @@ export default async function QuotesPage() {
     admin.from("companies").select("id, name, inn").order("name"),
     admin.from("contacts").select("id, full_name, phone, email, company_id").order("full_name"),
     admin.from("products").select("id, name, sku, base_price, category, subcategory, description, image_url").eq("is_active", true).order("name"),
-    admin.from("users").select("id, full_name, phone, email").eq("is_active", true).order("full_name"),
+    admin.from("users").select("id, full_name, email").eq("is_active", true).order("full_name"),
   ]);
 
   return (
