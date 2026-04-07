@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
+import DownloadPdfButton from "@/components/ui/DownloadPdfButton";
 
 export default async function PublicQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -41,11 +42,16 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
   return (
     <div style={{ background: "#faf8f5", minHeight: "100vh" }}>
       {/* Page content */}
-      <div style={{ maxWidth: 900, margin: "0 auto", background: "#fff" }}>
+      {/* PDF download bar */}
+      <div id="pdf-buttons" style={{ maxWidth: 900, margin: "0 auto", padding: "12px 0", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <DownloadPdfButton filename={`КП_${quote.quote_number}_${quote.companies?.name ?? ""}`} />
+      </div>
+
+      <div id="quote-content" style={{ maxWidth: 900, margin: "0 auto", background: "#fff" }}>
 
         {/* Header with logo */}
         <div style={{ padding: "32px 40px 20px", borderBottom: "2px solid #e8e0d4" }}>
-          {logoUrl && <img src={`/api/image-proxy?url=${encodeURIComponent(logoUrl)}`} alt="Logo" style={{ height: 48, marginBottom: 16 }} />}
+          {logoUrl && <img src={logoUrl} alt="Logo" style={{ height: 48, marginBottom: 16 }} crossOrigin="anonymous" />}
           <h1 style={{ fontSize: 24, fontWeight: 700, color: "#3d3325", margin: 0, fontFamily: "Georgia, serif" }}>
             Коммерческое предложение
           </h1>
@@ -164,7 +170,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
         </div>
 
         {/* Footer */}
-        <div style={{ background: "#3d3325", color: "rgba(255,255,255,0.5)", padding: "12px 40px", fontSize: 11, textAlign: "center" }}>
+        <div style={{ padding: "12px 40px", fontSize: 11, textAlign: "center", color: "#b3a894", borderTop: "1px solid #efe9df" }}>
           Artevo — антивандальные держатели и косметика Havenberg для HoReCa
         </div>
       </div>

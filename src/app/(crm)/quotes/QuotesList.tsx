@@ -436,9 +436,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
             <Button size="sm" variant="secondary" onClick={() => {
               const qid = editing?.id;
               if (!qid) { alert("Сначала сохраните КП"); return; }
-              // Open quote page in print mode for PDF
-              const w = window.open(`/q/${qid}`, "_blank");
-              if (w) setTimeout(() => w.print(), 2000);
+              window.open(`/q/${qid}`, "_blank");
+              alert("На открывшейся странице нажмите кнопку 'Скачать PDF'");
             }}><Download size={13} /> Скачать PDF</Button>
             <Button size="sm" variant="secondary" onClick={() => {
               const qid = editing?.id;
