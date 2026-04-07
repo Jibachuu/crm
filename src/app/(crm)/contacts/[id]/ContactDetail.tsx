@@ -8,6 +8,7 @@ import TelegramChat from "@/components/ui/TelegramChat";
 import EmailThread from "@/components/ui/EmailThread";
 import Button from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
+import ClientTimeIndicator from "@/components/ui/ClientTimeIndicator";
 import Badge from "@/components/ui/Badge";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
@@ -346,6 +347,9 @@ export default function ContactDetail({ contact: initialContact, communications:
                 <Link href={`/companies/${contact.companies.id}`} className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700">
                   <Building2 size={14} /> {contact.companies.name}
                 </Link>
+                <div className="mt-2">
+                  <ClientTimeIndicator timezone={contact.companies.timezone} region={contact.companies.city || contact.companies.region} />
+                </div>
               </CardBody>
             </Card>
           )}

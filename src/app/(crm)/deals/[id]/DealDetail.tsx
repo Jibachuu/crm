@@ -8,6 +8,7 @@ import TelegramChat from "@/components/ui/TelegramChat";
 import EmailThread from "@/components/ui/EmailThread";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import ClientTimeIndicator from "@/components/ui/ClientTimeIndicator";
 import { Card, CardBody } from "@/components/ui/Card";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
@@ -374,6 +375,9 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 <Link href={`/companies/${deal.companies.id}`} className="flex items-center gap-2 text-sm hover:underline" style={{ color: "#0067a5" }}>
                   <Building2 size={13} />{deal.companies.name}
                 </Link>
+                <div className="mt-2">
+                  <ClientTimeIndicator timezone={deal.companies.timezone} region={deal.companies.city || deal.companies.region} />
+                </div>
               </CardBody>
             </Card>
           )}

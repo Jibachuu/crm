@@ -8,6 +8,7 @@ import TelegramChat from "@/components/ui/TelegramChat";
 import EmailThread from "@/components/ui/EmailThread";
 import { formatCurrency } from "@/lib/utils";
 import Badge from "@/components/ui/Badge";
+import ClientTimeIndicator from "@/components/ui/ClientTimeIndicator";
 import Button from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
@@ -374,6 +375,9 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                 <Link href={`/companies/${lead.companies.id}`} className="flex items-center gap-2 text-sm hover:underline" style={{ color: "#0067a5" }}>
                   <Building2 size={13} /> {lead.companies.name}
                 </Link>
+                <div className="mt-2">
+                  <ClientTimeIndicator timezone={lead.companies.timezone} region={lead.companies.city || lead.companies.region} />
+                </div>
               </CardBody>
             </Card>
           )}
