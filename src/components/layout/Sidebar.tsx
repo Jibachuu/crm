@@ -23,6 +23,7 @@ import {
   FileSpreadsheet,
   UserCircle,
   Factory,
+  HelpCircle,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 
@@ -49,6 +50,7 @@ const navItems: NavItem[] = [
   { href: "/analytics", label: "Аналитика", icon: BarChart3 },
   { href: "/team", label: "Команда", icon: UsersRound },
   { href: "/campaigns", label: "Рассылки", icon: Mail },
+  { href: "/help", label: "Справка", icon: HelpCircle },
 ];
 
 type SectionPerms = Record<string, { can_read: boolean; can_create: boolean; can_update: boolean; can_delete: boolean }>;
