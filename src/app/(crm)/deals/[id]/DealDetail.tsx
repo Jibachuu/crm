@@ -65,10 +65,37 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
     setNoteLoading(false);
   }
 
-  async function updateStage(stage: string) {
+  async function updateStage(newStage: string) {
     const supabase = createClient();
-    await supabase.from("deals").update({ stage }).eq("id", deal.id);
-    setDeal((p: typeof deal) => ({ ...p, stage }));
+    const oldStage = deal.stage;
+    await supabase.from("deals").update({ stage: newStage, ...(newStage === "won" ? { closed_at: new Date().toISOString() } : {}) }).eq("id", deal.id);
+
+    // Stock management: deduct on "won", restore if moving back from "won"
+    const orderProducts = dealProducts.filter((p: { product_block: string }) => p.product_block === "order");
+    if (newStage === "won" && oldStage !== "won" && orderProducts.length > 0) {
+      let warnings: string[] = [];
+      for (const dp of orderProducts) {
+        if (!dp.product_id) continue;
+        const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
+        if (variants?.[0]) {
+          const newStock = variants[0].stock - (dp.quantity ?? 0);
+          if (newStock < 0) warnings.push(`${dp.products?.name}: не хватает ${Math.abs(newStock)} шт.`);
+          await supabase.from("product_variants").update({ stock: Math.max(0, newStock) }).eq("id", variants[0].id);
+        }
+      }
+      if (warnings.length) alert("⚠️ Недостаточно остатков:\n" + warnings.join("\n"));
+    }
+    if (oldStage === "won" && newStage !== "won" && orderProducts.length > 0) {
+      for (const dp of orderProducts) {
+        if (!dp.product_id) continue;
+        const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
+        if (variants?.[0]) {
+          await supabase.from("product_variants").update({ stock: variants[0].stock + (dp.quantity ?? 0) }).eq("id", variants[0].id);
+        }
+      }
+    }
+
+    setDeal((p: typeof deal) => ({ ...p, stage: newStage }));
   }
 
   async function deleteDeal() {

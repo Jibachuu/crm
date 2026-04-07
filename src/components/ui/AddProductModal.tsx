@@ -11,6 +11,10 @@ interface Product {
   name: string;
   sku: string;
   base_price: number;
+  category?: string;
+  subcategory?: string;
+  flavor?: string;
+  volume?: string;
   product_variants: { id: string; attributes: Record<string, string>; price: number | null; stock: number }[];
 }
 
@@ -32,6 +36,7 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
   const [basePrice, setBasePrice] = useState(0);
   const [salePrice, setSalePrice] = useState("");
   const [discountPct, setDiscountPct] = useState("");
+  const [lifecycleDays, setLifecycleDays] = useState(0);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -105,6 +110,11 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
         discount_percent: Number(discountPct) || 0,
         total_price: total,
         product_block: productBlock,
+        category: selected.category || null,
+        subcategory: selected.subcategory || null,
+        flavor: selected.flavor || null,
+        volume: selected.volume || null,
+        lifecycle_days: lifecycleDays > 0 ? lifecycleDays : null,
       })
       .select("*, products(name, sku)")
       .single();
@@ -223,6 +233,18 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
                 </div>
               </div>
             </div>
+
+            {/* Lifecycle days — only for Косметика */}
+            {selected.category?.toLowerCase().includes("косметик") && productBlock === "order" && (
+              <div className="rounded-lg p-3" style={{ background: "#fff3e0", border: "1px solid #ffe0b2" }}>
+                <label className="block text-xs font-medium mb-1" style={{ color: "#e65c00" }}>Цикл жизни (дней)</label>
+                <input type="number" min="0" value={lifecycleDays}
+                  onChange={(e) => setLifecycleDays(Number(e.target.value))}
+                  className="w-24 text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  placeholder="90" />
+                <p className="text-xs mt-1" style={{ color: "#bf7600" }}>Через {lifecycleDays || "N"} дней после сделки МОП получит задачу связаться с клиентом</p>
+              </div>
+            )}
 
             <div className="flex justify-end gap-3">
               <Button variant="secondary" onClick={onClose}>Отмена</Button>
