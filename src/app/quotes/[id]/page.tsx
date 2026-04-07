@@ -7,7 +7,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
   const admin = createAdminClient();
 
   const [{ data: quote }, { data: items }, { data: supplier }, { data: catDescs }] = await Promise.all([
-    admin.from("quotes").select("*, companies(name, inn), contacts(full_name, phone, email), users!quotes_manager_id_fkey(id, full_name, phone, email)").eq("id", id).single(),
+    admin.from("quotes").select("*, companies(name, inn), contacts(full_name, phone, email), users!quotes_manager_id_fkey(id, full_name, email)").eq("id", id).single(),
     admin.from("quote_items").select("*").eq("quote_id", id).order("sort_order"),
     admin.from("supplier_settings").select("*").limit(1).single(),
     admin.from("category_descriptions").select("*").order("sort_order"),
@@ -22,7 +22,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
     : { data: null };
 
   const totalAmount = (items ?? []).reduce((s, i) => s + (i.sum ?? 0), 0);
-  const manager = quote.users as { full_name: string; phone?: string; email?: string } | null;
+  const manager = quote.users as { full_name: string; email?: string } | null;
 
   // Group items by category (extract from name "Category / Subcategory / Name")
   const categoryMap = new Map<string, typeof items>();
@@ -145,7 +145,6 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
         <div style={{ padding: "24px 40px", borderTop: "1px solid #efe9df" }}>
           <p style={{ fontSize: 11, fontWeight: 600, color: "#b3a894", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Ваш менеджер</p>
           <p style={{ fontSize: 15, fontWeight: 600, color: "#3d3325" }}>{manager?.full_name}</p>
-          {manager?.phone && <p style={{ fontSize: 13, color: "#6b5e4f" }}>{manager.phone}</p>}
           {manager?.email && <p style={{ fontSize: 13, color: "#6b5e4f" }}>{manager.email}</p>}
           {sigData?.body && (
             <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #efe9df", fontSize: 12, color: "#8c7e6a", whiteSpace: "pre-wrap" }}>
@@ -155,12 +154,6 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
 
           {/* CTA */}
           <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
-            {manager?.phone && (
-              <a href={`https://wa.me/${manager.phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer"
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 24px", background: "#25d366", color: "#fff", borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
-                WhatsApp
-              </a>
-            )}
             {manager?.email && (
               <a href={`mailto:${manager.email}`}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 24px", background: "#6b5e4f", color: "#fff", borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>

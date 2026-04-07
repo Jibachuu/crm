@@ -132,8 +132,11 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: editing ? "update" : "create", id: editing?.id, ...form, status, items }),
     });
-    if (res.ok) { setEditorOpen(false); window.location.reload(); }
-    else { const d = await res.json(); alert(d.error ?? "Ошибка"); }
+    if (res.ok) {
+      const data = await res.json();
+      setEditing({ id: data.id ?? editing?.id });
+      alert("КП сохранено!");
+    } else { const d = await res.json(); alert(d.error ?? "Ошибка"); }
     setSaving(false);
   }
 
@@ -425,16 +428,26 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
             <Button size="sm" variant="secondary" onClick={copySummary}>
               {copied ? <><Check size={13} /> Скопировано!</> : <><Copy size={13} /> Саммари</>}
             </Button>
-            <Button size="sm" variant="secondary" onClick={async () => {
-              if (!editing?.id) { await handleSave("draft"); }
-              if (editing?.id) window.open(`/quotes/${editing.id}`, "_blank");
+            <Button size="sm" variant="secondary" onClick={() => {
+              const qid = editing?.id;
+              if (!qid) { alert("Сначала сохраните КП"); return; }
+              window.open(`/quotes/${qid}`, "_blank");
             }}><Eye size={13} /> Страница КП</Button>
             <Button size="sm" variant="secondary" onClick={() => {
-              if (editing?.id) { navigator.clipboard.writeText(`${window.location.origin}/quotes/${editing.id}`); setCopied(true); setTimeout(() => setCopied(false), 2000); }
-              else alert("Сначала сохраните КП");
+              const qid = editing?.id;
+              if (!qid) { alert("Сначала сохраните КП"); return; }
+              // Open quote page in print mode for PDF
+              const w = window.open(`/quotes/${qid}`, "_blank");
+              if (w) setTimeout(() => w.print(), 2000);
+            }}><Download size={13} /> Скачать PDF</Button>
+            <Button size="sm" variant="secondary" onClick={() => {
+              const qid = editing?.id;
+              if (!qid) { alert("Сначала сохраните КП"); return; }
+              navigator.clipboard.writeText(`${window.location.origin}/quotes/${qid}`);
+              setCopied(true); setTimeout(() => setCopied(false), 2000);
             }}><Copy size={13} /> Ссылка</Button>
             <div className="flex-1" />
-            <Button size="sm" variant="secondary" onClick={() => setEditorOpen(false)}>Закрыть</Button>
+            <Button size="sm" variant="secondary" onClick={() => { setEditorOpen(false); window.location.reload(); }}>Закрыть</Button>
           </div>
         </div>
       </Modal>
