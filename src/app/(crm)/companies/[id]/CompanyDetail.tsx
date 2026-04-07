@@ -10,6 +10,7 @@ import TelegramChat from "@/components/ui/TelegramChat";
 import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import ExportCommunicationsModal from "@/components/ui/ExportCommunicationsModal";
 import AIAnalysis from "@/components/ui/AIAnalysis";
+import ClientTimeIndicator from "@/components/ui/ClientTimeIndicator";
 import GatherCommunicationsButton from "@/components/ui/GatherCommunicationsButton";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -329,6 +330,11 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
           <Card>
             <CardBody>
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Реквизиты</h3>
+              {(company.city || company.region || company.timezone) && (
+                <div className="mb-3">
+                  <ClientTimeIndicator timezone={company.timezone} region={company.city || company.region} />
+                </div>
+              )}
               <div className="space-y-2 text-sm">
                 {company.company_type && (
                   <div className="flex justify-between">

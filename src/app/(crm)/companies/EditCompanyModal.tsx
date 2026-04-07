@@ -8,6 +8,7 @@ import Textarea from "@/components/ui/Textarea";
 import Button from "@/components/ui/Button";
 import DirectorySelect from "@/components/ui/DirectorySelect";
 import { createClient } from "@/lib/supabase/client";
+import { getTimezoneFromRegion } from "@/components/ui/ClientTimeIndicator";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function EditCompanyModal({ open, onClose, company, onSaved }: { open: boolean; onClose: () => void; company: any; onSaved: (company: any) => void }) {
@@ -97,6 +98,11 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
         rooms_count: fd.get("rooms_count") ? Number(fd.get("rooms_count")) : null,
         masters_count: fd.get("masters_count") ? Number(fd.get("masters_count")) : null,
         cabinets_count: fd.get("cabinets_count") ? Number(fd.get("cabinets_count")) : null,
+        is_network: fd.get("is_network") === "on",
+        network_count: fd.get("network_count") ? Number(fd.get("network_count")) : null,
+        opened_recently: (fd.get("opened_recently") as string) || null,
+        avg_check: fd.get("avg_check") ? Number(fd.get("avg_check")) : null,
+        timezone: getTimezoneFromRegion((fd.get("city") as string) || (fd.get("region") as string) || ""),
       })
       .eq("id", company.id)
       .select("*, users!companies_assigned_to_fkey(id, full_name), venue_types(id, name), suppliers(id, name)")
@@ -168,6 +174,25 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
           <Input label="Email" name="email" type="email" defaultValue={company?.email ?? ""} />
           <Input label="Сайт" name="website" defaultValue={company?.website ?? ""} />
         </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="is_network" defaultChecked={company?.is_network} style={{ accentColor: "#0067a5" }} />
+            Сеть заведений
+          </label>
+          <Input label="Кол-во точек" name="network_count" type="number" min="1" defaultValue={company?.network_count ?? ""} />
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Статус</label>
+            <select name="opened_recently" defaultValue={company?.opened_recently ?? ""} className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">—</option>
+              <option value="opening">Только открывается</option>
+              <option value="working">Уже работает</option>
+            </select>
+          </div>
+        </div>
+        {(company?.company_type === "restaurant" || venueTypeName === "Ресторан") && (
+          <Input label="Средний чек (₽)" name="avg_check" type="number" min="0" defaultValue={company?.avg_check ?? ""} />
+        )}
 
         <Textarea label="Деятельность компании" name="activity" defaultValue={company?.activity ?? ""} />
         <Textarea label="Потребность" name="need" defaultValue={company?.need ?? ""} />

@@ -369,19 +369,12 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
             </Card>
           )}
 
-          {deal.users && (
-            <Card>
-              <CardBody>
-                <h3 className="text-xs font-semibold uppercase mb-2" style={{ color: "#888", letterSpacing: "0.05em" }}>Ответственный</h3>
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "#e8f4fd", color: "#0067a5" }}>
-                    {getInitials(deal.users.full_name)}
-                  </div>
-                  <span className="text-sm" style={{ color: "#333" }}>{deal.users.full_name}</span>
-                </div>
-              </CardBody>
-            </Card>
-          )}
+          <Card>
+            <CardBody>
+              <h3 className="text-xs font-semibold uppercase mb-2" style={{ color: "#888", letterSpacing: "0.05em" }}>Ответственный</h3>
+              <DealAssignee dealId={deal.id} currentUser={deal.users} onChanged={(u) => setDeal((p: typeof deal) => ({ ...p, users: u, assigned_to: u?.id }))} />
+            </CardBody>
+          </Card>
 
           <Card>
             <CardBody>
@@ -446,13 +439,16 @@ function DealProductBlock({ title, description, items, total, onAdd }: { title: 
                 </tr>
               </thead>
               <tbody>
-                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; category?: string; subcategory?: string; quantity: number; unit_price: number; discount_percent: number; total_price: number }) => (
+                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; category?: string; subcategory?: string; lifecycle_days?: number; quantity: number; unit_price: number; discount_percent: number; total_price: number }) => (
                   <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                     <td className="px-4 py-2">
                       <p className="font-medium" style={{ color: "#333" }}>{item.products?.name}</p>
                       <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products?.sku}</p>
                       {(item.category || item.subcategory) && (
                         <p className="text-xs" style={{ color: "#0067a5" }}>{[item.category, item.subcategory].filter(Boolean).join(" → ")}</p>
+                      )}
+                      {item.lifecycle_days && item.lifecycle_days > 0 && (
+                        <p className="text-xs mt-0.5" style={{ color: "#e65c00" }}>🔄 Повтор через {item.lifecycle_days} дн.</p>
                       )}
                     </td>
                     <td className="px-4 py-2 text-right" style={{ color: "#555" }}>{item.quantity} шт.</td>
@@ -513,5 +509,49 @@ function DealQuotes({ dealId }: { dealId: string }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function DealAssignee({ dealId, currentUser, onChanged }: { dealId: string; currentUser: { id: string; full_name: string } | null; onChanged: (u: { id: string; full_name: string } | null) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
+
+  async function loadUsers() {
+    const { data } = await createClient().from("users").select("id, full_name").eq("is_active", true).order("full_name");
+    setUsers(data ?? []);
+    setEditing(true);
+  }
+
+  async function change(userId: string) {
+    const supabase = createClient();
+    await supabase.from("deals").update({ assigned_to: userId || null }).eq("id", dealId);
+    const user = users.find((u) => u.id === userId) ?? null;
+    onChanged(user);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <select onChange={(e) => change(e.target.value)} defaultValue={currentUser?.id ?? ""} autoFocus
+        className="w-full text-sm border border-slate-300 rounded px-2 py-1 focus:outline-none" onBlur={() => setEditing(false)}>
+        <option value="">Не назначен</option>
+        {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+      </select>
+    );
+  }
+
+  return (
+    <button onClick={loadUsers} className="flex items-center gap-2 hover:bg-gray-50 rounded px-1 py-0.5 w-full text-left">
+      {currentUser ? (
+        <>
+          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "#e8f4fd", color: "#0067a5" }}>
+            {getInitials(currentUser.full_name)}
+          </div>
+          <span className="text-sm" style={{ color: "#333" }}>{currentUser.full_name}</span>
+        </>
+      ) : (
+        <span className="text-sm" style={{ color: "#aaa" }}>Назначить ответственного</span>
+      )}
+    </button>
   );
 }
