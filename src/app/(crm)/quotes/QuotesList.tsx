@@ -171,9 +171,15 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setQuotes(quotes.filter((q: { id: string }) => q.id !== id));
   }
 
-  const filteredProducts = products.filter((p: { name: string; sku: string }) =>
-    productSearch.length >= 2 && (p.name.toLowerCase().includes(productSearch.toLowerCase()) || p.sku.toLowerCase().includes(productSearch.toLowerCase()))
-  );
+  const filteredProducts = products.filter((p: { name: string; sku: string; category?: string; subcategory?: string; description?: string }) => {
+    if (productSearch.length < 2) return false;
+    const q = productSearch.toLowerCase();
+    return p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q) ||
+      p.category?.toLowerCase().includes(q) ||
+      p.subcategory?.toLowerCase().includes(q) ||
+      p.description?.toLowerCase().includes(q);
+  });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const filtered = quotes.filter((q: any) => {
