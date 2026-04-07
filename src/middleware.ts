@@ -41,7 +41,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isPublicRoute) {
+  // Redirect logged-in users from auth pages (login/register) to dashboard
+  // But NOT from /q/ (public quote pages) or /api/ — those should work for everyone
+  const authOnlyRoutes = ["/login", "/register", "/forgot-password", "/reset-password"];
+  const isAuthRoute = authOnlyRoutes.some((route) => pathname.startsWith(route));
+  if (user && isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
