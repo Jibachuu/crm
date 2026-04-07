@@ -41,7 +41,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
   const [dealProducts, setDealProducts] = useState(initialDealProducts ?? []);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram" | "quotes">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram" | "quotes" | "production">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -197,6 +197,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 { id: "tasks", label: `Задачи (${tasks.length})` },
                 { id: "products", label: `Товары (${dealProducts.length})` },
                 { id: "quotes", label: "📋 КП" },
+                { id: "production", label: "🏭 Производство" },
                 ...(deal.contacts?.email ? [{ id: "email", label: "📧 Почта" }] : []),
                 ...(deal.contacts?.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
               ].map((tab) => (
@@ -320,6 +321,10 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 </p>
                 <TelegramChat peer={deal.contacts.telegram_id} compact />
               </div>
+            )}
+
+            {activeTab === "production" && (
+              <DealProduction dealId={deal.id} dealStage={deal.stage} />
             )}
 
             {activeTab === "quotes" && (
@@ -576,5 +581,54 @@ function DealAssignee({ dealId, currentUser, onChanged }: { dealId: string; curr
         <span className="text-sm" style={{ color: "#aaa" }}>Назначить ответственного</span>
       )}
     </button>
+  );
+}
+
+function DealProduction({ dealId, dealStage }: { dealId: string; dealStage: string }) {
+  const [prod, setProd] = useState<{ id: string; stage: string; tracking_number?: string; estimated_arrival?: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    createClient().from("order_production").select("id, stage, tracking_number, estimated_arrival").eq("deal_id", dealId).limit(1).single()
+      .then(({ data }) => { setProd(data); setLoading(false); });
+  }, [dealId]);
+
+  async function createProduction() {
+    const res = await fetch("/api/production", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "create", deal_id: dealId }),
+    });
+    if (res.ok) window.location.reload();
+    else { const d = await res.json(); alert(d.error ?? "Ошибка"); }
+  }
+
+  const STAGE_LABELS: Record<string, string> = { new: "Передан в работу", in_progress: "В работе", discussion: "Обсуждение", packing: "Упаковка", shipped: "Отправлен", delivered: "Доставлен", review_requested: "Отзыв запрошен" };
+
+  if (loading) return <p className="text-xs text-center py-6" style={{ color: "#aaa" }}>Загрузка...</p>;
+
+  if (!prod) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-xs mb-3" style={{ color: "#aaa" }}>Заказ ещё не передан в производство</p>
+        {dealStage === "won" && (
+          <button onClick={createProduction} className="text-xs px-3 py-1.5 rounded text-white" style={{ background: "#0067a5" }}>
+            Передать в производство
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between px-4 py-3 rounded" style={{ border: "1px solid #e4e4e4" }}>
+        <div>
+          <p className="text-sm font-medium" style={{ color: "#333" }}>Этап: {STAGE_LABELS[prod.stage] ?? prod.stage}</p>
+          {prod.tracking_number && <p className="text-xs font-mono mt-1" style={{ color: "#7b1fa2" }}>🚚 {prod.tracking_number}</p>}
+          {prod.estimated_arrival && <p className="text-xs mt-0.5" style={{ color: "#2e7d32" }}>📦 Прибытие: {formatDate(prod.estimated_arrival)}</p>}
+        </div>
+        <a href="/production" className="text-xs hover:underline" style={{ color: "#0067a5" }}>Открыть в канбане →</a>
+      </div>
+    </div>
   );
 }

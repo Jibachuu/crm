@@ -22,6 +22,7 @@ import {
   Receipt,
   FileSpreadsheet,
   UserCircle,
+  Factory,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { href: "/samples", label: "Пробники", icon: FlaskConical },
   { href: "/invoices", label: "Счета", icon: Receipt },
   { href: "/quotes", label: "КП", icon: FileSpreadsheet },
+  { href: "/production", label: "Производство", icon: Factory },
   { href: "/my-clients", label: "Мои клиенты", icon: UserCircle },
   { href: "/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/tasks", label: "Задачи", icon: CheckSquare },
