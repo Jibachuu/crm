@@ -213,8 +213,10 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                   <td className="px-3 py-2 text-xs" style={{ color: "#888" }}>{formatDate(q.created_at)}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1">
-                      <button onClick={() => openEdit(q.id)} className="p-1 rounded hover:bg-blue-50"><Eye size={12} style={{ color: "#0067a5" }} /></button>
-                      <button onClick={() => deleteQuote(q.id)} className="p-1 rounded hover:bg-red-50"><Trash2 size={12} style={{ color: "#c62828" }} /></button>
+                      <button onClick={() => openEdit(q.id)} className="p-1 rounded hover:bg-blue-50" title="Открыть"><Eye size={12} style={{ color: "#0067a5" }} /></button>
+                      <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/quotes/${q.id}`); }} className="p-1 rounded hover:bg-blue-50" title="Копировать ссылку"><Copy size={12} style={{ color: "#888" }} /></button>
+                      <a href={`/quotes/${q.id}`} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-blue-50" title="Открыть публичную страницу"><Send size={12} style={{ color: "#2e7d32" }} /></a>
+                      <button onClick={() => deleteQuote(q.id)} className="p-1 rounded hover:bg-red-50" title="Удалить"><Trash2 size={12} style={{ color: "#c62828" }} /></button>
                     </div>
                   </td>
                 </tr>

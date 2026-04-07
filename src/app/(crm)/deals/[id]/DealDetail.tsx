@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, Package, Plus, CheckSquare, MessageSquare, Send } from "lucide-react";
@@ -40,7 +40,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
   const [dealProducts, setDealProducts] = useState(initialDealProducts ?? []);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram" | "quotes">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -160,6 +160,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 { id: "communications", label: `Коммуникации (${communications.length})` },
                 { id: "tasks", label: `Задачи (${tasks.length})` },
                 { id: "products", label: `Товары (${dealProducts.length})` },
+                { id: "quotes", label: "📋 КП" },
                 ...(deal.contacts?.email ? [{ id: "email", label: "📧 Почта" }] : []),
                 ...(deal.contacts?.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
               ].map((tab) => (
@@ -283,6 +284,10 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 </p>
                 <TelegramChat peer={deal.contacts.telegram_id} compact />
               </div>
+            )}
+
+            {activeTab === "quotes" && (
+              <DealQuotes dealId={deal.id} />
             )}
 
             {activeTab === "products" && (
@@ -443,6 +448,43 @@ function DealProductBlock({ title, description, items, total, onAdd }: { title: 
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+
+function DealQuotes({ dealId }: { dealId: string }) {
+  const [quotes, setQuotes] = useState<{ id: string; quote_number: number; total_amount: number; status: string; created_at: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    createClient().from("quotes").select("id, quote_number, total_amount, status, created_at").eq("deal_id", dealId).order("created_at", { ascending: false })
+      .then(({ data }) => { setQuotes(data ?? []); setLoading(false); });
+  }, [dealId]);
+
+  const SL: Record<string, string> = { draft: "Черновик", sent: "Отправлено", accepted: "Принято", rejected: "Отклонено" };
+
+  if (loading) return <p className="text-xs text-center py-6" style={{ color: "#aaa" }}>Загрузка...</p>;
+
+  return (
+    <div className="space-y-2">
+      {quotes.length === 0 ? (
+        <p className="text-xs text-center py-6" style={{ color: "#aaa" }}>Нет КП для этой сделки</p>
+      ) : quotes.map((q) => (
+        <div key={q.id} className="flex items-center justify-between px-4 py-3 rounded hover:bg-gray-50" style={{ border: "1px solid #f0f0f0" }}>
+          <div>
+            <span className="text-sm font-medium" style={{ color: "#0067a5" }}>КП #{q.quote_number}</span>
+            <span className="text-xs ml-3" style={{ color: "#888" }}>{formatDate(q.created_at)}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium" style={{ color: "#2e7d32" }}>{formatCurrency(q.total_amount)}</span>
+            <Badge variant={q.status === "accepted" ? "success" : q.status === "rejected" ? "danger" : q.status === "sent" ? "warning" : "default"}>
+              {SL[q.status] ?? q.status}
+            </Badge>
+            <a href={"/quotes/" + q.id} target="_blank" rel="noopener noreferrer" className="text-xs hover:underline" style={{ color: "#0067a5" }}>Открыть</a>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
