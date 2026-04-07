@@ -376,7 +376,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   <Building2 size={13} />{deal.companies.name}
                 </Link>
                 <div className="mt-2">
-                  <ClientTimeIndicator timezone={deal.companies.timezone} region={deal.companies.city || deal.companies.region} />
+                  <ClientTimeIndicator timezone={deal.companies.timezone} region={deal.companies.city || deal.companies.region} address={deal.companies.legal_address} />
                 </div>
               </CardBody>
             </Card>

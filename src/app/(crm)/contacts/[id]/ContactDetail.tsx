@@ -348,7 +348,7 @@ export default function ContactDetail({ contact: initialContact, communications:
                   <Building2 size={14} /> {contact.companies.name}
                 </Link>
                 <div className="mt-2">
-                  <ClientTimeIndicator timezone={contact.companies.timezone} region={contact.companies.city || contact.companies.region} />
+                  <ClientTimeIndicator timezone={contact.companies.timezone} region={contact.companies.city || contact.companies.region} address={contact.companies.legal_address} />
                 </div>
               </CardBody>
             </Card>

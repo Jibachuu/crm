@@ -332,7 +332,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Реквизиты</h3>
               {(company.city || company.region || company.timezone) && (
                 <div className="mb-3">
-                  <ClientTimeIndicator timezone={company.timezone} region={company.city || company.region} />
+                  <ClientTimeIndicator timezone={company.timezone} region={company.city || company.region} address={company.legal_address} />
                 </div>
               )}
               <div className="space-y-2 text-sm">

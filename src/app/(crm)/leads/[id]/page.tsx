@@ -12,7 +12,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     .select(`
       *,
       contacts(id, full_name, phone, email, telegram_id),
-      companies(id, name, city, region, timezone),
+      companies(id, name, city, region, timezone, legal_address),
       users!leads_assigned_to_fkey(id, full_name)
     `)
     .eq("id", id)

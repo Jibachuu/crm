@@ -9,7 +9,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
 
   const { data: contact } = await supabase
     .from("contacts")
-    .select(`*, companies(id, name, city, region, timezone)`)
+    .select(`*, companies(id, name, city, region, timezone, legal_address)`)
     .eq("id", id)
     .single();
 

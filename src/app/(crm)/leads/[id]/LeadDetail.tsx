@@ -376,7 +376,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                   <Building2 size={13} /> {lead.companies.name}
                 </Link>
                 <div className="mt-2">
-                  <ClientTimeIndicator timezone={lead.companies.timezone} region={lead.companies.city || lead.companies.region} />
+                  <ClientTimeIndicator timezone={lead.companies.timezone} region={lead.companies.city || lead.companies.region} address={lead.companies.legal_address} />
                 </div>
               </CardBody>
             </Card>
