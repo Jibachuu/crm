@@ -11,7 +11,7 @@ export default function SupplierSettings() {
   const [form, setForm] = useState({
     id: "", company_name: "", inn: "", kpp: "", address: "",
     bank_name: "", bik: "", account_number: "", corr_account: "", director: "",
-    stamp_url: "", signature_url: "",
+    stamp_url: "", signature_url: "", logo_url: "",
   });
   const [uploadingStamp, setUploadingStamp] = useState(false);
   const [uploadingSig, setUploadingSig] = useState(false);
@@ -43,7 +43,7 @@ export default function SupplierSettings() {
     setSaving(false);
   }
 
-  async function uploadImage(file: File, field: "stamp_url" | "signature_url") {
+  async function uploadImage(file: File, field: "stamp_url" | "signature_url" | "logo_url") {
     const setter = field === "stamp_url" ? setUploadingStamp : setUploadingSig;
     setter(true);
     const fd = new FormData();
@@ -85,6 +85,25 @@ export default function SupplierSettings() {
           <div><label style={lblStyle}>Расчётный счёт</label><input value={form.account_number ?? ""} onChange={(e) => setForm({ ...form, account_number: e.target.value })} style={inputStyle} /></div>
           <div><label style={lblStyle}>Корр. счёт</label><input value={form.corr_account ?? ""} onChange={(e) => setForm({ ...form, corr_account: e.target.value })} style={inputStyle} /></div>
         </div>
+        {/* Logo */}
+        <div className="pt-2" style={{ borderTop: "1px solid #f0f0f0" }}>
+          <label style={lblStyle}>Логотип (для КП и счетов)</label>
+          {form.logo_url ? (
+            <div className="flex items-center gap-2">
+              <img src={form.logo_url} alt="Логотип" className="h-12 rounded" style={{ border: "1px solid #e0e0e0" }} />
+              <label className="flex items-center gap-1 text-xs px-2 py-1 rounded cursor-pointer hover:bg-gray-50" style={{ border: "1px solid #d0d0d0", color: "#888" }}>
+                <Upload size={11} /> Заменить
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f, "logo_url"); }} />
+              </label>
+            </div>
+          ) : (
+            <label className="flex items-center gap-1.5 text-xs px-3 py-2 rounded cursor-pointer hover:bg-gray-50" style={{ border: "1px dashed #d0d0d0", color: "#888" }}>
+              <Upload size={13} /> Загрузить логотип
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadImage(f, "logo_url"); }} />
+            </label>
+          )}
+        </div>
+
         {/* Stamp & Signature */}
         <div className="grid grid-cols-2 gap-3 pt-2" style={{ borderTop: "1px solid #f0f0f0" }}>
           <div>

@@ -425,10 +425,15 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
 
           {/* Actions */}
           <div className="flex items-center gap-2 pt-2 flex-wrap">
-            <Button size="sm" onClick={() => handleSave("draft")} loading={saving}><FileSpreadsheet size={13} /> Сохранить черновик</Button>
+            <Button size="sm" onClick={() => handleSave("draft")} loading={saving}><FileSpreadsheet size={13} /> Черновик</Button>
+            <Button size="sm" onClick={() => handleSave("sent")} loading={saving} style={{ background: "#2e7d32" }}><Send size={13} /> Отправлено</Button>
             <Button size="sm" variant="secondary" onClick={copySummary}>
               {copied ? <><Check size={13} /> Скопировано!</> : <><Copy size={13} /> Саммари</>}
             </Button>
+            <Button size="sm" variant="secondary" onClick={() => {
+              if (editing?.id) window.open(`/quotes/${editing.id}`, "_blank");
+              else alert("Сначала сохраните КП");
+            }}><Eye size={13} /> Просмотр</Button>
             <div className="flex-1" />
             <Button size="sm" variant="secondary" onClick={() => setEditorOpen(false)}>Отмена</Button>
           </div>

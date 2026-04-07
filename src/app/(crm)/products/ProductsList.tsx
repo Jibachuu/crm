@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Search, Package, Edit2, Trash2, CheckSquare } from "lucide-react";
+import { Plus, Search, Package, Edit2, Trash2, CheckSquare, ImagePlus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
@@ -189,7 +189,7 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                   <th className="px-3 py-2.5 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleAll} className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
                   </th>
-                  {["Товар", "Категория", "Артикул", "Цена", "Наличие", "Статус", ""].map((h) => (
+                  {["Фото", "Товар", "Категория", "Артикул", "Цена", "Наличие", "Статус", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>{h}</th>
                   ))}
                 </tr>
@@ -197,7 +197,7 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
               <tbody>
                 {filtered.map((product: {
                   id: string; name: string; sku: string; base_price: number; is_active: boolean;
-                  category?: string; subcategory?: string;
+                  category?: string; subcategory?: string; image_url?: string;
                   product_variants?: { id: string; stock: number }[];
                 }) => {
                   const isSel = selected.has(product.id);
@@ -207,6 +207,32 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                     <tr key={product.id} style={{ borderBottom: "1px solid #f0f0f0", background: isSel ? "#f0f7ff" : "transparent" }}>
                       <td className="px-3 py-2.5">
                         <input type="checkbox" checked={isSel} onChange={() => toggleOne(product.id)} className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
+                      </td>
+                      <td className="px-2 py-2">
+                        {product.image_url ? (
+                          <label className="relative group cursor-pointer block w-10 h-10">
+                            <img src={product.image_url} alt="" className="w-10 h-10 rounded object-cover" style={{ border: "1px solid #e0e0e0" }} />
+                            <div className="absolute inset-0 bg-black/40 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                              <ImagePlus size={12} style={{ color: "#fff" }} />
+                            </div>
+                            <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                              const f = e.target.files?.[0]; if (!f) return;
+                              const fd = new FormData(); fd.append("file", f); fd.append("product_id", product.id);
+                              const res = await fetch("/api/products/upload-image", { method: "POST", body: fd });
+                              if (res.ok) { const { url } = await res.json(); setProducts((prev: typeof products) => prev.map((p: { id: string }) => p.id === product.id ? { ...p, image_url: url } : p)); }
+                            }} />
+                          </label>
+                        ) : (
+                          <label className="w-10 h-10 rounded flex items-center justify-center cursor-pointer hover:bg-gray-100" style={{ background: "#f5f5f5", border: "1px dashed #ccc" }}>
+                            <ImagePlus size={14} style={{ color: "#aaa" }} />
+                            <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                              const f = e.target.files?.[0]; if (!f) return;
+                              const fd = new FormData(); fd.append("file", f); fd.append("product_id", product.id);
+                              const res = await fetch("/api/products/upload-image", { method: "POST", body: fd });
+                              if (res.ok) { const { url } = await res.json(); setProducts((prev: typeof products) => prev.map((p: { id: string }) => p.id === product.id ? { ...p, image_url: url } : p)); }
+                            }} />
+                          </label>
+                        )}
                       </td>
                       <td className="px-4 py-2.5">
                         <p className="font-medium" style={{ color: "#333" }}>{product.name}</p>

@@ -6,123 +6,172 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
   const { id } = await params;
   const admin = createAdminClient();
 
-  const { data: quote } = await admin.from("quotes")
-    .select("*, companies(name, inn), contacts(full_name, phone, email), users!quotes_manager_id_fkey(full_name, phone, email)")
-    .eq("id", id)
-    .single();
+  const [{ data: quote }, { data: items }, { data: supplier }, { data: catDescs }] = await Promise.all([
+    admin.from("quotes").select("*, companies(name, inn), contacts(full_name, phone, email), users!quotes_manager_id_fkey(id, full_name, phone, email)").eq("id", id).single(),
+    admin.from("quote_items").select("*").eq("quote_id", id).order("sort_order"),
+    admin.from("supplier_settings").select("*").limit(1).single(),
+    admin.from("category_descriptions").select("*").order("sort_order"),
+  ]);
 
   if (!quote) notFound();
 
-  const { data: items } = await admin.from("quote_items")
-    .select("*")
-    .eq("quote_id", id)
-    .order("sort_order");
+  // Get manager signature
+  const managerId = (quote.users as { id: string })?.id;
+  const { data: sigData } = managerId
+    ? await admin.from("email_signatures").select("body").eq("manager_id", managerId).limit(1).single()
+    : { data: null };
 
   const totalAmount = (items ?? []).reduce((s, i) => s + (i.sum ?? 0), 0);
-  const avgDiscount = items?.length ? Math.round((items.reduce((s, i) => s + (i.discount_pct ?? 0), 0) / items.length) * 10) / 10 : 0;
-
   const manager = quote.users as { full_name: string; phone?: string; email?: string } | null;
-  const managerPhone = manager?.phone?.replace(/[^0-9+]/g, "") ?? "";
+
+  // Group items by category (extract from name "Category / Subcategory / Name")
+  const categoryMap = new Map<string, typeof items>();
+  for (const item of items ?? []) {
+    const parts = item.name.split(" / ");
+    const cat = parts.length >= 2 ? parts[0] : "Товары";
+    if (!categoryMap.has(cat)) categoryMap.set(cat, []);
+    categoryMap.get(cat)!.push(item);
+  }
+
+  // Match category descriptions
+  const catDescMap = new Map((catDescs ?? []).map((d) => [d.category.toLowerCase(), d]));
+
+  const logoUrl = supplier?.logo_url;
 
   return (
-    <div style={{ background: "#f5f5f5", minHeight: "100vh", padding: "20px" }}>
-      <div style={{ maxWidth: 900, margin: "0 auto", background: "#fff", borderRadius: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.08)", overflow: "hidden" }}>
-        {/* Header */}
-        <div style={{ background: "#1e2330", color: "#fff", padding: "24px 32px" }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Коммерческое предложение</h1>
-          <p style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>от Artevo — №{quote.quote_number} от {new Date(quote.created_at).toLocaleDateString("ru-RU")}</p>
+    <div style={{ background: "#faf8f5", minHeight: "100vh" }}>
+      {/* Page content */}
+      <div style={{ maxWidth: 900, margin: "0 auto", background: "#fff" }}>
+
+        {/* Header with logo */}
+        <div style={{ padding: "32px 40px 20px", borderBottom: "2px solid #e8e0d4" }}>
+          {logoUrl && <img src={`/api/image-proxy?url=${encodeURIComponent(logoUrl)}`} alt="Logo" style={{ height: 48, marginBottom: 16 }} />}
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#3d3325", margin: 0, fontFamily: "Georgia, serif" }}>
+            Коммерческое предложение
+          </h1>
+          <p style={{ fontSize: 14, color: "#8c7e6a", marginTop: 4 }}>
+            для {quote.companies?.name ?? quote.contacts?.full_name ?? "клиента"}
+          </p>
+          <p style={{ fontSize: 12, color: "#b3a894", marginTop: 2 }}>
+            №{quote.quote_number} от {new Date(quote.created_at).toLocaleDateString("ru-RU")}
+          </p>
         </div>
 
-        <div style={{ padding: "24px 32px" }}>
-          {/* Client info */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 24 }}>
-            <div>
-              <p style={{ fontSize: 11, color: "#888", fontWeight: 600, marginBottom: 4 }}>КЛИЕНТ</p>
-              <p style={{ fontSize: 14, fontWeight: 600, color: "#333" }}>{quote.companies?.name ?? quote.contacts?.full_name ?? "—"}</p>
-              {quote.companies?.inn && <p style={{ fontSize: 12, color: "#888" }}>ИНН {quote.companies.inn}</p>}
-              {quote.contacts && <p style={{ fontSize: 12, color: "#666" }}>{quote.contacts.full_name}{quote.contacts.phone ? ` • ${quote.contacts.phone}` : ""}</p>}
-            </div>
-            <div>
-              <p style={{ fontSize: 11, color: "#888", fontWeight: 600, marginBottom: 4 }}>МЕНЕДЖЕР</p>
-              <p style={{ fontSize: 14, fontWeight: 600, color: "#333" }}>{manager?.full_name ?? "—"}</p>
-              {manager?.phone && <p style={{ fontSize: 12, color: "#666" }}>{manager.phone}</p>}
-              {manager?.email && <p style={{ fontSize: 12, color: "#666" }}>{manager.email}</p>}
-            </div>
+        {/* Category sections with descriptions + products */}
+        <div style={{ padding: "0 40px" }}>
+          {[...categoryMap.entries()].map(([category, catItems]) => {
+            const desc = catDescMap.get(category.toLowerCase());
+            return (
+              <div key={category} style={{ padding: "28px 0", borderBottom: "1px solid #efe9df" }}>
+                {/* Category header + description */}
+                <h2 style={{ fontSize: 18, fontWeight: 700, color: "#3d3325", marginBottom: 8, fontFamily: "Georgia, serif" }}>
+                  {desc?.title ?? category}
+                </h2>
+                {desc?.description && (
+                  <div style={{ fontSize: 13, color: "#6b5e4f", lineHeight: 1.7, marginBottom: 20, paddingLeft: 16, borderLeft: "3px solid #d4c9b8" }}>
+                    {desc.description.split("\n").map((line: string, i: number) => (
+                      <p key={i} style={{ margin: "4px 0" }}>{line.startsWith("- ") ? `• ${line.slice(2)}` : line}</p>
+                    ))}
+                  </div>
+                )}
+
+                {/* Products grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>
+                  {(catItems ?? []).map((item) => (
+                    <div key={item.id} style={{ display: "flex", gap: 14, padding: 16, borderRadius: 8, background: "#faf8f5", border: "1px solid #efe9df" }}>
+                      {/* Photo */}
+                      {item.image_url ? (
+                        <img src={item.image_url} alt="" style={{ width: 80, height: 80, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: 80, height: 80, borderRadius: 6, background: "#efe9df", flexShrink: 0 }} />
+                      )}
+                      {/* Info */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginBottom: 2 }}>{item.name.split(" / ").pop()}</p>
+                        {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
+                        {item.description && <p style={{ fontSize: 11, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
+                          {item.discount_pct > 0 && (
+                            <span style={{ fontSize: 12, color: "#b3a894", textDecoration: "line-through" }}>{formatCurrency(item.base_price)}</span>
+                          )}
+                          <span style={{ fontSize: 16, fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(item.client_price)}</span>
+                          {item.discount_pct > 0 && (
+                            <span style={{ fontSize: 11, color: "#c17f3e", fontWeight: 600 }}>-{item.discount_pct}%</span>
+                          )}
+                          <span style={{ fontSize: 12, color: "#8c7e6a" }}>× {item.qty} шт.</span>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginLeft: "auto" }}>{formatCurrency(item.sum)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Total */}
+        <div style={{ padding: "24px 40px", background: "#f5f0e8", borderTop: "2px solid #e8e0d4" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12 }}>
+            <span style={{ fontSize: 14, color: "#8c7e6a" }}>Итого:</span>
+            <span style={{ fontSize: 28, fontWeight: 700, color: "#3d3325", fontFamily: "Georgia, serif" }}>{formatCurrency(totalAmount)}</span>
           </div>
+        </div>
 
-          {/* Items */}
-          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 20 }}>
-            <thead>
-              <tr style={{ borderBottom: "2px solid #e4e4e4" }}>
-                {["", "Наименование", "Арт.", "Цена", "Цена для вас", "Скидка", "Кол-во", "Сумма"].map((h) => (
-                  <th key={h} style={{ textAlign: "left", padding: "8px 6px", fontSize: 11, fontWeight: 600, color: "#888" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(items ?? []).map((item, i) => (
-                <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                  <td style={{ padding: "8px 6px", width: 50 }}>
-                    {item.image_url ? (
-                      <img src={item.image_url} alt="" style={{ width: 40, height: 40, borderRadius: 4, objectFit: "cover" }} />
-                    ) : (
-                      <div style={{ width: 40, height: 40, borderRadius: 4, background: "#f5f5f5" }} />
-                    )}
-                  </td>
-                  <td style={{ padding: "8px 6px", fontSize: 13, fontWeight: 500, color: "#333" }}>{item.name}</td>
-                  <td style={{ padding: "8px 6px", fontSize: 12, color: "#888" }}>{item.article || "—"}</td>
-                  <td style={{ padding: "8px 6px", fontSize: 12, color: "#aaa", textDecoration: item.discount_pct > 0 ? "line-through" : "none" }}>{formatCurrency(item.base_price)}</td>
-                  <td style={{ padding: "8px 6px", fontSize: 13, fontWeight: 600, color: "#2e7d32" }}>{formatCurrency(item.client_price)}</td>
-                  <td style={{ padding: "8px 6px", fontSize: 12, color: item.discount_pct > 0 ? "#e65c00" : "#ccc" }}>{item.discount_pct > 0 ? `-${item.discount_pct}%` : "—"}</td>
-                  <td style={{ padding: "8px 6px", fontSize: 13 }}>{item.qty}</td>
-                  <td style={{ padding: "8px 6px", fontSize: 13, fontWeight: 600, color: "#333" }}>{formatCurrency(item.sum)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {/* Totals */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 24 }}>
-            <div style={{ textAlign: "right" }}>
-              {avgDiscount > 0 && <p style={{ fontSize: 12, color: "#e65c00" }}>Средняя скидка: {avgDiscount}%</p>}
-              <p style={{ fontSize: 20, fontWeight: 700, color: "#2e7d32" }}>Итого: {formatCurrency(totalAmount)}</p>
-            </div>
-          </div>
-
-          {/* Terms */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, padding: 16, background: "#f8f9fa", borderRadius: 6, marginBottom: 24 }}>
+        {/* Terms */}
+        {(quote.payment_terms || quote.delivery_terms || quote.comment) && (
+          <div style={{ padding: "20px 40px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {quote.payment_terms && (
-              <div><p style={{ fontSize: 11, color: "#888", fontWeight: 600 }}>УСЛОВИЯ ОПЛАТЫ</p><p style={{ fontSize: 13, color: "#333" }}>{quote.payment_terms}</p></div>
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 600, color: "#b3a894", textTransform: "uppercase", letterSpacing: 1 }}>Условия оплаты</p>
+                <p style={{ fontSize: 13, color: "#3d3325", marginTop: 4 }}>{quote.payment_terms}</p>
+              </div>
             )}
             {quote.delivery_terms && (
-              <div><p style={{ fontSize: 11, color: "#888", fontWeight: 600 }}>ДОСТАВКА</p><p style={{ fontSize: 13, color: "#333" }}>{quote.delivery_terms}</p></div>
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 600, color: "#b3a894", textTransform: "uppercase", letterSpacing: 1 }}>Доставка</p>
+                <p style={{ fontSize: 13, color: "#3d3325", marginTop: 4 }}>{quote.delivery_terms}</p>
+              </div>
+            )}
+            {quote.comment && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <p style={{ fontSize: 13, color: "#6b5e4f", fontStyle: "italic" }}>{quote.comment}</p>
+              </div>
             )}
           </div>
+        )}
 
-          {quote.comment && (
-            <div style={{ padding: 16, background: "#fff9c4", borderRadius: 6, marginBottom: 24 }}>
-              <p style={{ fontSize: 12, color: "#333" }}>{quote.comment}</p>
+        {/* Manager contact / signature */}
+        <div style={{ padding: "24px 40px", borderTop: "1px solid #efe9df" }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: "#b3a894", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Ваш менеджер</p>
+          <p style={{ fontSize: 15, fontWeight: 600, color: "#3d3325" }}>{manager?.full_name}</p>
+          {manager?.phone && <p style={{ fontSize: 13, color: "#6b5e4f" }}>{manager.phone}</p>}
+          {manager?.email && <p style={{ fontSize: 13, color: "#6b5e4f" }}>{manager.email}</p>}
+          {sigData?.body && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #efe9df", fontSize: 12, color: "#8c7e6a", whiteSpace: "pre-wrap" }}>
+              {sigData.body}
             </div>
           )}
 
-          {/* CTA buttons */}
-          <div style={{ display: "flex", gap: 12, justifyContent: "center", padding: "16px 0" }}>
-            {managerPhone && (
-              <a href={`https://wa.me/${managerPhone.replace("+", "")}`} target="_blank" rel="noopener noreferrer"
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 20px", background: "#25d366", color: "#fff", borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
-                Написать в WhatsApp
+          {/* CTA */}
+          <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
+            {manager?.phone && (
+              <a href={`https://wa.me/${manager.phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer"
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 24px", background: "#25d366", color: "#fff", borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+                WhatsApp
               </a>
             )}
             {manager?.email && (
               <a href={`mailto:${manager.email}`}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 20px", background: "#0067a5", color: "#fff", borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
-                Написать на Email
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 24px", background: "#6b5e4f", color: "#fff", borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+                Email
               </a>
             )}
           </div>
         </div>
 
-        <div style={{ background: "#1e2330", color: "rgba(255,255,255,0.5)", padding: "12px 32px", fontSize: 11, textAlign: "center" }}>
+        {/* Footer */}
+        <div style={{ background: "#3d3325", color: "rgba(255,255,255,0.5)", padding: "12px 40px", fontSize: 11, textAlign: "center" }}>
           Artevo — антивандальные держатели и косметика Havenberg для HoReCa
         </div>
       </div>

@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
 
   const formData = await req.formData();
   const file = formData.get("file") as File;
-  const field = formData.get("field") as string; // "stamp_url" or "signature_url"
+  const field = formData.get("field") as string; // "stamp_url", "signature_url", or "logo_url"
 
   if (!file || !field) return NextResponse.json({ error: "file and field required" }, { status: 400 });
 
