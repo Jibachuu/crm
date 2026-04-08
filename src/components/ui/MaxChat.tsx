@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { Send, RefreshCw, Paperclip, Mic, MicOff } from "lucide-react";
 
 export default function MaxChat({ chatId, compact = false }: { chatId: string; compact?: boolean }) {
-  const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean }[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[] }[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
