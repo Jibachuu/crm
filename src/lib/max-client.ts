@@ -168,11 +168,55 @@ export async function getChats(): Promise<unknown[]> {
   });
 }
 
-// Send message — opcode will be confirmed from network trace
-export async function sendMaxMessage(chatId: string, text: string): Promise<void> {
+// Send message — opcode 64
+export async function sendMaxMessage(chatId: number, text: string): Promise<{ id?: string }> {
   if (!wsClient || wsClient.readyState !== WebSocket.OPEN) await connectWithToken();
   if (!wsClient) throw new Error("Not connected");
-  send(wsClient, 38, { chatId, message: { text } });
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve({}), 8000);
+    const handler = (raw: WebSocket.Data) => {
+      const msg = parse(raw.toString());
+      if (!msg) return;
+      if (msg.opcode === 64 && msg.cmd === 1) {
+        clearTimeout(timeout);
+        wsClient?.removeListener("message", handler);
+        const p = msg.payload as { message?: { id?: string } };
+        resolve({ id: p.message?.id });
+      }
+    };
+    wsClient!.on("message", handler);
+    send(wsClient!, 64, {
+      chatId,
+      message: { text, cid: -Date.now(), elements: [], attaches: [] },
+      notify: true,
+    });
+  });
+}
+
+// Get message history — opcode 79
+export async function getMessageHistory(chatId: number, count = 50): Promise<unknown[]> {
+  if (!wsClient || wsClient.readyState !== WebSocket.OPEN) await connectWithToken();
+  if (!wsClient) throw new Error("Not connected");
+
+  // Subscribe to chat first
+  send(wsClient!, 75, { chatId, subscribe: true });
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve([]), 8000);
+    const handler = (raw: WebSocket.Data) => {
+      const msg = parse(raw.toString());
+      if (!msg) return;
+      if (msg.opcode === 79 && msg.cmd === 1) {
+        clearTimeout(timeout);
+        wsClient?.removeListener("message", handler);
+        const p = msg.payload as { history?: unknown[] };
+        resolve(p.history ?? []);
+      }
+    };
+    wsClient!.on("message", handler);
+    send(wsClient!, 79, { forward: false, count });
+  });
 }
 
 // Get stored token
