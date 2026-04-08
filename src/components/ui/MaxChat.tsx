@@ -172,20 +172,27 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
               {msg.attaches?.map((a: { type: string; name?: string; size?: number; url?: string; preview?: string; duration?: number }, ai: number) => (
                 <div key={ai} className="mb-1">
                   {a.type === "PHOTO" || a.type === "IMAGE" ? (
-                    a.preview ? <img src={a.preview} alt="" className="rounded max-w-full" style={{ maxHeight: 200 }} /> : <span className="text-xs">🖼 Фото</span>
+                    a.preview ? (
+                      <a href={a.preview} target="_blank" rel="noopener noreferrer">
+                        <img src={a.preview} alt="" className="rounded max-w-full cursor-pointer hover:opacity-90" style={{ maxHeight: 200 }} />
+                      </a>
+                    ) : <span className="text-xs">🖼 Фото</span>
                   ) : a.type === "AUDIO" ? (
                     <div>
                       <div className="flex items-center gap-1 text-xs mb-1">🎤 Голосовое{a.duration ? ` (${Math.round(a.duration/1000)}с)` : ""}</div>
                       {a.url && <audio controls src={a.url} className="w-full" style={{ maxWidth: 250, height: 36 }} />}
                     </div>
                   ) : a.type === "FILE" ? (
-                    <div className="flex items-center gap-2 px-2 py-1.5 rounded" style={{ background: msg.isMe ? "rgba(255,255,255,0.15)" : "#f0f0f0" }}>
+                    <a href={a.url || "#"} target="_blank" rel="noopener noreferrer" download={a.name}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:opacity-80"
+                      style={{ background: msg.isMe ? "rgba(255,255,255,0.15)" : "#f0f0f0", textDecoration: "none", color: "inherit" }}>
                       <span className="text-lg">📄</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium truncate">{a.name || "Файл"}</p>
-                        {a.size && <p className="text-xs" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#aaa" }}>{(a.size / 1024).toFixed(0)} КБ</p>}
+                        {a.size && <p className="text-xs" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#aaa" }}>{a.size > 1048576 ? (a.size / 1048576).toFixed(1) + " МБ" : (a.size / 1024).toFixed(0) + " КБ"}</p>}
                       </div>
-                    </div>
+                      <span className="text-xs" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#0067a5" }}>⬇</span>
+                    </a>
                   ) : (
                     <p className="text-xs italic">📎 {a.type}: {a.name || "вложение"}</p>
                   )}
