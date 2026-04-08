@@ -27,6 +27,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(data);
     }
 
+    if (action === "refresh") {
+      const data = await maxProxy("/refresh");
+      return NextResponse.json(data);
+    }
+
     if (action === "chats") {
       const data = await maxProxy("/chats");
       return NextResponse.json(data);

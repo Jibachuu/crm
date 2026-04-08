@@ -25,6 +25,12 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
   }, []);
 
   const loadingDoneRef = useRef(false);
+
+  async function refreshAndLoad() {
+    await fetch("/api/max?action=refresh").catch(() => {});
+    await loadMessages();
+  }
+
   async function loadMessages() {
     setError("");
     try {
@@ -44,7 +50,7 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
     if (!loadingDoneRef.current) { setLoading(false); loadingDoneRef.current = true; }
   }
 
-  useEffect(() => { if (chatId && myId !== null) loadMessages(); }, [chatId, myId]);
+  useEffect(() => { if (chatId && myId !== null) refreshAndLoad(); }, [chatId, myId]);
   // Only scroll when last message ID changes (truly new message)
   const lastMsgIdRef = useRef("");
   useEffect(() => {
@@ -56,7 +62,7 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
   }, [messages]);
   useEffect(() => {
     if (!chatId) return;
-    const interval = setInterval(loadMessages, 8000);
+    const interval = setInterval(refreshAndLoad, 15000);
     return () => clearInterval(interval);
   }, [chatId, myId]);
 
@@ -151,7 +157,7 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
     <div className="flex flex-col" style={{ height: compact ? 400 : "100%" }}>
       <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid #f0f0f0" }}>
         <span className="text-xs font-semibold" style={{ color: "#888" }}>МАКС</span>
-        <button onClick={loadMessages} className="p-1 rounded hover:bg-gray-100"><RefreshCw size={12} style={{ color: "#888" }} /></button>
+        <button onClick={refreshAndLoad} className="p-1 rounded hover:bg-gray-100" title="Обновить"><RefreshCw size={12} style={{ color: "#888" }} /></button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2" style={{ background: "#f8f9fa" }}>
