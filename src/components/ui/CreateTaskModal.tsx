@@ -52,7 +52,7 @@ export default function CreateTaskModal({ open, onClose, entityType, entityId, o
         due_date: (fd.get("due_date") as string) || null,
         assigned_to: (fd.get("assigned_to") as string) || null,
         entity_type: entityType,
-        entity_id: entityId,
+        entity_id: entityId || null,
         status: "pending",
         created_by: user?.id ?? null,
       })
