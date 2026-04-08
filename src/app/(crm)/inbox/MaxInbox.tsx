@@ -27,8 +27,8 @@ export default function MaxInbox() {
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Ошибка"); setLoading(false); return; }
       // Extract chats array from response
-      const chatList = data.chats ?? [];
-      setChats(Array.isArray(chatList) ? chatList : [chatList]);
+      const chatList = data.chats ?? data ?? [];
+      setChats(Array.isArray(chatList) ? chatList : []);
     } catch (e) { setError(String(e)); }
     setLoading(false);
   }
@@ -43,7 +43,7 @@ export default function MaxInbox() {
 
   function formatTime(ts: number | undefined) {
     if (!ts) return "";
-    const d = new Date(ts * 1000);
+    const d = new Date(ts > 9999999999 ? ts : ts * 1000);
     const now = new Date();
     const time = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
     if (d.toDateString() === now.toDateString()) return time;
