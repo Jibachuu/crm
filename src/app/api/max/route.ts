@@ -1,36 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { connectWithToken, getChats, sendMaxMessage, getMessageHistory, isConnected } from "@/lib/max-client";
+
+async function maxProxy(path: string, options?: RequestInit) {
+  const url = process.env.MAX_PROXY_URL;
+  const key = process.env.MAX_PROXY_KEY;
+  if (!url || !key) throw new Error("MAX_PROXY_URL и MAX_PROXY_KEY не настроены");
+
+  const res = await fetch(`${url}${path}`, {
+    ...options,
+    headers: { Authorization: key, "Content-Type": "application/json", ...(options?.headers ?? {}) },
+  });
+  return res.json();
+}
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const token = process.env.MAX_SESSION_TOKEN;
-  if (!token) return NextResponse.json({ error: "MAX_SESSION_TOKEN не настроен" }, { status: 503 });
-
   const { searchParams } = new URL(req.url);
   const action = searchParams.get("action");
 
   try {
-    if (!isConnected()) await connectWithToken(token);
-
     if (action === "status") {
-      return NextResponse.json({ connected: isConnected(), hasToken: !!token });
+      const data = await maxProxy("/status");
+      return NextResponse.json(data);
     }
 
     if (action === "chats") {
-      const chats = await getChats();
-      return NextResponse.json({ chats });
+      const data = await maxProxy("/chats");
+      return NextResponse.json(data);
     }
 
     if (action === "messages") {
-      const chatId = Number(searchParams.get("chat_id"));
+      const chatId = searchParams.get("chat_id");
+      const count = searchParams.get("count") ?? "50";
       if (!chatId) return NextResponse.json({ error: "chat_id required" }, { status: 400 });
-      const count = Number(searchParams.get("count") ?? "50");
-      const messages = await getMessageHistory(chatId, count);
-      return NextResponse.json({ messages });
+      const data = await maxProxy(`/messages?chatId=${chatId}&count=${count}`);
+      return NextResponse.json(data);
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
@@ -44,20 +51,18 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const token = process.env.MAX_SESSION_TOKEN;
-  if (!token) return NextResponse.json({ error: "MAX_SESSION_TOKEN не настроен" }, { status: 503 });
-
   const body = await req.json();
   const { action } = body;
 
   try {
-    if (!isConnected()) await connectWithToken(token);
-
     if (action === "send") {
       const { chat_id, text } = body;
       if (!chat_id || !text) return NextResponse.json({ error: "chat_id and text required" }, { status: 400 });
-      const result = await sendMaxMessage(Number(chat_id), text);
-      return NextResponse.json({ ok: true, messageId: result.id });
+      const data = await maxProxy("/send", {
+        method: "POST",
+        body: JSON.stringify({ chatId: chat_id, text }),
+      });
+      return NextResponse.json(data);
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

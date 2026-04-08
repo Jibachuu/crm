@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, MessageSquare, Plus, CheckSquare } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
+import MaxChat from "@/components/ui/MaxChat";
 import EmailThread from "@/components/ui/EmailThread";
 import Button from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
@@ -28,7 +29,7 @@ export default function ContactDetail({ contact: initialContact, communications:
   const [contact, setContact] = useState(initialContact);
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "email" | "telegram">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "email" | "telegram" | "maks">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -89,6 +90,7 @@ export default function ContactDetail({ contact: initialContact, communications:
     { id: "tasks", label: `Задачи (${tasks.length})` },
     ...(contact.email ? [{ id: "email", label: "📧 Почта" }] : []),
     ...(contact.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
+    ...(contact.maks_id ? [{ id: "maks", label: "🔵 МАКС" }] : []),
   ];
 
   return (
@@ -285,6 +287,15 @@ export default function ContactDetail({ contact: initialContact, communications:
                   {contact.telegram_id && <> · <span style={{ color: "#0067a5" }}>@{contact.telegram_id}</span></>}
                 </p>
                 <TelegramChat peer={contact.telegram_id} compact />
+              </div>
+            )}
+
+            {activeTab === "maks" && contact.maks_id && (
+              <div>
+                <p className="text-xs mb-2" style={{ color: "#888" }}>
+                  Переписка в МАКС с <strong>{contact.full_name}</strong>
+                </p>
+                <MaxChat chatId={contact.maks_id} compact />
               </div>
             )}
 
