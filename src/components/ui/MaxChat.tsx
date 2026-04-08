@@ -189,16 +189,18 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
                       {a.url && <audio controls src={a.url} className="w-full" style={{ maxWidth: 250, height: 36 }} />}
                     </div>
                   ) : a.type === "FILE" ? (
-                    <a href={a.url || "#"} target="_blank" rel="noopener noreferrer" download={a.name}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:opacity-80"
-                      style={{ background: msg.isMe ? "rgba(255,255,255,0.15)" : "#f0f0f0", textDecoration: "none", color: "inherit" }}>
+                    <div className="flex items-center gap-2 px-2 py-1.5 rounded"
+                      style={{ background: msg.isMe ? "rgba(255,255,255,0.15)" : "#f0f0f0" }}>
                       <span className="text-lg">📄</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium truncate">{a.name || "Файл"}</p>
                         {a.size && <p className="text-xs" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#aaa" }}>{a.size > 1048576 ? (a.size / 1048576).toFixed(1) + " МБ" : (a.size / 1024).toFixed(0) + " КБ"}</p>}
                       </div>
-                      <span className="text-xs" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#0067a5" }}>⬇</span>
-                    </a>
+                      <a href="https://web.max.ru" target="_blank" rel="noopener noreferrer"
+                        className="text-xs px-1.5 py-0.5 rounded" style={{ background: msg.isMe ? "rgba(255,255,255,0.2)" : "#e8f4fd", color: msg.isMe ? "#fff" : "#0067a5", textDecoration: "none" }}>
+                        Открыть
+                      </a>
+                    </div>
                   ) : (
                     <p className="text-xs italic">📎 {a.type}: {a.name || "вложение"}</p>
                   )}
