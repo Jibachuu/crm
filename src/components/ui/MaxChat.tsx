@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, RefreshCw, Paperclip, Mic, MicOff, Play, FileText, Download } from "lucide-react";
+import { Send, RefreshCw, Paperclip, Mic, MicOff } from "lucide-react";
 
 export default function MaxChat({ chatId, compact = false }: { chatId: string; compact?: boolean }) {
   const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean }[]>([]);
@@ -23,13 +23,14 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
     fetch("/api/max?action=status").then(r => r.json()).then(d => setMyId(d.userId)).catch(() => {});
   }, []);
 
+  const loadingDoneRef = useRef(false);
   async function loadMessages() {
     setError("");
     try {
       const res = await fetch(`/api/max?action=messages&chat_id=${chatId}&count=50`);
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Ошибка"); return; }
-      const msgs = (data.messages ?? []).map((m: { id: string; text: string; sender: string; senderId?: number; time: number }) => ({
+      const msgs = (data.messages ?? []).map((m: { id: string; text: string; sender: string; senderId?: number; time: number; attaches?: { _type: string; name?: string; fileId?: number }[] }) => ({
         ...m,
         isMe: myId ? (Number(m.senderId) === Number(myId)) : false,
       }));
@@ -38,7 +39,7 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
       const oldIds = messages.map((m) => m.id).join(",");
       if (newIds !== oldIds) setMessages(msgs);
     } catch (e) { setError(String(e)); }
-    setLoading(false);
+    if (!loadingDoneRef.current) { setLoading(false); loadingDoneRef.current = true; }
   }
 
   useEffect(() => { if (chatId && myId !== null) loadMessages(); }, [chatId, myId]);
@@ -142,16 +143,6 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
     return `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, "0")}`;
   }
 
-  // Check if message contains a file URL
-  function isFileMessage(text: string) {
-    return text.includes("📎") || text.includes("🎤");
-  }
-
-  function getFileUrl(text: string) {
-    const match = text.match(/https?:\/\/[^\s]+/);
-    return match?.[0] ?? null;
-  }
-
   if (error) return <div className="text-xs p-3 rounded" style={{ background: "#fdecea", color: "#c62828" }}>{error}</div>;
 
   return (
@@ -175,25 +166,10 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
             }}>
               {!msg.isMe && <p className="text-xs font-medium mb-0.5" style={{ color: "#0067a5" }}>{msg.sender}</p>}
 
-              {/* Voice/file messages */}
-              {msg.text.includes("🎤") && getFileUrl(msg.text) ? (
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Play size={14} style={{ color: msg.isMe ? "#b3d9ff" : "#0067a5" }} />
-                    <span className="text-xs">Голосовое</span>
-                  </div>
-                  <audio controls src={getFileUrl(msg.text)!} className="w-full" style={{ maxWidth: 250, height: 36 }} />
-                </div>
-              ) : msg.text.includes("📎") && getFileUrl(msg.text) ? (
-                <a href={getFileUrl(msg.text)!} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-2 py-1.5 rounded"
-                  style={{ background: msg.isMe ? "rgba(255,255,255,0.15)" : "#f5f5f5", textDecoration: "none", color: msg.isMe ? "#fff" : "#333" }}>
-                  <FileText size={14} style={{ color: msg.isMe ? "#b3d9ff" : "#0067a5" }} />
-                  <span className="text-xs truncate">{msg.text.split("\n")[0].replace("📎 ", "")}</span>
-                  <Download size={12} style={{ color: msg.isMe ? "#b3d9ff" : "#888" }} />
-                </a>
-              ) : (
+              {msg.text ? (
                 <p className="whitespace-pre-wrap">{msg.text}</p>
+              ) : (
+                <p className="text-xs italic" style={{ color: msg.isMe ? "rgba(255,255,255,0.7)" : "#888" }}>📎 Вложение</p>
               )}
 
               <p className="text-xs mt-0.5" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#aaa", textAlign: "right", fontSize: 10 }}>{formatTime(msg.time)}</p>
