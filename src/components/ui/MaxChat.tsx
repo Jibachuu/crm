@@ -39,13 +39,14 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
   }
 
   useEffect(() => { if (chatId && myId !== null) loadMessages(); }, [chatId, myId]);
-  // Only scroll on new messages, not on every poll
-  const prevCountRef = useRef(0);
+  // Only scroll when last message ID changes (truly new message)
+  const lastMsgIdRef = useRef("");
   useEffect(() => {
-    if (messages.length > prevCountRef.current) {
+    const lastId = messages[messages.length - 1]?.id ?? "";
+    if (lastId && lastId !== lastMsgIdRef.current) {
+      lastMsgIdRef.current = lastId;
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-    prevCountRef.current = messages.length;
   }, [messages]);
   useEffect(() => {
     if (!chatId) return;
