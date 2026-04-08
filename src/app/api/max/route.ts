@@ -73,17 +73,17 @@ export async function POST(req: NextRequest) {
       const proxyKey = process.env.MAX_PROXY_KEY;
       if (!proxyUrl || !proxyKey) return NextResponse.json({ error: "Proxy not configured" }, { status: 503 });
 
-      // Upload file to MAX via proxy
+      // Upload file to MAX via proxy (opcode 87 → fu.oneme.ru → fileId)
       const fileBuffer = Buffer.from(fileBase64, "base64");
       const uploadRes = await fetch(`${proxyUrl}/upload?name=${encodeURIComponent(fileName || "file")}`, {
         method: "POST",
         headers: { Authorization: proxyKey, "Content-Type": fileType || "application/octet-stream" },
-        body: fileBuffer,
+        body: new Uint8Array(fileBuffer),
       });
       const uploadData = await uploadRes.json();
 
       if (uploadData.fileId) {
-        // Send message with file attachment
+        // Send message with native file attachment
         const sendRes = await maxProxy("/send", {
           method: "POST",
           body: JSON.stringify({ chatId: chat_id, fileId: uploadData.fileId }),
