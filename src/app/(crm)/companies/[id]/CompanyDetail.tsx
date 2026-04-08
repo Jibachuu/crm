@@ -7,6 +7,7 @@ import { ChevronLeft, Edit2, Trash2, Building2, Phone, Mail, Globe, MapPin, Mess
 import Button from "@/components/ui/Button";
 import EmailThread from "@/components/ui/EmailThread";
 import TelegramChat from "@/components/ui/TelegramChat";
+import MaxChat from "@/components/ui/MaxChat";
 import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import ExportCommunicationsModal from "@/components/ui/ExportCommunicationsModal";
 import AIAnalysis from "@/components/ui/AIAnalysis";
@@ -34,7 +35,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
   const [company, setCompany] = useState(initialCompany);
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "email" | "telegram">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "email" | "telegram" | "maks">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -110,8 +111,9 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
     setContractUploading(false);
   }
 
-  // Find contacts with telegram for company telegram tab
+  // Find contacts with telegram/maks for company tabs
   const tgContact = contacts?.find((c: { telegram_id?: string }) => c.telegram_id);
+  const maksContact = contacts?.find((c: { maks_id?: string }) => c.maks_id);
 
   const tabs = [
     { id: "info", label: "Информация" },
@@ -119,6 +121,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
     { id: "tasks", label: `Задачи (${tasks.length})` },
     ...(company.email ? [{ id: "email", label: "📧 Почта" }] : []),
     ...(tgContact ? [{ id: "telegram", label: "💬 Telegram" }] : []),
+    ...(maksContact ? [{ id: "maks", label: "🔵 МАКС" }] : []),
   ];
 
   return (
@@ -321,6 +324,15 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                   Переписка с <strong>{tgContact.full_name}</strong> (@{tgContact.telegram_id})
                 </p>
                 <TelegramChat peer={tgContact.telegram_id} compact />
+              </div>
+            )}
+
+            {activeTab === "maks" && maksContact && (
+              <div>
+                <p className="text-xs mb-2" style={{ color: "#888" }}>
+                  МАКС: <strong>{maksContact.full_name}</strong>
+                </p>
+                <MaxChat chatId={maksContact.maks_id} compact />
               </div>
             )}
           </div>

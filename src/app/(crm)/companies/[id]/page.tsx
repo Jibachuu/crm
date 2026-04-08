@@ -16,7 +16,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
   if (!company) notFound();
 
   const [{ data: contacts }, { data: deals }, { data: communications }, { data: tasks }] = await Promise.all([
-    supabase.from("contacts").select("id, full_name, position, phone, email, telegram_id, telegram_username").eq("company_id", id),
+    supabase.from("contacts").select("id, full_name, position, phone, email, telegram_id, telegram_username, maks_id").eq("company_id", id),
     supabase.from("deals").select("id, title, stage, amount").eq("company_id", id),
     supabase
       .from("communications")

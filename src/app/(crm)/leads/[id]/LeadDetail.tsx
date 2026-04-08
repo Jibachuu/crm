@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Edit2, Trash2, MessageSquare, CheckSquare, Phone, Mail, Building2, Plus, Package, ArrowRightCircle } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
+import MaxChat from "@/components/ui/MaxChat";
 import EmailThread from "@/components/ui/EmailThread";
 import { formatCurrency } from "@/lib/utils";
 import Badge from "@/components/ui/Badge";
@@ -48,7 +49,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
   const [leadProducts, setLeadProducts] = useState(initialProducts ?? []);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram" | "maks">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -124,6 +125,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
     { id: "products", label: `Товары (${leadProducts.length})` },
     ...(lead.contacts?.email ? [{ id: "email", label: "📧 Почта" }] : []),
     ...(lead.contacts?.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
+    ...(lead.contacts?.maks_id ? [{ id: "maks", label: "🔵 МАКС" }] : []),
   ];
 
   const isConverted = lead.status === "converted";
@@ -343,6 +345,15 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                   {lead.contacts.telegram_id && <> · <span style={{ color: "#0067a5" }}>@{lead.contacts.telegram_id}</span></>}
                 </p>
                 <TelegramChat peer={lead.contacts.telegram_id} compact />
+              </div>
+            )}
+
+            {activeTab === "maks" && lead.contacts?.maks_id && (
+              <div>
+                <p className="text-xs mb-2" style={{ color: "#888" }}>
+                  МАКС: <strong>{lead.contacts.full_name}</strong>
+                </p>
+                <MaxChat chatId={lead.contacts.maks_id} compact />
               </div>
             )}
           </div>

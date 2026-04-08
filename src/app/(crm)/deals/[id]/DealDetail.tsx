@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, Package, Plus, CheckSquare, MessageSquare, Send } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
+import MaxChat from "@/components/ui/MaxChat";
 import EmailThread from "@/components/ui/EmailThread";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
@@ -41,7 +42,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
   const [dealProducts, setDealProducts] = useState(initialDealProducts ?? []);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram" | "quotes" | "production">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram" | "maks" | "quotes" | "production">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -200,6 +201,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 { id: "production", label: "🏭 Производство" },
                 ...(deal.contacts?.email ? [{ id: "email", label: "📧 Почта" }] : []),
                 ...(deal.contacts?.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
+                ...(deal.contacts?.maks_id ? [{ id: "maks", label: "🔵 МАКС" }] : []),
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -320,6 +322,15 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   Переписка с <strong>{deal.contacts.full_name}</strong> (@{deal.contacts.telegram_id})
                 </p>
                 <TelegramChat peer={deal.contacts.telegram_id} compact />
+              </div>
+            )}
+
+            {activeTab === "maks" && deal.contacts?.maks_id && (
+              <div>
+                <p className="text-xs mb-2" style={{ color: "#888" }}>
+                  МАКС: <strong>{deal.contacts.full_name}</strong>
+                </p>
+                <MaxChat chatId={deal.contacts.maks_id} compact />
               </div>
             )}
 
