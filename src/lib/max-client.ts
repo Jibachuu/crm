@@ -35,11 +35,17 @@ function parse(data: string): MaxMessage | null {
 // Step 1: Connect and request QR
 export async function requestQR(): Promise<{ qrLink: string; trackId: string; pollingInterval: number }> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(WS_URL);
-    const timeout = setTimeout(() => { ws.close(); reject(new Error("Timeout")); }, 15000);
+    const ws = new WebSocket(WS_URL, {
+      headers: {
+        "Origin": "https://web.max.ru",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 Chrome/146.0.0.0 Mobile Safari/537.36",
+      },
+    });
+    const timeout = setTimeout(() => { ws.close(); reject(new Error("Timeout connecting to MAX")); }, 15000);
 
     ws.on("open", () => {
-      // Wait for server hello (opcode 6), then request QR (opcode 288)
+      // Send device info first (opcode 6)
+      send(ws, 6, { userAgent: { deviceType: "WEB", locale: "ru", deviceLocale: "ru", osVersion: "Android", deviceName: "Chrome" } });
     });
 
     ws.on("message", (raw) => {
@@ -119,7 +125,12 @@ export async function connectWithToken(token?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     if (wsClient && wsClient.readyState === WebSocket.OPEN) { resolve(); return; }
 
-    wsClient = new WebSocket(WS_URL);
+    wsClient = new WebSocket(WS_URL, {
+      headers: {
+        "Origin": "https://web.max.ru",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 Chrome/146.0.0.0 Mobile Safari/537.36",
+      },
+    });
     const timeout = setTimeout(() => { wsClient?.close(); reject(new Error("Timeout")); }, 10000);
 
     wsClient.on("open", () => {

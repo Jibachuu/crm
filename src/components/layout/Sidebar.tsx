@@ -112,7 +112,7 @@ export default function Sidebar({ user, permissions = {} }: { user: User; permis
           return <NavLink key={item.href} item={item} isActive={isActive} />;
         })}
 
-        {user.role === "admin" && (
+        {(user.role === "admin" || user.role === "supervisor") && (
           <>
             <div className="my-2" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }} />
             <NavLink

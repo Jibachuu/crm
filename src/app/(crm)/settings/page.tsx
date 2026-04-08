@@ -15,7 +15,7 @@ export default async function SettingsPage() {
   if (!authUser) redirect("/login");
 
   const { data: currentUser } = await supabase.from("users").select("role").eq("id", authUser.id).single();
-  if (currentUser?.role !== "admin") redirect("/");
+  if (currentUser?.role !== "admin" && currentUser?.role !== "supervisor") redirect("/");
 
   const admin = createAdminClient();
 
