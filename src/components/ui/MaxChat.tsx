@@ -67,26 +67,23 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
     setSending(false);
   }
 
-  // Upload file to Supabase Storage, send link in MAX
+  // Upload file to Storage, send link in MAX
   async function sendFile(file: File) {
     setUploading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("to_user", "max_" + chatId); // use special prefix for MAX uploads
-    const res = await fetch("/api/team/upload", { method: "POST", body: fd });
-    if (res.ok) {
-      const data = await res.json();
-      const fileUrl = data.message?.file_url;
-      if (fileUrl) {
-        const label = file.name.startsWith("voice_") ? "🎤 Голосовое сообщение" : `📎 ${file.name}`;
-        await fetch("/api/max", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "send", chat_id: chatId, text: `${label}\n${fileUrl}` }),
-        });
-        setTimeout(loadMessages, 1000);
-      }
-    } else {
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      if (!res.ok) throw new Error("Upload failed");
+      const { url } = await res.json();
+      const label = file.name.startsWith("voice_") ? "🎤 Голосовое сообщение" : `📎 ${file.name}`;
+      await fetch("/api/max", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send", chat_id: chatId, text: `${label}\n${url}` }),
+      });
+      setTimeout(loadMessages, 1000);
+    } catch {
       alert("Ошибка загрузки файла");
     }
     setUploading(false);
