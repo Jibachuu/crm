@@ -70,26 +70,35 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
     setSending(false);
   }
 
-  // Upload file to Storage, send link in MAX
+  // Upload file natively to MAX servers
   async function sendFile(file: File) {
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      if (!res.ok) throw new Error("Upload failed");
-      const { url } = await res.json();
-      const label = file.name.startsWith("voice_") ? "🎤 Голосовое сообщение" : `📎 ${file.name}`;
-      await fetch("/api/max", {
+      const buffer = await file.arrayBuffer();
+      // Upload to MAX via VPS proxy
+      const uploadRes = await fetch(`/api/max`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send", chat_id: chatId, text: `${label}\n${url}` }),
+        body: JSON.stringify({ action: "upload", chat_id: chatId, fileName: file.name, fileType: file.type, fileBase64: arrayBufferToBase64(buffer) }),
       });
-      setTimeout(loadMessages, 1000);
-    } catch {
-      alert("Ошибка загрузки файла");
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      const data = await uploadRes.json();
+      if (data.ok) {
+        setTimeout(loadMessages, 1000);
+      } else {
+        throw new Error(data.error ?? "Upload failed");
+      }
+    } catch (e) {
+      alert("Ошибка загрузки: " + (e instanceof Error ? e.message : ""));
     }
     setUploading(false);
+  }
+
+  function arrayBufferToBase64(buffer: ArrayBuffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
   }
 
   // Voice recording

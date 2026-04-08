@@ -56,13 +56,42 @@ export async function POST(req: NextRequest) {
 
   try {
     if (action === "send") {
-      const { chat_id, text } = body;
-      if (!chat_id || !text) return NextResponse.json({ error: "chat_id and text required" }, { status: 400 });
+      const { chat_id, text, fileId } = body;
+      if (!chat_id || (!text && !fileId)) return NextResponse.json({ error: "chat_id and (text or fileId) required" }, { status: 400 });
       const data = await maxProxy("/send", {
         method: "POST",
-        body: JSON.stringify({ chatId: chat_id, text }),
+        body: JSON.stringify({ chatId: chat_id, text: text || "", fileId }),
       });
       return NextResponse.json(data);
+    }
+
+    if (action === "upload") {
+      const { chat_id, fileName, fileType, fileBase64 } = body;
+      if (!chat_id || !fileBase64) return NextResponse.json({ error: "chat_id and fileBase64 required" }, { status: 400 });
+
+      const proxyUrl = process.env.MAX_PROXY_URL;
+      const proxyKey = process.env.MAX_PROXY_KEY;
+      if (!proxyUrl || !proxyKey) return NextResponse.json({ error: "Proxy not configured" }, { status: 503 });
+
+      // Upload file to MAX via proxy
+      const fileBuffer = Buffer.from(fileBase64, "base64");
+      const uploadRes = await fetch(`${proxyUrl}/upload?name=${encodeURIComponent(fileName || "file")}`, {
+        method: "POST",
+        headers: { Authorization: proxyKey, "Content-Type": fileType || "application/octet-stream" },
+        body: fileBuffer,
+      });
+      const uploadData = await uploadRes.json();
+
+      if (uploadData.fileId) {
+        // Send message with file attachment
+        const sendRes = await maxProxy("/send", {
+          method: "POST",
+          body: JSON.stringify({ chatId: chat_id, fileId: uploadData.fileId }),
+        });
+        return NextResponse.json({ ok: true, ...sendRes });
+      }
+
+      return NextResponse.json({ error: "Upload failed", details: uploadData }, { status: 500 });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
