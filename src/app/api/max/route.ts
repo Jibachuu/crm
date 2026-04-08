@@ -45,6 +45,48 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(data);
     }
 
+    if (action === "download") {
+      const fileId = searchParams.get("file_id");
+      const chatId = searchParams.get("chat_id") || "0";
+      const messageId = searchParams.get("message_id") || "0";
+      if (!fileId) return NextResponse.json({ error: "file_id required" }, { status: 400 });
+
+      const proxyUrl = process.env.MAX_PROXY_URL;
+      const proxyKey = process.env.MAX_PROXY_KEY;
+      if (!proxyUrl || !proxyKey) return NextResponse.json({ error: "Proxy not configured" }, { status: 503 });
+
+      // Get signed download URL from MAX via opcode 88
+      const urlRes = await fetch(`${proxyUrl}/download-url?fileId=${fileId}&chatId=${chatId}&messageId=${messageId}`, {
+        headers: { Authorization: proxyKey },
+      });
+      const urlData = await urlRes.json();
+
+      if (urlData.url) {
+        // Redirect browser to signed MAX download URL
+        return NextResponse.redirect(urlData.url, 302);
+      }
+
+      // Fallback: proxy the file through VPS
+      const dlRes = await fetch(`${proxyUrl}/download?fileId=${fileId}&chatId=${chatId}&messageId=${messageId}`, {
+        headers: { Authorization: proxyKey },
+      });
+
+      if (!dlRes.ok) {
+        const errData = await dlRes.json().catch(() => ({ error: "Download failed" }));
+        return NextResponse.json(errData, { status: dlRes.status });
+      }
+
+      const contentType = dlRes.headers.get("content-type") || "application/octet-stream";
+      const contentDisposition = dlRes.headers.get("content-disposition") || "";
+      const contentLength = dlRes.headers.get("content-length") || "";
+
+      const headers: Record<string, string> = { "Content-Type": contentType };
+      if (contentDisposition) headers["Content-Disposition"] = contentDisposition;
+      if (contentLength) headers["Content-Length"] = contentLength;
+
+      return new NextResponse(dlRes.body, { status: 200, headers });
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as { message?: string }).message ?? String(err) }, { status: 500 });
