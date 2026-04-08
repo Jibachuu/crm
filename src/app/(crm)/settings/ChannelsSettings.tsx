@@ -5,7 +5,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 
-type Channel = "telegram" | "email" | "zadarma";
+type Channel = "telegram" | "email" | "zadarma" | "max";
 
 export default function ChannelsSettings() {
   const [activeChannel, setActiveChannel] = useState<Channel>("telegram");
@@ -16,7 +16,7 @@ export default function ChannelsSettings() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 rounded-lg p-1 mb-6 w-fit">
-        {(["telegram", "email", "zadarma"] as Channel[]).map((ch) => (
+        {(["telegram", "email", "max", "zadarma"] as Channel[]).map((ch) => (
           <button
             key={ch}
             onClick={() => setActiveChannel(ch)}
@@ -24,13 +24,14 @@ export default function ChannelsSettings() {
               activeChannel === ch ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            {ch === "telegram" ? "💬 Telegram" : ch === "email" ? "✉️ Email" : "📞 Zadarma"}
+            {ch === "telegram" ? "💬 Telegram" : ch === "email" ? "✉️ Email" : ch === "max" ? "🔵 МАКС" : "📞 Zadarma"}
           </button>
         ))}
       </div>
 
       {activeChannel === "telegram" && <TelegramSettings />}
       {activeChannel === "email" && <EmailSettings />}
+      {activeChannel === "max" && <MaxSettings />}
       {activeChannel === "zadarma" && <ZadarmaSettings />}
     </div>
   );
@@ -261,6 +262,149 @@ function ZadarmaSettings() {
         </div>
 
         {result && <p className="text-sm">{result}</p>}
+      </CardBody>
+    </Card>
+  );
+}
+
+function MaxSettings() {
+  const [step, setStep] = useState<"idle" | "qr" | "polling" | "done">("idle");
+  const [qrLink, setQrLink] = useState("");
+  const [trackId, setTrackId] = useState("");
+  const [token, setToken] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function requestQR() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/max/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request_qr" }),
+      });
+      const data = await res.json();
+      if (data.qrLink) {
+        setQrLink(data.qrLink);
+        setTrackId(data.trackId);
+        setStep("qr");
+        // Start polling
+        pollStatus(data.trackId);
+      } else {
+        setError(data.error ?? "Не удалось получить QR");
+      }
+    } catch (e) { setError(String(e)); }
+    setLoading(false);
+  }
+
+  async function pollStatus(tid: string) {
+    setStep("polling");
+    for (let i = 0; i < 24; i++) { // 2 minutes max
+      await new Promise((r) => setTimeout(r, 5000));
+      try {
+        const res = await fetch("/api/max/auth", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "poll", trackId: tid }),
+        });
+        const data = await res.json();
+        if (data.status === "authorized" && data.token) {
+          setToken(data.token);
+          setStep("done");
+          return;
+        }
+      } catch { /* continue polling */ }
+    }
+    setError("QR истёк. Попробуйте снова.");
+    setStep("idle");
+  }
+
+  async function checkStatus() {
+    const res = await fetch("/api/max/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "status" }),
+    });
+    const data = await res.json();
+    if (data.connected) {
+      setStep("done");
+    }
+  }
+
+  return (
+    <Card>
+      <CardBody>
+        <h3 className="font-semibold text-slate-900 mb-2">🔵 МАКС (MAX)</h3>
+        <p className="text-sm text-slate-500 mb-4">
+          Подключение мессенджера MAX через QR-код (от личного аккаунта).
+        </p>
+
+        {step === "idle" && (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">
+              Нажмите кнопку, отсканируйте QR в приложении MAX → токен сохранится автоматически.
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={requestQR} loading={loading}>
+                🔑 Получить QR-код
+              </Button>
+              <Button size="sm" variant="secondary" onClick={checkStatus}>
+                Проверить статус
+              </Button>
+            </div>
+
+            <div className="mt-3 p-3 rounded" style={{ background: "#f5f5f5", border: "1px solid #e0e0e0" }}>
+              <p className="text-xs font-semibold mb-1" style={{ color: "#888" }}>Или вставьте токен вручную:</p>
+              <p className="text-xs mb-2" style={{ color: "#aaa" }}>Добавьте MAX_SESSION_TOKEN в переменные окружения Vercel</p>
+              <code className="text-xs break-all" style={{ color: "#333" }}>MAX_SESSION_TOKEN=ваш_токен</code>
+            </div>
+          </div>
+        )}
+
+        {(step === "qr" || step === "polling") && (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-slate-700">Отсканируйте QR-код в приложении MAX:</p>
+            <div className="flex justify-center p-4 rounded" style={{ background: "#f8f9fa", border: "1px solid #e4e4e4" }}>
+              {qrLink ? (
+                <div className="text-center">
+                  <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrLink)}`} alt="QR" className="mx-auto rounded" />
+                  <p className="text-xs mt-2" style={{ color: "#888" }}>Откройте MAX → Настройки → QR-сканер</p>
+                </div>
+              ) : (
+                <p className="text-sm" style={{ color: "#aaa" }}>Генерация QR...</p>
+              )}
+            </div>
+            {step === "polling" && (
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full animate-pulse" style={{ background: "#0067a5" }} />
+                <span className="text-xs" style={{ color: "#0067a5" }}>Ожидание сканирования...</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === "done" && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 p-3 rounded" style={{ background: "#e8f5e9", border: "1px solid #a5d6a7" }}>
+              <span className="text-lg">✅</span>
+              <div>
+                <p className="text-sm font-medium" style={{ color: "#2e7d32" }}>МАКС подключён!</p>
+                {token && (
+                  <div className="mt-1">
+                    <p className="text-xs" style={{ color: "#888" }}>Токен (добавьте в Vercel → MAX_SESSION_TOKEN):</p>
+                    <code className="text-xs break-all select-all block mt-1 p-2 rounded" style={{ background: "#fff", border: "1px solid #e0e0e0" }}>{token}</code>
+                  </div>
+                )}
+              </div>
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => { setStep("idle"); setToken(""); }}>
+              Переподключить
+            </Button>
+          </div>
+        )}
+
+        {error && <p className="text-sm mt-2" style={{ color: "#c62828" }}>{error}</p>}
       </CardBody>
     </Card>
   );
