@@ -33,7 +33,10 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
         ...m,
         isMe: myId ? (Number(m.senderId) === Number(myId)) : false,
       }));
-      setMessages(msgs);
+      // Only update state if messages actually changed
+      const newIds = msgs.map((m: { id: string }) => m.id).join(",");
+      const oldIds = messages.map((m) => m.id).join(",");
+      if (newIds !== oldIds) setMessages(msgs);
     } catch (e) { setError(String(e)); }
     setLoading(false);
   }
