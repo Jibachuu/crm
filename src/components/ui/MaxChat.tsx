@@ -30,7 +30,8 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
       const res = await fetch(`/api/max?action=messages&chat_id=${chatId}&count=50`);
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Ошибка"); return; }
-      const msgs = (data.messages ?? []).map((m: { id: string; text: string; sender: string; senderId?: number; time: number; attaches?: { _type: string; name?: string; fileId?: number }[] }) => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const msgs = (data.messages ?? []).map((m: any) => ({
         ...m,
         isMe: myId ? (Number(m.senderId) === Number(myId)) : false,
       }));
@@ -166,9 +167,33 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
             }}>
               {!msg.isMe && <p className="text-xs font-medium mb-0.5" style={{ color: "#0067a5" }}>{msg.sender}</p>}
 
-              {msg.text ? (
-                <p className="whitespace-pre-wrap">{msg.text}</p>
-              ) : (
+              {/* Attachments */}
+              {msg.attaches?.map((a: { type: string; name?: string; size?: number; url?: string; preview?: string; duration?: number }, ai: number) => (
+                <div key={ai} className="mb-1">
+                  {a.type === "PHOTO" || a.type === "IMAGE" ? (
+                    a.preview ? <img src={a.preview} alt="" className="rounded max-w-full" style={{ maxHeight: 200 }} /> : <span className="text-xs">🖼 Фото</span>
+                  ) : a.type === "AUDIO" ? (
+                    <div>
+                      <div className="flex items-center gap-1 text-xs mb-1">🎤 Голосовое{a.duration ? ` (${Math.round(a.duration/1000)}с)` : ""}</div>
+                      {a.url && <audio controls src={a.url} className="w-full" style={{ maxWidth: 250, height: 36 }} />}
+                    </div>
+                  ) : a.type === "FILE" ? (
+                    <div className="flex items-center gap-2 px-2 py-1.5 rounded" style={{ background: msg.isMe ? "rgba(255,255,255,0.15)" : "#f0f0f0" }}>
+                      <span className="text-lg">📄</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{a.name || "Файл"}</p>
+                        {a.size && <p className="text-xs" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#aaa" }}>{(a.size / 1024).toFixed(0)} КБ</p>}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs italic">📎 {a.type}: {a.name || "вложение"}</p>
+                  )}
+                </div>
+              ))}
+              {/* Text */}
+              {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
+              {/* Empty message without attaches */}
+              {!msg.text && (!msg.attaches || msg.attaches.length === 0) && (
                 <p className="text-xs italic" style={{ color: msg.isMe ? "rgba(255,255,255,0.7)" : "#888" }}>📎 Вложение</p>
               )}
 
