@@ -10,6 +10,7 @@ import EmailTemplatesSettings from "./EmailTemplatesSettings";
 import SupplierSettings from "./SupplierSettings";
 import BulkTransferSettings from "./BulkTransferSettings";
 import FileTemplatesSettings from "./FileTemplatesSettings";
+import ImportCommunications from "./ImportCommunications";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -40,6 +41,7 @@ export default async function SettingsPage() {
           <EmailTemplatesSettings />
           <FileTemplatesSettings />
           <ChannelsSettings />
+          <ImportCommunications />
         </div>
       </main>
     </>
