@@ -10,16 +10,19 @@ import BulkTaskModal from "@/components/ui/BulkTaskModal";
 import { formatDate, formatCurrency, getInitials } from "@/lib/utils";
 import PurgeButton from "@/components/ui/PurgeButton";
 import CreateDealModal from "./CreateDealModal";
+import { createClient } from "@/lib/supabase/client";
 
-const STAGE_LABELS: Record<string, string> = {
+interface FunnelStage { id: string; funnel_id: string; name: string; slug: string; color: string; sort_order: number; is_final: boolean; is_success: boolean; }
+
+// Fallback old stages if no funnel data
+const OLD_STAGE_LABELS: Record<string, string> = {
   lead: "Лид", proposal: "Предложение", negotiation: "Переговоры", order_assembly: "Сборка заказа", won: "Выиграна", lost: "Проиграна",
-};
-const STAGE_VARIANTS: Record<string, "default" | "info" | "warning" | "success" | "danger"> = {
-  lead: "default", proposal: "info", negotiation: "warning", order_assembly: "info", won: "success", lost: "danger",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function DealsList({ initialDeals, users }: { initialDeals: any[]; users: any[] }) {
+export default function DealsList({ initialDeals, users, funnelStages = [] }: { initialDeals: any[]; users: any[]; funnelStages?: FunnelStage[] }) {
+  const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
+  const hasFunnelStages = funnelStages.length > 0;
   const [deals, setDeals] = useState(initialDeals);
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
@@ -34,7 +37,7 @@ export default function DealsList({ initialDeals, users }: { initialDeals: any[]
       d.title.toLowerCase().includes(search.toLowerCase()) ||
       d.contacts?.full_name?.toLowerCase().includes(search.toLowerCase()) ||
       d.companies?.name?.toLowerCase().includes(search.toLowerCase());
-    const matchesStage = stageFilter === "all" || d.stage === stageFilter;
+    const matchesStage = stageFilter === "all" || d.stage === stageFilter || d.stage_id === stageFilter;
     return matchesSearch && matchesStage;
   });
 
@@ -67,8 +70,53 @@ export default function DealsList({ initialDeals, users }: { initialDeals: any[]
     setBulkDeleting(false);
   }
 
+  // Drag & drop for kanban
+  async function handleDrop(dealId: string, newStageId: string) {
+    const deal = deals.find((d) => d.id === dealId);
+    if (!deal || deal.stage_id === newStageId) return;
+    const stage = stageMap[newStageId];
+    if (!stage) return;
+    const slugMap: Record<string, string> = {
+      qualified: "lead", kp_sent: "proposal", objections: "negotiation",
+      price_calc: "order_assembly", invoice: "order_assembly", won: "won", lost: "lost",
+    };
+    const newOldStage = slugMap[stage.slug] ?? deal.stage;
+    setDeals((prev) => prev.map((d) => d.id === dealId ? { ...d, stage_id: newStageId, stage: newOldStage } : d));
+    const supabase = createClient();
+    await supabase.from("deals").update({
+      stage_id: newStageId,
+      stage: newOldStage,
+      stage_changed_at: new Date().toISOString(),
+      ...(stage.slug === "won" ? { closed_at: new Date().toISOString() } : {}),
+    }).eq("id", dealId);
+    fetch("/api/automations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "stage_change", entity_type: "deal", entity_id: dealId, stage_id: newStageId, old_stage_id: deal.stage_id }),
+    }).catch(() => {});
+  }
+
+  function getStageName(deal: { stage_id?: string; stage?: string }) {
+    if (deal.stage_id && stageMap[deal.stage_id]) return stageMap[deal.stage_id].name;
+    return OLD_STAGE_LABELS[deal.stage ?? ""] ?? deal.stage ?? "—";
+  }
+
+  function getStageColor(deal: { stage_id?: string; stage?: string }) {
+    if (deal.stage_id && stageMap[deal.stage_id]) return stageMap[deal.stage_id].color;
+    return "#888";
+  }
+
   const totalAmount = filtered.reduce((sum, d) => sum + (d.amount ?? 0), 0);
-  const wonAmount = filtered.filter((d) => d.stage === "won").reduce((sum, d) => sum + (d.amount ?? 0), 0);
+  const wonDeals = filtered.filter((d) => {
+    if (d.stage_id && stageMap[d.stage_id]) return stageMap[d.stage_id].slug === "won";
+    return d.stage === "won";
+  });
+  const wonAmount = wonDeals.reduce((sum, d) => sum + (d.amount ?? 0), 0);
+
+  // Filter options from funnel stages
+  const filterOptions = hasFunnelStages
+    ? funnelStages.map((s) => ({ value: s.id, label: s.name }))
+    : Object.entries(OLD_STAGE_LABELS).map(([v, l]) => ({ value: v, label: l }));
 
   return (
     <div>
@@ -86,7 +134,7 @@ export default function DealsList({ initialDeals, users }: { initialDeals: any[]
             className="pl-7 pr-3 py-1.5 text-sm focus:outline-none appearance-none"
             style={{ border: "1px solid #d0d0d0", borderRadius: 4, background: "#fff" }}>
             <option value="all">Все стадии</option>
-            {Object.entries(STAGE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {filterOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
         <div className="flex overflow-hidden" style={{ border: "1px solid #d0d0d0", borderRadius: 4 }}>
@@ -139,6 +187,7 @@ export default function DealsList({ initialDeals, users }: { initialDeals: any[]
                 <tbody>
                   {filtered.map((deal) => {
                     const isSel = selected.has(deal.id);
+                    const color = getStageColor(deal);
                     return (
                       <tr key={deal.id} style={{ borderBottom: "1px solid #f0f0f0", background: isSel ? "#f0f7ff" : "transparent" }}>
                         <td className="px-3 py-2.5">
@@ -151,7 +200,9 @@ export default function DealsList({ initialDeals, users }: { initialDeals: any[]
                         <td className="px-4 py-2.5">
                           {deal.contacts ? <Link href={`/contacts/${deal.contacts.id}`} className="hover:underline" style={{ color: "#555" }}>{deal.contacts.full_name}</Link> : <span style={{ color: "#ccc" }}>—</span>}
                         </td>
-                        <td className="px-4 py-2.5"><Badge variant={STAGE_VARIANTS[deal.stage] ?? "default"}>{STAGE_LABELS[deal.stage]}</Badge></td>
+                        <td className="px-4 py-2.5">
+                          <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: color + "20", color }}>{getStageName(deal)}</span>
+                        </td>
                         <td className="px-4 py-2.5 text-right font-medium" style={{ color: "#333" }}>{formatCurrency(deal.amount)}</td>
                         <td className="px-4 py-2.5">
                           {deal.users ? (
@@ -171,28 +222,41 @@ export default function DealsList({ initialDeals, users }: { initialDeals: any[]
           )}
         </div>
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {Object.entries(STAGE_LABELS).map(([stage, label]) => {
-            const stageDeals = filtered.filter((d) => d.stage === stage);
+        /* KANBAN VIEW using funnel stages */
+        <div className="flex gap-3 overflow-x-auto pb-4">
+          {(hasFunnelStages ? funnelStages : Object.entries(OLD_STAGE_LABELS).map(([slug, name]) => ({ id: slug, slug, name, color: "#888", is_final: false } as FunnelStage))).map((stage) => {
+            const stageDeals = filtered.filter((d) => {
+              if (hasFunnelStages) return d.stage_id === stage.id;
+              return d.stage === stage.slug;
+            });
             const stageTotal = stageDeals.reduce((sum, d) => sum + (d.amount ?? 0), 0);
             return (
-              <div key={stage} className="flex-shrink-0 w-60">
-                <div className="flex items-center justify-between mb-3">
-                  <Badge variant={STAGE_VARIANTS[stage] ?? "default"}>{label} ({stageDeals.length})</Badge>
-                  <span className="text-xs font-medium" style={{ color: "#666" }}>{formatCurrency(stageTotal)}</span>
+              <div key={stage.id} className="flex-shrink-0" style={{ minWidth: 220, maxWidth: 240 }}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                onDrop={(e) => { e.preventDefault(); const dealId = e.dataTransfer.getData("dealId"); if (dealId && hasFunnelStages) handleDrop(dealId, stage.id); }}
+              >
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: stage.color + "20", color: stage.color }}>
+                    {stage.name} ({stageDeals.length})
+                  </span>
+                  <span className="text-xs font-medium" style={{ color: "#888" }}>{formatCurrency(stageTotal)}</span>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2" style={{ minHeight: 60 }}>
                   {stageDeals.map((deal) => (
                     <Link key={deal.id} href={`/deals/${deal.id}`}>
-                      <div className="bg-white p-3 hover:shadow-sm transition-shadow cursor-pointer" style={{ border: "1px solid #e4e4e4", borderRadius: 4 }}>
-                        <p className="text-sm font-medium mb-1" style={{ color: "#333" }}>{deal.title}</p>
+                      <div
+                        draggable={hasFunnelStages}
+                        onDragStart={(e) => { e.dataTransfer.setData("dealId", deal.id); e.dataTransfer.effectAllowed = "move"; }}
+                        className="bg-white p-3 hover:shadow-sm transition-shadow cursor-pointer"
+                        style={{ border: "1px solid #e4e4e4", borderRadius: 6, borderLeft: `3px solid ${stage.color}` }}>
+                        <p className="text-sm font-medium mb-0.5" style={{ color: "#333" }}>{deal.title}</p>
                         {deal.contacts && <p className="text-xs" style={{ color: "#888" }}>{deal.contacts.full_name}</p>}
-                        {deal.amount && <p className="text-xs font-semibold" style={{ color: "#2e7d32" }}>{formatCurrency(deal.amount)}</p>}
+                        {deal.amount > 0 && <p className="text-xs font-semibold mt-1" style={{ color: "#2e7d32" }}>{formatCurrency(deal.amount)}</p>}
                       </div>
                     </Link>
                   ))}
                   {stageDeals.length === 0 && (
-                    <div className="p-4 text-center text-xs" style={{ border: "1px dashed #ddd", borderRadius: 4, color: "#ccc" }}>Нет сделок</div>
+                    <div className="p-4 text-center text-xs" style={{ border: "1px dashed #ddd", borderRadius: 6, color: "#ccc" }}>Нет сделок</div>
                   )}
                 </div>
               </div>

@@ -6,7 +6,7 @@ import DealsList from "./DealsList";
 export default async function DealsPage() {
   const supabase = await createClient();
 
-  const [deals, users] = await Promise.all([
+  const [deals, users, funnelStages] = await Promise.all([
     fetchAll(supabase, "deals", `
       *,
       contacts(id, full_name),
@@ -17,13 +17,22 @@ export default async function DealsPage() {
       eq: { is_active: true },
       order: { column: "full_name" },
     }),
+    fetchAll(supabase, "funnel_stages", "id, funnel_id, name, slug, color, sort_order, is_final, is_success", {
+      order: { column: "sort_order" },
+    }),
   ]);
+
+  // Get deal funnel stages
+  const { data: dealFunnel } = await supabase.from("funnels").select("id").eq("type", "deal").eq("is_default", true).single();
+  const dealStages = dealFunnel
+    ? (funnelStages as any[]).filter((s: any) => s.funnel_id === dealFunnel.id)
+    : [];
 
   return (
     <>
       <Header title="Сделки" />
       <main className="p-6">
-        <DealsList initialDeals={deals} users={users} />
+        <DealsList initialDeals={deals} users={users} funnelStages={dealStages} />
       </main>
     </>
   );
