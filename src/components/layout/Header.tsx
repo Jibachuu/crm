@@ -23,6 +23,7 @@ export default function Header({ title }: HeaderProps) {
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const prevCountRef = useRef(0);
   const [checkedIn, setCheckedIn] = useState(false);
   const [checkTime, setCheckTime] = useState<string | null>(null);
   const [checkLoading, setCheckLoading] = useState(false);
@@ -53,6 +54,11 @@ export default function Header({ title }: HeaderProps) {
         const data = await res.json();
         setNotifications(data.notifications ?? []);
         const unread = (data.notifications ?? []).filter((n: Notification) => !readIds.has(n.id)).length;
+        // Play sound if new notifications appeared
+        if (unread > prevCountRef.current && prevCountRef.current >= 0) {
+          try { new Audio("/notification.mp3").play().catch(() => {}); } catch {}
+        }
+        prevCountRef.current = unread;
         setCount(unread);
       }
     } catch { /* ignore */ }

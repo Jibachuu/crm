@@ -33,19 +33,31 @@ export async function GET() {
     date: string;
   }[] = [];
 
+  const today = new Date().toISOString().slice(0, 10);
+
   for (const t of tasks ?? []) {
-    const isOverdue = t.due_date && new Date(t.due_date) < new Date();
+    const dueDate = t.due_date ? new Date(t.due_date) : null;
+    const isOverdue = dueDate && dueDate < new Date() && t.due_date.slice(0, 10) < today;
+    const isToday = t.due_date && t.due_date.slice(0, 10) === today;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const assigneeName = isAdmin && t.assigned_to !== user.id ? ` (${(t.users as any)?.full_name ?? ""})` : "";
+    const prefix = isOverdue ? "Просрочена" : isToday ? "Сегодня" : "";
     notifications.push({
       id: `task-${t.id}`,
       type: "task",
-      title: isOverdue ? `⏰ Просрочена: ${t.title}${assigneeName}` : `📋 ${t.title}${assigneeName}`,
+      title: prefix ? `${prefix}: ${t.title}${assigneeName}` : `${t.title}${assigneeName}`,
       subtitle: t.due_date ? `Срок: ${new Date(t.due_date).toLocaleDateString("ru-RU")}` : undefined,
       link: t.entity_type && t.entity_id ? `/${t.entity_type}s/${t.entity_id}` : "/tasks",
       date: t.created_at,
     });
   }
+
+  // Sort: overdue first, then today, then rest
+  notifications.sort((a, b) => {
+    const aOverdue = a.title.startsWith("Просрочена") ? 0 : a.title.startsWith("Сегодня") ? 1 : 2;
+    const bOverdue = b.title.startsWith("Просрочена") ? 0 : b.title.startsWith("Сегодня") ? 1 : 2;
+    return aOverdue - bOverdue;
+  });
 
   return NextResponse.json({ notifications, count: notifications.length });
 }
