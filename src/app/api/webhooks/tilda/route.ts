@@ -31,17 +31,30 @@ export async function POST(req: NextRequest) {
     body = Object.fromEntries(new URLSearchParams(text));
   }
 
-  // Extract fields (Tilda field names vary, try common ones)
-  const name = body.Name || body.name || body.FIO || body.fio || body["Имя"] || body.firstname || "";
-  const phone = body.Phone || body.phone || body["Телефон"] || body.tel || "";
-  const email = body.Email || body.email || body["Почта"] || "";
-  const company = body.Company || body.company || body["Компания"] || "";
-  const message = body.Message || body.message || body["Сообщение"] || body.comment || "";
+  // Log all received fields for debugging
+  console.log("[TILDA] Received fields:", JSON.stringify(body));
+
+  // Extract fields — Tilda uses various naming conventions
+  const name = body.Name || body.name || body.FIO || body.fio || body["Имя"] || body.firstname || body["Ваше имя"] || body["Как вас зовут?"] || "";
+  const phone = body.Phone || body.phone || body["Телефон"] || body.tel || body["Ваш телефон"] || body["Номер телефона"] || "";
+  const email = body.Email || body.email || body["Почта"] || body["Ваш email"] || body["E-mail"] || "";
+  const company = body.Company || body.company || body["Компания"] || body["Название компании"] || "";
+  const message = body.Message || body.message || body["Сообщение"] || body.comment || body["Комментарий"] || "";
   const source = body.formname || body.formid || body.form || "tilda";
   const pageUrl = body.tranid || body.page || "";
 
-  if (!name && !phone && !email) {
-    return NextResponse.json({ error: "No contact data" }, { status: 400 });
+  // If no recognized fields, try to extract from any field that looks like contact data
+  const allValues = Object.values(body).filter((v) => typeof v === "string" && v.length > 1) as string[];
+  const anyPhone = allValues.find((v) => /^[\+\d\s\-\(\)]{7,}$/.test(v)) || "";
+  const anyEmail = allValues.find((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) || "";
+  const anyName = !name && !anyPhone && !anyEmail ? allValues[0] || "" : "";
+
+  const finalName = name || anyName;
+  const finalPhone = phone || anyPhone;
+  const finalEmail = email || anyEmail;
+
+  if (!finalName && !finalPhone && !finalEmail) {
+    return NextResponse.json({ error: "No contact data", receivedFields: Object.keys(body) }, { status: 400 });
   }
 
   // Get admin user for created_by
@@ -50,22 +63,24 @@ export async function POST(req: NextRequest) {
 
   // Check if contact already exists by phone or email
   let contactId: string | null = null;
-  if (email) {
-    const { data } = await admin.from("contacts").select("id").ilike("email", email).limit(1).single();
+  if (finalEmail) {
+    const { data } = await admin.from("contacts").select("id").ilike("email", finalEmail).limit(1).single();
     if (data) contactId = data.id;
   }
-  if (!contactId && phone) {
-    const cleanPhone = phone.replace(/\D/g, "");
-    const { data } = await admin.from("contacts").select("id").ilike("phone", `%${cleanPhone.slice(-10)}%`).limit(1).single();
-    if (data) contactId = data.id;
+  if (!contactId && finalPhone) {
+    const cleanPhone = finalPhone.replace(/\D/g, "");
+    if (cleanPhone.length >= 7) {
+      const { data } = await admin.from("contacts").select("id").ilike("phone", `%${cleanPhone.slice(-10)}%`).limit(1).single();
+      if (data) contactId = data.id;
+    }
   }
 
   // Create contact if not found
   if (!contactId) {
     const { data: newContact } = await admin.from("contacts").insert({
-      full_name: name || email || phone,
-      phone: phone || null,
-      email: email || null,
+      full_name: finalName || finalEmail || finalPhone,
+      phone: finalPhone || null,
+      email: finalEmail || null,
       created_by: adminId,
     }).select("id").single();
     contactId = newContact?.id ?? null;
@@ -95,7 +110,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Create lead
-  const leadTitle = `Заявка с сайта: ${name || email || phone}`;
+  const leadTitle = `Заявка с сайта: ${finalName || finalEmail || finalPhone}`;
   const { data: lead, error } = await admin.from("leads").insert({
     title: leadTitle,
     source: "website",
