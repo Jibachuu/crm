@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { TelegramClient, Api } from "telegram";
-import { StringSession } from "telegram/sessions";
 import { createClient } from "@/lib/supabase/server";
+
+const TG_AUTH_URL = process.env.TG_AUTH_URL || "http://72.56.243.123:3200";
+const TG_AUTH_KEY = process.env.TG_AUTH_KEY || "artevo-tg-auth-2026";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -11,55 +12,18 @@ export async function POST(req: NextRequest) {
   const { phone, firstName, lastName } = await req.json();
   if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });
 
-  const apiId = Number(process.env.TELEGRAM_API_ID);
-  const apiHash = process.env.TELEGRAM_API_HASH ?? "";
   const session = process.env.TELEGRAM_SESSION ?? "";
-
-  if (!apiId || !apiHash || !session) {
-    return NextResponse.json({ error: "Telegram not configured" }, { status: 503 });
-  }
-
-  const client = new TelegramClient(new StringSession(session), apiId, apiHash, { connectionRetries: 2 });
+  if (!session) return NextResponse.json({ error: "Telegram not connected" }, { status: 503 });
 
   try {
-    await client.connect();
-
-    // Import contact by phone
-    const result = await client.invoke(
-      new Api.contacts.ImportContacts({
-        contacts: [
-          new Api.InputPhoneContact({
-            clientId: BigInt(Date.now()) as unknown as import("big-integer").BigInteger,
-            phone: phone.replace(/\D/g, ""),
-            firstName: firstName || phone,
-            lastName: lastName || "",
-          }),
-        ],
-      })
-    );
-
-    const imported = result.imported?.length ?? 0;
-    const users = result.users ?? [];
-    const foundUser = users[0] as any;
-
-    await client.disconnect();
-
-    if (imported > 0 || users.length > 0) {
-      return NextResponse.json({
-        ok: true,
-        user: foundUser ? {
-          id: String(foundUser.id),
-          firstName: foundUser.firstName,
-          lastName: foundUser.lastName,
-          username: foundUser.username,
-          phone: foundUser.phone,
-        } : null,
-      });
-    }
-
-    return NextResponse.json({ ok: false, error: "Контакт не найден в Telegram" });
+    const res = await fetch(`${TG_AUTH_URL}/add-contact`, {
+      method: "POST",
+      headers: { Authorization: TG_AUTH_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, firstName, lastName, session }),
+    });
+    const data = await res.json();
+    return NextResponse.json(data);
   } catch (e) {
-    try { await client.disconnect(); } catch {}
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
