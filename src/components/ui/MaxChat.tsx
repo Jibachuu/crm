@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Send, RefreshCw, Paperclip, Mic, MicOff } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 
-export default function MaxChat({ chatId, compact = false }: { chatId: string; compact?: boolean }) {
+export default function MaxChat({ chatId, compact = false, entityType, entityId }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[]; chatId?: string }[]>([]);
   const [text, setText] = useState("");
@@ -46,7 +46,17 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
       // Only update state if messages actually changed
       const newIds = msgs.map((m: { id: string }) => m.id).join(",");
       const oldIds = messages.map((m) => m.id).join(",");
-      if (newIds !== oldIds) setMessages(msgs);
+      if (newIds !== oldIds) {
+        setMessages(msgs);
+        // Sync to communications timeline
+        if (entityType && entityId && msgs.length > 0) {
+          fetch("/api/sync-messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: msgs, channel: "maks", entity_type: entityType, entity_id: entityId }),
+          }).catch(() => {});
+        }
+      }
     } catch (e) { setError(String(e)); }
     if (!loadingDoneRef.current) { setLoading(false); loadingDoneRef.current = true; }
   }

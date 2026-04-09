@@ -129,7 +129,7 @@ function MediaBubble({ media, peer, msgId }: { media: NonNullable<TgMessage["med
   return null;
 }
 
-export default function TelegramChat({ peer, compact = false, pollInterval = 8000, readOnly = false }: Props) {
+export default function TelegramChat({ peer, compact = false, pollInterval = 8000, readOnly = false, entityType, entityId }: Props & { entityType?: string; entityId?: string }) {
   const [messages, setMessages] = useState<TgMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -153,8 +153,17 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
       const data = await res.json();
       if (data.error) { setError(data.error); return; }
       // Messages come newest-first from iterMessages, reverse to show oldest at top
-      setMessages((data.messages as TgMessage[]).reverse());
+      const msgs = (data.messages as TgMessage[]).reverse();
+      setMessages(msgs);
       setError(null);
+      // Sync to communications timeline
+      if (entityType && entityId && msgs.length > 0) {
+        fetch("/api/sync-messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: msgs.map((m) => ({ id: m.id, text: m.text, isMe: m.out, sender: m.fromName, time: m.date })), channel: "telegram", entity_type: entityType, entity_id: entityId }),
+        }).catch(() => {});
+      }
     } catch {
       setError("Не удалось загрузить сообщения");
     } finally {

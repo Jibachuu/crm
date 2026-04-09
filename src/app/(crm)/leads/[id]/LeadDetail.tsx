@@ -498,7 +498,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                     Переписка с <strong>{lead.contacts.full_name}</strong>
                     {lead.contacts.telegram_id && <> · <span style={{ color: "#0067a5" }}>@{lead.contacts.telegram_id}</span></>}
                   </p>
-                  <TelegramChat peer={lead.contacts.telegram_id} compact />
+                  <TelegramChat peer={lead.contacts.telegram_id} compact entityType="lead" entityId={lead.id} />
                 </div>
               ) : (
                 <div className="text-center py-8">
@@ -514,7 +514,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                   <p className="text-xs mb-2" style={{ color: "#888" }}>
                     МАКС: <strong>{lead.contacts.full_name}</strong>
                   </p>
-                  <MaxChat chatId={lead.contacts.maks_id} compact />
+                  <MaxChat chatId={lead.contacts.maks_id} compact entityType="lead" entityId={lead.id} />
                 </div>
               ) : (
                 <div className="text-center py-8">
