@@ -62,7 +62,7 @@ export default function EmailThread({ email, compact = false, entityType, entity
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: filtered.map((e: Email) => ({
-              id: e.uid || e.dbId || e.date,
+              id: e.uid || (e as any).dbId || e.date,
               text: e.preview,
               subject: e.subject,
               isMe: e.folder === "SENT",
