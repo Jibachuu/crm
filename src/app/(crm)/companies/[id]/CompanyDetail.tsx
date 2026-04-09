@@ -280,7 +280,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                     </div>
                   </CardBody>
                 </Card>
-                <CommunicationsTimeline communications={communications} />
+                <CommunicationsTimeline entityType="company" entityId={company.id} />
               </div>
             )}
 

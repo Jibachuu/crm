@@ -13,6 +13,7 @@ import ClientTimeIndicator from "@/components/ui/ClientTimeIndicator";
 import { Card, CardBody } from "@/components/ui/Card";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
+import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import AddProductModal from "@/components/ui/AddProductModal";
 import EditDealModal from "../EditDealModal";
 import { formatDate, formatDateTime, formatCurrency, getInitials } from "@/lib/utils";
@@ -338,14 +339,10 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
               <div className="space-y-3">
                 <Card>
                   <CardBody>
-                    <textarea
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)}
-                      placeholder="Добавить заметку..."
-                      rows={3}
+                    <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)}
+                      placeholder="Добавить заметку..." rows={2}
                       className="w-full text-sm p-3 resize-none focus:outline-none"
-                      style={{ border: "1px solid #ddd", borderRadius: 4 }}
-                    />
+                      style={{ border: "1px solid #ddd", borderRadius: 4 }} />
                     <div className="flex justify-end mt-2">
                       <Button size="sm" onClick={addNote} loading={noteLoading} disabled={!noteText.trim()}>
                         <MessageSquare size={13} /> Добавить заметку
@@ -353,30 +350,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                     </div>
                   </CardBody>
                 </Card>
-                {communications.length === 0 ? (
-                  <p className="text-sm text-center py-8" style={{ color: "#aaa" }}>Коммуникации отсутствуют</p>
-                ) : (
-                  communications.map((comm: { id: string; channel: string; direction: string; body?: string; created_at: string; users?: { full_name: string } }) => (
-                    <Card key={comm.id}>
-                      <CardBody>
-                        <div className="flex justify-between gap-3">
-                          <div className="flex gap-3">
-                            <span className="text-lg">{CHANNEL_ICONS[comm.channel]}</span>
-                            <div>
-                              <div className="flex gap-2 text-xs mb-1" style={{ color: "#999" }}>
-                                <span className="font-medium">{CHANNEL_LABELS[comm.channel]}</span>
-                                <span>{comm.direction === "inbound" ? "Входящее" : "Исходящее"}</span>
-                                {comm.users && <span>• {comm.users.full_name}</span>}
-                              </div>
-                              {comm.body && <p className="text-sm whitespace-pre-wrap" style={{ color: "#555" }}>{comm.body}</p>}
-                            </div>
-                          </div>
-                          <span className="text-xs flex-shrink-0" style={{ color: "#aaa" }}>{formatDateTime(comm.created_at)}</span>
-                        </div>
-                      </CardBody>
-                    </Card>
-                  ))
-                )}
+                <CommunicationsTimeline entityType="deal" entityId={deal.id} />
               </div>
             )}
 

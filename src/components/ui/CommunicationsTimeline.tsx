@@ -1,132 +1,169 @@
 "use client";
 
-import { useState } from "react";
-import { Mail, MessageSquare, Phone, CircleDot, StickyNote, ChevronDown, ChevronUp, Filter } from "lucide-react";
-import { formatDateTime } from "@/lib/utils";
+import { useState, useEffect } from "react";
+import { MessageSquare, Mail, Phone, ArrowLeft, ArrowRight, ChevronDown, Search } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import DateRangeFilter from "./DateRangeFilter";
+import { usePagination } from "@/hooks/usePagination";
 
 interface Communication {
   id: string;
   channel: string;
   direction: string;
-  subject?: string;
   body?: string;
+  subject?: string;
   sender_name?: string;
   from_address?: string;
   created_at: string;
   users?: { full_name: string };
 }
 
-const CHANNEL_CONFIG: Record<string, { icon: React.ElementType; label: string; color: string }> = {
-  email: { icon: Mail, label: "Email", color: "#0067a5" },
-  telegram: { icon: MessageSquare, label: "Telegram", color: "#0088cc" },
-  phone: { icon: Phone, label: "Звонок", color: "#2e7d32" },
-  maks: { icon: CircleDot, label: "МАКС", color: "#7b1fa2" },
-  note: { icon: StickyNote, label: "Заметка", color: "#e65c00" },
-  internal: { icon: MessageSquare, label: "Внутреннее", color: "#888" },
+const CHANNEL_CONFIG: Record<string, { icon: typeof MessageSquare; color: string; label: string }> = {
+  telegram: { icon: MessageSquare, color: "#0088cc", label: "Telegram" },
+  whatsapp: { icon: MessageSquare, color: "#25D366", label: "WhatsApp" },
+  maks: { icon: MessageSquare, color: "#0067a5", label: "МАКС" },
+  email: { icon: Mail, color: "#888", label: "Email" },
+  phone: { icon: Phone, color: "#7b1fa2", label: "Телефон" },
+  note: { icon: MessageSquare, color: "#aaa", label: "Заметка" },
+  internal: { icon: MessageSquare, color: "#ccc", label: "Внутреннее" },
 };
 
-export default function CommunicationsTimeline({ communications }: { communications: Communication[] }) {
-  const [channelFilter, setChannelFilter] = useState("");
-  const [directionFilter, setDirectionFilter] = useState("");
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [showFilters, setShowFilters] = useState(false);
+interface Props {
+  entityType: string;
+  entityId: string;
+}
 
-  const filtered = communications.filter((c) => {
-    if (channelFilter && c.channel !== channelFilter) return false;
-    if (directionFilter && c.direction !== directionFilter) return false;
+export default function CommunicationsTimeline({ entityType, entityId }: Props) {
+  const [comms, setComms] = useState<Communication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [channelFilter, setChannelFilter] = useState<Set<string>>(new Set());
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    loadComms();
+  }, [entityType, entityId]);
+
+  async function loadComms() {
+    setLoading(true);
+    const supabase = createClient();
+
+    // Load from both entity_type/entity_id AND direct FK columns
+    const fkField = entityType === "company" ? "company_id" : entityType === "deal" ? "deal_id" : entityType === "lead" ? "lead_id" : "contact_id";
+
+    const { data } = await supabase.from("communications")
+      .select("*, users!communications_created_by_fkey(full_name)")
+      .or(`${fkField}.eq.${entityId},and(entity_type.eq.${entityType},entity_id.eq.${entityId})`)
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    // Deduplicate by id
+    const unique = new Map<string, Communication>();
+    for (const c of data ?? []) unique.set(c.id, c);
+    setComms(Array.from(unique.values()));
+    setLoading(false);
+  }
+
+  const filtered = comms.filter((c) => {
+    if (channelFilter.size > 0 && !channelFilter.has(c.channel)) return false;
+    if (search && !(c.body?.toLowerCase().includes(search.toLowerCase()) || c.subject?.toLowerCase().includes(search.toLowerCase()) || c.sender_name?.toLowerCase().includes(search.toLowerCase()))) return false;
+    if (dateFrom && c.created_at < dateFrom) return false;
+    if (dateTo && c.created_at > dateTo + "T23:59:59") return false;
     return true;
   });
 
-  function toggleExpand(id: string) {
-    setExpandedIds((prev) => {
-      const s = new Set(prev);
-      s.has(id) ? s.delete(id) : s.add(id);
-      return s;
-    });
+  const { visible, hasMore, remaining, showMore } = usePagination(filtered, 30);
+
+  function toggleChannel(ch: string) {
+    setChannelFilter((prev) => { const s = new Set(prev); s.has(ch) ? s.delete(ch) : s.add(ch); return s; });
   }
 
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  }
+
+  function formatDate(d: string) {
+    return new Date(d).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+
+  const channels = [...new Set(comms.map((c) => c.channel))];
+
   return (
-    <div>
+    <div className="space-y-3">
       {/* Filters */}
-      <div className="flex items-center gap-2 mb-3">
-        <button onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-gray-100" style={{ color: "#888" }}>
-          <Filter size={12} /> Фильтры
-        </button>
-        <span className="text-xs" style={{ color: "#aaa" }}>{filtered.length} сообщений</span>
+      <div className="flex flex-wrap gap-2 items-center">
+        <div className="relative flex-1 min-w-40">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "#aaa" }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск по тексту..."
+            className="w-full pl-8 pr-3 py-1.5 text-sm rounded focus:outline-none" style={{ border: "1px solid #d0d0d0" }} />
+        </div>
+        <DateRangeFilter onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
+        <div className="flex gap-1">
+          {channels.map((ch) => {
+            const cfg = CHANNEL_CONFIG[ch] || CHANNEL_CONFIG.internal;
+            const active = channelFilter.size === 0 || channelFilter.has(ch);
+            return (
+              <button key={ch} onClick={() => toggleChannel(ch)}
+                className="text-xs px-2 py-1 rounded-full transition-colors"
+                style={{ background: active ? cfg.color + "20" : "#f5f5f5", color: active ? cfg.color : "#ccc", border: `1px solid ${active ? cfg.color + "40" : "#e0e0e0"}` }}>
+                {cfg.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {showFilters && (
-        <div className="flex gap-2 mb-3">
-          <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)}
-            className="text-xs px-2 py-1 rounded outline-none" style={{ border: "1px solid #d0d0d0" }}>
-            <option value="">Все каналы</option>
-            {Object.entries(CHANNEL_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-          </select>
-          <select value={directionFilter} onChange={(e) => setDirectionFilter(e.target.value)}
-            className="text-xs px-2 py-1 rounded outline-none" style={{ border: "1px solid #d0d0d0" }}>
-            <option value="">Все направления</option>
-            <option value="inbound">Входящие</option>
-            <option value="outbound">Исходящие</option>
-          </select>
-        </div>
-      )}
+      <p className="text-xs" style={{ color: "#aaa" }}>{filtered.length} сообщений</p>
 
-      {/* Timeline */}
-      {filtered.length === 0 ? (
-        <p className="text-xs text-center py-6" style={{ color: "#aaa" }}>Нет сообщений</p>
+      {loading ? (
+        <p className="text-sm text-center py-8" style={{ color: "#aaa" }}>Загрузка...</p>
+      ) : visible.length === 0 ? (
+        <p className="text-sm text-center py-8" style={{ color: "#aaa" }}>Нет сообщений</p>
       ) : (
         <div className="space-y-2">
-          {filtered.map((comm) => {
-            const config = CHANNEL_CONFIG[comm.channel] ?? CHANNEL_CONFIG.note;
-            const Icon = config.icon;
-            const text = comm.body ?? "";
-            const isLong = text.length > 200;
-            const isExpanded = expandedIds.has(comm.id);
-            const senderName = comm.sender_name ?? comm.users?.full_name ?? comm.from_address ?? "";
+          {(visible as Communication[]).map((c) => {
+            const cfg = CHANNEL_CONFIG[c.channel] || CHANNEL_CONFIG.internal;
+            const Icon = cfg.icon;
+            const isInbound = c.direction === "inbound";
+            const isLong = (c.body?.length ?? 0) > 300;
+            const isExpanded = expandedIds.has(c.id);
+            const displayText = isLong && !isExpanded ? c.body?.slice(0, 300) + "..." : c.body;
+            const senderName = c.sender_name || c.from_address || c.users?.full_name || "";
 
             return (
-              <div key={comm.id} className="flex gap-3 px-3 py-2.5 rounded hover:bg-gray-50 transition-colors"
-                style={{ border: "1px solid #f0f0f0" }}>
-                {/* Channel icon */}
-                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-                  style={{ background: `${config.color}15` }}>
-                  <Icon size={13} style={{ color: config.color }} />
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-xs font-medium" style={{ color: config.color }}>{config.label}</span>
-                    <span className="text-xs px-1.5 py-0.5 rounded" style={{
-                      background: comm.direction === "inbound" ? "#e8f4fd" : "#e8f5e9",
-                      color: comm.direction === "inbound" ? "#0067a5" : "#2e7d32",
-                      fontSize: 10,
-                    }}>
-                      {comm.direction === "inbound" ? "Входящее" : "Исходящее"}
-                    </span>
-                    {senderName && <span className="text-xs" style={{ color: "#888" }}>{senderName}</span>}
-                    <span className="text-xs ml-auto flex-shrink-0" style={{ color: "#aaa" }}>{formatDateTime(comm.created_at)}</span>
+              <div key={c.id} className="flex gap-3 rounded-lg px-4 py-3"
+                style={{ background: isInbound ? "#f8f9fa" : "#e8f4fd", border: "1px solid #e4e4e4" }}>
+                <div className="flex-shrink-0 mt-0.5">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: cfg.color + "15" }}>
+                    <Icon size={14} style={{ color: cfg.color }} />
                   </div>
-
-                  {comm.subject && <p className="text-xs font-medium mb-0.5" style={{ color: "#333" }}>{comm.subject}</p>}
-
-                  {text && (
-                    <div>
-                      <p className="text-xs whitespace-pre-wrap" style={{ color: "#555" }}>
-                        {isLong && !isExpanded ? text.slice(0, 200) + "..." : text}
-                      </p>
-                      {isLong && (
-                        <button onClick={() => toggleExpand(comm.id)} className="flex items-center gap-0.5 text-xs mt-1 hover:underline" style={{ color: "#0067a5" }}>
-                          {isExpanded ? <><ChevronUp size={10} /> Свернуть</> : <><ChevronDown size={10} /> Показать полностью</>}
-                        </button>
-                      )}
-                    </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    {isInbound ? <ArrowLeft size={11} style={{ color: "#888" }} /> : <ArrowRight size={11} style={{ color: "#0067a5" }} />}
+                    {senderName && <span className="text-xs font-semibold" style={{ color: "#333" }}>{senderName}</span>}
+                    <span className="text-xs" style={{ color: "#aaa" }}>{formatDate(c.created_at)}</span>
+                  </div>
+                  {c.subject && <p className="text-xs font-medium mb-0.5" style={{ color: "#555" }}>{c.subject}</p>}
+                  {displayText && <p className="text-sm whitespace-pre-wrap" style={{ color: "#444" }}>{displayText}</p>}
+                  {isLong && (
+                    <button onClick={() => toggleExpand(c.id)} className="text-xs mt-1 hover:underline" style={{ color: "#0067a5" }}>
+                      {isExpanded ? "Свернуть" : "Показать полностью"}
+                    </button>
                   )}
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {hasMore && (
+        <button onClick={() => showMore()} className="w-full text-sm py-2 rounded hover:bg-blue-50" style={{ color: "#0067a5", border: "1px dashed #d0e8f5" }}>
+          <ChevronDown size={14} className="inline mr-1" />Загрузить ещё ({remaining})
+        </button>
       )}
     </div>
   );

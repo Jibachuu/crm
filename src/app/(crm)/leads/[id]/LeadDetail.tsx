@@ -14,6 +14,7 @@ import Button from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
+import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import AddProductModal from "@/components/ui/AddProductModal";
 import EditLeadModal from "../EditLeadModal";
 import { formatDate, formatDateTime, getInitials } from "@/lib/utils";
@@ -389,7 +390,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                       value={noteText}
                       onChange={(e) => setNoteText(e.target.value)}
                       placeholder="Добавить заметку..."
-                      rows={3}
+                      rows={2}
                       className="w-full text-sm p-3 resize-none focus:outline-none"
                       style={{ border: "1px solid #ddd", borderRadius: 4 }}
                     />
@@ -400,31 +401,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                     </div>
                   </CardBody>
                 </Card>
-                {communications.length === 0 ? (
-                  <p className="text-sm text-center py-8" style={{ color: "#aaa" }}>Коммуникации отсутствуют</p>
-                ) : (
-                  communications.map((comm: { id: string; channel: string; direction: string; subject?: string; body?: string; created_at: string; users?: { full_name: string } }) => (
-                    <Card key={comm.id}>
-                      <CardBody>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3">
-                            <span className="text-lg mt-0.5">{CHANNEL_ICONS[comm.channel]}</span>
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs font-medium" style={{ color: "#555" }}>{CHANNEL_LABELS[comm.channel]}</span>
-                                <span className="text-xs" style={{ color: "#999" }}>{comm.direction === "inbound" ? "Входящее" : "Исходящее"}</span>
-                                {comm.users && <span className="text-xs" style={{ color: "#999" }}>• {comm.users.full_name}</span>}
-                              </div>
-                              {comm.subject && <p className="text-sm font-medium" style={{ color: "#333" }}>{comm.subject}</p>}
-                              {comm.body && <p className="text-sm whitespace-pre-wrap" style={{ color: "#555" }}>{comm.body}</p>}
-                            </div>
-                          </div>
-                          <span className="text-xs flex-shrink-0" style={{ color: "#aaa" }}>{formatDateTime(comm.created_at)}</span>
-                        </div>
-                      </CardBody>
-                    </Card>
-                  ))
-                )}
+                <CommunicationsTimeline entityType="lead" entityId={lead.id} />
               </div>
             )}
 
