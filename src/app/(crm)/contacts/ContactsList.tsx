@@ -10,6 +10,7 @@ import { formatDate, getInitials } from "@/lib/utils";
 import PurgeButton from "@/components/ui/PurgeButton";
 import { usePagination } from "@/hooks/usePagination";
 import ShowMore from "@/components/ui/ShowMore";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import CreateContactModal from "./CreateContactModal";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -20,14 +21,18 @@ export default function ContactsList({ initialContacts, companies, users }: any)
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkTaskOpen, setBulkTaskOpen] = useState(false);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
 
-  const filtered = contacts.filter((c: { full_name: string; email?: string; phone?: string; companies?: { name: string } }) =>
-    !search ||
-    c.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    c.email?.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone?.includes(search) ||
-    c.companies?.name?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = contacts.filter((c: { full_name: string; email?: string; phone?: string; companies?: { name: string }; created_at?: string }) => {
+    const matchesSearch = !search ||
+      c.full_name.toLowerCase().includes(search.toLowerCase()) ||
+      c.email?.toLowerCase().includes(search.toLowerCase()) ||
+      c.phone?.includes(search) ||
+      c.companies?.name?.toLowerCase().includes(search.toLowerCase());
+    const matchesDate = (!dateFrom || (c.created_at ?? "") >= dateFrom) && (!dateTo || (c.created_at ?? "") <= dateTo + "T23:59:59");
+    return matchesSearch && matchesDate;
+  });
 
   const { visible: paginatedContacts, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);
 
@@ -74,6 +79,7 @@ export default function ContactsList({ initialContacts, companies, users }: any)
             style={{ border: "1px solid #d0d0d0", borderRadius: 4 }}
           />
         </div>
+        <DateRangeFilter onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
         <ExportImportButtons entity="contacts" onImported={() => window.location.reload()} />
         <PurgeButton table="contacts" onPurged={() => window.location.reload()} />
         <Button onClick={() => setShowCreate(true)} size="sm">

@@ -9,6 +9,7 @@ import BulkTaskModal from "@/components/ui/BulkTaskModal";
 import PurgeButton from "@/components/ui/PurgeButton";
 import { usePagination } from "@/hooks/usePagination";
 import ShowMore from "@/components/ui/ShowMore";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import CreateCompanyModal from "./CreateCompanyModal";
 
 const COMPANY_TYPE_LABELS: Record<string, string> = {
@@ -30,16 +31,19 @@ export default function CompaniesList({ initialCompanies, users }: any) {
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
   const [bulkTaskOpen, setBulkTaskOpen] = useState(false);
   const [contractFilter, setContractFilter] = useState("");
 
-  const filtered = companies.filter((c: { name: string; inn?: string; company_type?: string; contract_status?: string }) => {
+  const filtered = companies.filter((c: { name: string; inn?: string; company_type?: string; contract_status?: string; created_at?: string }) => {
     const matchSearch = !search ||
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.inn?.includes(search) ||
       COMPANY_TYPE_LABELS[c.company_type ?? ""]?.toLowerCase().includes(search.toLowerCase());
     const matchContract = !contractFilter || (c.contract_status ?? "none") === contractFilter;
-    return matchSearch && matchContract;
+    const matchesDate = (!dateFrom || (c.created_at ?? "") >= dateFrom) && (!dateTo || (c.created_at ?? "") <= dateTo + "T23:59:59");
+    return matchSearch && matchContract && matchesDate;
   });
 
   const { visible: paginatedCompanies, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);
@@ -95,6 +99,7 @@ export default function CompaniesList({ initialCompanies, users }: any) {
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
+        <DateRangeFilter onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
         <ExportImportButtons entity="companies" onImported={() => window.location.reload()} />
         <PurgeButton table="companies" onPurged={() => window.location.reload()} />
         <Button onClick={() => setShowCreate(true)} size="sm">

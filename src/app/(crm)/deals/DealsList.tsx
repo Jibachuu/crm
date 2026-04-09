@@ -13,6 +13,7 @@ import CreateDealModal from "./CreateDealModal";
 import { createClient } from "@/lib/supabase/client";
 import { usePagination } from "@/hooks/usePagination";
 import ShowMore from "@/components/ui/ShowMore";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
 
 interface FunnelStage { id: string; funnel_id: string; name: string; slug: string; color: string; sort_order: number; is_final: boolean; is_success: boolean; }
 
@@ -33,6 +34,8 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkTaskOpen, setBulkTaskOpen] = useState(false);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
 
   const filtered = deals.filter((d) => {
     const matchesSearch = !search ||
@@ -40,7 +43,8 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
       d.contacts?.full_name?.toLowerCase().includes(search.toLowerCase()) ||
       d.companies?.name?.toLowerCase().includes(search.toLowerCase());
     const matchesStage = stageFilter === "all" || d.stage === stageFilter || d.stage_id === stageFilter;
-    return matchesSearch && matchesStage;
+    const matchesDate = (!dateFrom || d.created_at >= dateFrom) && (!dateTo || d.created_at <= dateTo + "T23:59:59");
+    return matchesSearch && matchesStage && matchesDate;
   });
 
   const { visible: paginatedDeals, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);
@@ -141,6 +145,7 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
             {filterOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
+        <DateRangeFilter onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
         <div className="flex overflow-hidden" style={{ border: "1px solid #d0d0d0", borderRadius: 4 }}>
           {(["table", "kanban"] as const).map((v) => (
             <button key={v} onClick={() => setView(v)}

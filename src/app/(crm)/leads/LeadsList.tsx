@@ -13,6 +13,7 @@ import CreateLeadModal from "./CreateLeadModal";
 import { createClient } from "@/lib/supabase/client";
 import { usePagination } from "@/hooks/usePagination";
 import ShowMore from "@/components/ui/ShowMore";
+import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "./[id]/LeadDetail";
 
 const STATUS_VARIANTS: Record<string, "info" | "warning" | "success" | "default" | "danger" | "purple"> = {
@@ -43,6 +44,8 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("leads_view_mode");
@@ -62,7 +65,8 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
       l.companies?.name?.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === "all" || l.status === statusFilter || (l.stage_id && stageMap[l.stage_id]?.slug === statusFilter);
     const matchesFunnel = funnelFilter === "all" || l.funnel_id === funnelFilter;
-    return matchesSearch && matchesStatus && matchesFunnel;
+    const matchesDate = (!dateFrom || l.created_at >= dateFrom) && (!dateTo || l.created_at <= dateTo + "T23:59:59");
+    return matchesSearch && matchesStatus && matchesFunnel && matchesDate;
   });
 
   const { visible: paginatedLeads, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);
@@ -187,6 +191,7 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
             {LEAD_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </div>
+        <DateRangeFilter onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
         {funnels.length > 1 && (
           <select
             value={funnelFilter}
