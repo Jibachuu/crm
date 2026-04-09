@@ -10,6 +10,23 @@ interface User {
   email: string;
   role: string;
   is_active: boolean;
+  last_seen_at?: string;
+}
+
+function isOnline(lastSeen?: string) {
+  if (!lastSeen) return false;
+  return Date.now() - new Date(lastSeen).getTime() < 3 * 60 * 1000; // 3 min
+}
+
+function lastSeenText(lastSeen?: string) {
+  if (!lastSeen) return "не в сети";
+  const diff = Date.now() - new Date(lastSeen).getTime();
+  if (diff < 3 * 60 * 1000) return "онлайн";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `был(а) ${mins} мин назад`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `был(а) ${hrs} ч назад`;
+  return `был(а) ${new Date(lastSeen).toLocaleDateString("ru-RU")}`;
 }
 
 interface Message {
@@ -358,14 +375,18 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
               <button key={u.id} onClick={() => setTarget({ type: "user", user: u })}
                 className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors"
                 style={{ background: isSel ? "#e8f4fd" : "transparent", borderLeft: isSel ? "3px solid #0067a5" : "3px solid transparent" }}>
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                  style={{ background: u.is_active ? "#0067a5" : "#aaa" }}>{getInitials(u.full_name)}</div>
+                <div className="relative flex-shrink-0">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                    style={{ background: u.is_active ? "#0067a5" : "#aaa" }}>{getInitials(u.full_name)}</div>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white"
+                    style={{ background: isOnline(u.last_seen_at) ? "#2e7d32" : "#ccc" }} />
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium truncate" style={{ color: "#222" }}>{u.full_name ?? u.email}</span>
                     {unread > 0 && <span className="text-xs text-white rounded-full px-1.5 py-0.5 flex-shrink-0" style={{ background: "#0067a5", minWidth: 18, textAlign: "center" }}>{unread}</span>}
                   </div>
-                  <span className="text-xs" style={{ color: "#aaa" }}>{ROLE_LABELS[u.role] ?? u.role}</span>
+                  <span className="text-xs" style={{ color: isOnline(u.last_seen_at) ? "#2e7d32" : "#aaa" }}>{lastSeenText(u.last_seen_at)}</span>
                 </div>
               </button>
             );

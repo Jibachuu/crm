@@ -16,6 +16,8 @@ interface Signature {
   name: string;
   body: string;
   is_default: boolean;
+  user_id?: string;
+  users?: { full_name: string };
 }
 
 const inputStyle: React.CSSProperties = { border: "1px solid #d0d0d0", borderRadius: 4, padding: "6px 10px", fontSize: 13, width: "100%", outline: "none" };
@@ -46,7 +48,7 @@ export default function EmailTemplatesSettings() {
     const supabase = createClient();
     const [{ data: t }, { data: s }] = await Promise.all([
       supabase.from("email_templates").select("*").order("created_at", { ascending: false }),
-      supabase.from("email_signatures").select("*").order("created_at", { ascending: false }),
+      supabase.from("email_signatures").select("*, users(full_name)").order("created_at", { ascending: false }),
     ]);
     setTemplates(t ?? []);
     setSignatures(s ?? []);
@@ -88,14 +90,21 @@ export default function EmailTemplatesSettings() {
   }
 
   // ── Signatures CRUD ──
+  const [sUserId, setSUserId] = useState("");
+  const [allUsers, setAllUsers] = useState<{ id: string; full_name: string }[]>([]);
+
+  useEffect(() => {
+    createClient().from("users").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setAllUsers(data ?? []));
+  }, []);
+
   function startNewSignature() {
     setEditS(null); setNewS(true);
-    setSName(""); setSBody("");
+    setSName(""); setSBody(""); setSUserId("");
   }
 
   function startEditSignature(s: Signature) {
     setNewS(false); setEditS(s);
-    setSName(s.name); setSBody(s.body);
+    setSName(s.name); setSBody(s.body); setSUserId(s.user_id ?? "");
   }
 
   async function saveSignature() {
@@ -103,9 +112,9 @@ export default function EmailTemplatesSettings() {
     setSaving(true);
     const supabase = createClient();
     if (editS) {
-      await supabase.from("email_signatures").update({ name: sName, body: sBody }).eq("id", editS.id);
+      await supabase.from("email_signatures").update({ name: sName, body: sBody, user_id: sUserId || null }).eq("id", editS.id);
     } else {
-      await supabase.from("email_signatures").insert({ name: sName, body: sBody, created_by: (await supabase.auth.getUser()).data.user?.id });
+      await supabase.from("email_signatures").insert({ name: sName, body: sBody, user_id: sUserId || null, created_by: (await supabase.auth.getUser()).data.user?.id });
     }
     setEditS(null); setNewS(false);
     setSaving(false);
@@ -226,6 +235,13 @@ export default function EmailTemplatesSettings() {
                     <input value={sName} onChange={(e) => setSName(e.target.value)} style={inputStyle} placeholder="Основная подпись" />
                   </div>
                   <div>
+                    <label style={lblStyle}>Менеджер (привязка)</label>
+                    <select value={sUserId} onChange={(e) => setSUserId(e.target.value)} style={inputStyle}>
+                      <option value="">Общая (без привязки)</option>
+                      {allUsers.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                    </select>
+                  </div>
+                  <div>
                     <label style={lblStyle}>Текст подписи</label>
                     <textarea value={sBody} onChange={(e) => setSBody(e.target.value)} rows={4} style={{ ...inputStyle, resize: "vertical" }}
                       placeholder={"С уважением,\nЖибек\nТел: +7 (999) 123-45-67\nart-evo.ru"} />
@@ -252,6 +268,7 @@ export default function EmailTemplatesSettings() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         <p className="text-xs font-medium" style={{ color: "#333" }}>{s.name}</p>
+                        {s.users?.full_name && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "#e8f4fd", color: "#0067a5", fontSize: 10 }}>{s.users.full_name}</span>}
                         {s.is_default && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "#fff3e0", color: "#e65c00", fontSize: 10 }}>По умолчанию</span>}
                       </div>
                       <p className="text-xs truncate" style={{ color: "#888" }}>{s.body.split("\n")[0]}</p>

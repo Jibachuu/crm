@@ -8,7 +8,10 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data: profile } = await supabase.from("users").select("role").eq("id", user.id).single();
-  const isAdmin = profile?.role === "admin";
+  const isAdmin = profile?.role === "admin" || profile?.role === "supervisor";
+
+  // Update last_seen_at for online status
+  await supabase.from("users").update({ last_seen_at: new Date().toISOString() }).eq("id", user.id);
 
   // Admin sees ALL tasks, others see only their own
   const admin = createAdminClient();
