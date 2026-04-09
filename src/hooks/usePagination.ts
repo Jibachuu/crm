@@ -14,7 +14,7 @@ export function usePagination<T>(items: T[], defaultSize = 40) {
   }
 
   function showAll() {
-    setVisibleCount(items.length);
+    setVisibleCount(999999);
   }
 
   function reset() {
