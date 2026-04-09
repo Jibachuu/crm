@@ -32,20 +32,35 @@ export default function FileTemplatesSettings() {
     const { data: { user } } = await supabase.auth.getUser();
 
     for (const file of Array.from(files)) {
-      // Upload to Supabase storage
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
+      try {
+        const ext = file.name.split(".").pop() ?? "bin";
+        const path = `templates/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
-      if (data.url) {
+        // Try upload
+        let uploadError = null;
+        const { error: err1 } = await supabase.storage.from("attachments").upload(path, file, { contentType: file.type, upsert: true });
+        uploadError = err1;
+
+        // If bucket doesn't exist, create it
+        if (uploadError?.message?.includes("not found") || uploadError?.message?.includes("Bucket")) {
+          await supabase.storage.createBucket("attachments", { public: true });
+          const { error: err2 } = await supabase.storage.from("attachments").upload(path, file, { contentType: file.type, upsert: true });
+          uploadError = err2;
+        }
+
+        if (uploadError) { console.error("Upload error:", uploadError); continue; }
+
+        const { data: urlData } = supabase.storage.from("attachments").getPublicUrl(path);
+
         await supabase.from("file_templates").insert({
           folder,
           name: file.name,
-          file_url: data.url,
+          file_url: urlData.publicUrl,
           file_type: file.type,
           created_by: user?.id,
         });
+      } catch (e) {
+        console.error("File upload failed:", e);
       }
     }
     setUploading(false);
