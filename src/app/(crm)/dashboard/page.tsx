@@ -7,7 +7,7 @@ export default async function DashboardPage() {
   const supabase = await createClient();
 
   const [leads, deals, contacts, companies, tasks] = await Promise.all([
-    fetchAll(supabase, "leads", "id, title, status, stage, stage_id, assigned_to, created_at, contacts(full_name)", {
+    fetchAll(supabase, "leads", "id, title, status, stage_id, assigned_to, created_at, contacts(full_name)", {
       order: { column: "created_at", ascending: false },
     }),
     fetchAll(supabase, "deals", "id, title, stage, stage_id, amount, assigned_to, created_at", {
