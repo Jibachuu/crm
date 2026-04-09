@@ -126,6 +126,37 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
     await supabase.from("leads").update({ status: newStatus }).eq("id", draggingId);
   }
 
+  // Funnel-based kanban drag-and-drop
+  async function handleFunnelDrop(e: React.DragEvent, stageId: string) {
+    e.preventDefault();
+    setDragOverStatus(null);
+    if (!draggingId) return;
+    const lead = leads.find((l) => l.id === draggingId);
+    if (!lead || lead.stage_id === stageId) { setDraggingId(null); return; }
+    const stage = funnelStages.find((s: FunnelStage) => s.id === stageId);
+    if (!stage) { setDraggingId(null); return; }
+    const statusMap: Record<string, string> = {
+      new_contact: "new", qualification: "in_progress", probniki: "samples",
+      sleeping: "rejected", rejected: "rejected", converted: "converted",
+    };
+    const newStatus = statusMap[stage.slug] ?? lead.status;
+    const oldStageId = lead.stage_id;
+    setLeads((prev) => prev.map((l) => l.id === draggingId ? { ...l, stage_id: stageId, status: newStatus } : l));
+    setDraggingId(null);
+    const supabase = createClient();
+    await supabase.from("leads").update({ stage_id: stageId, status: newStatus, stage_changed_at: new Date().toISOString() }).eq("id", draggingId);
+    fetch("/api/automations", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "stage_change", entity_type: "lead", entity_id: draggingId, stage_id: stageId, old_stage_id: oldStageId }),
+    }).catch(() => {});
+  }
+
+  // Determine which funnel stages to show in kanban
+  // Filter by selected funnel, or show all lead stages
+  const kanbanFunnelId = funnelFilter !== "all" ? funnelFilter : (funnels.find((f: Funnel) => f.is_default)?.id ?? funnels[0]?.id);
+  const kanbanStages = funnelStages.filter((s: FunnelStage) => s.funnel_id === kanbanFunnelId);
+  const hasFunnelKanban = kanbanStages.length > 0;
+
   return (
     <div>
       {/* Toolbar */}
@@ -300,19 +331,20 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
       {/* KANBAN VIEW */}
       {viewMode === "kanban" && (
         <div className="flex gap-3 overflow-x-auto pb-4" style={{ alignItems: "flex-start" }}>
-          {LEAD_STATUSES.map((status) => {
-            const columnLeads = filtered.filter((l) => l.status === status.key);
-            const isRejected = status.key === "rejected";
-            const isDragOver = dragOverStatus === status.key;
+          {(hasFunnelKanban ? kanbanStages : LEAD_STATUSES.map((s) => ({ id: s.key, slug: s.key, name: s.label, color: s.key === "rejected" ? "#E24B4A" : "#378ADD", is_final: s.key === "rejected", sort_order: 0 } as FunnelStage))).map((stage) => {
+            const columnLeads = hasFunnelKanban
+              ? filtered.filter((l) => l.stage_id === stage.id)
+              : filtered.filter((l) => l.status === stage.slug);
+            const isDragOver = dragOverStatus === (hasFunnelKanban ? stage.id : stage.slug);
             return (
               <div
-                key={status.key}
-                onDragOver={(e) => handleDragOver(e, status.key)}
+                key={stage.id}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverStatus(hasFunnelKanban ? stage.id : stage.slug); }}
                 onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, status.key)}
+                onDrop={(e) => hasFunnelKanban ? handleFunnelDrop(e, stage.id) : handleDrop(e, stage.slug)}
                 style={{
                   minWidth: 230,
-                  maxWidth: 230,
+                  maxWidth: 240,
                   flexShrink: 0,
                   background: isDragOver ? "#f0f7ff" : "#f5f5f5",
                   borderRadius: 8,
@@ -323,16 +355,10 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
                 {/* Column header */}
                 <div
                   className="px-3 py-2.5 flex items-center justify-between"
-                  style={{
-                    borderBottom: "1px solid #e0e0e0",
-                    borderRadius: "8px 8px 0 0",
-                    background: isRejected ? "#fdecea" : "#ebebeb",
-                  }}
+                  style={{ borderBottom: "1px solid #e0e0e0", borderRadius: "8px 8px 0 0", background: stage.color + "15" }}
                 >
-                  <span className="text-xs font-semibold" style={{ color: isRejected ? "#e74c3c" : "#444" }}>
-                    {status.label}
-                  </span>
-                  <span className="text-xs rounded-full px-1.5 py-0.5 font-semibold" style={{ background: isRejected ? "#e74c3c" : "#0067a5", color: "#fff", minWidth: 20, textAlign: "center" }}>
+                  <span className="text-xs font-semibold" style={{ color: stage.color }}>{stage.name}</span>
+                  <span className="text-xs rounded-full px-1.5 py-0.5 font-semibold" style={{ background: stage.color, color: "#fff", minWidth: 20, textAlign: "center" }}>
                     {columnLeads.length}
                   </span>
                 </div>
@@ -343,6 +369,7 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
                     <KanbanCard
                       key={lead.id}
                       lead={lead}
+                      color={stage.color}
                       isDragging={draggingId === lead.id}
                       onDragStart={(e) => handleDragStart(e, lead.id)}
                       onDragEnd={() => setDraggingId(null)}
@@ -376,7 +403,7 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function KanbanCard({ lead, isDragging, onDragStart, onDragEnd }: { lead: any; isDragging: boolean; onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void }) {
+function KanbanCard({ lead, color = "#0067a5", isDragging, onDragStart, onDragEnd }: { lead: any; color?: string; isDragging: boolean; onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void }) {
   return (
     <div
       draggable
@@ -386,6 +413,7 @@ function KanbanCard({ lead, isDragging, onDragStart, onDragEnd }: { lead: any; i
         background: "#fff",
         borderRadius: 6,
         border: "1px solid #e4e4e4",
+        borderLeft: `3px solid ${color}`,
         padding: "10px 12px",
         cursor: "grab",
         opacity: isDragging ? 0.4 : 1,
