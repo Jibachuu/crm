@@ -82,7 +82,6 @@ export default function AllMessengersInbox() {
         });
         const maxData = await maxRes.json();
         if (maxData.ok && maxData.contact) {
-          // Contact added, try to open chat
           const cId = String(maxData.chatId || maxData.contact.id);
           setShowNewChat(false);
           setNewPhone("");
@@ -94,7 +93,6 @@ export default function AllMessengersInbox() {
             lastTime: Date.now() / 1000,
             chatId: cId,
           });
-          alert(`Контакт ${maxData.contact.name || newPhone} добавлен в МАКС. Если чат не открывается — напишите первое сообщение через приложение МАКС.`);
           refresh();
         } else {
           setAddError(maxData.error || "Контакт не найден в МАКС");
