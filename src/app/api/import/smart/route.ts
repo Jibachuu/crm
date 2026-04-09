@@ -7,10 +7,29 @@ type Entity = "companies" | "contacts" | "leads" | "deals" | "samples";
 function parseDate(val: unknown): string | null {
   if (!val) return null;
   const s = String(val).trim();
+
+  // Excel serial date number (e.g. 46269.66806712963)
+  const num = Number(s);
+  if (!isNaN(num) && num > 25000 && num < 100000) {
+    // Excel epoch: 1899-12-30
+    const excelEpoch = new Date(1899, 11, 30);
+    const ms = excelEpoch.getTime() + num * 86400000;
+    const d = new Date(ms);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // DD.MM.YYYY HH:MM:SS
   const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
-  if (!m) return null;
-  const [, d, mo, y, hh = "00", mm = "00", ss = "00"] = m;
-  return `${y}-${mo}-${d}T${hh}:${mm}:${ss}`;
+  if (m) {
+    const [, d, mo, y, hh = "00", mm = "00", ss = "00"] = m;
+    return `${y}-${mo}-${d}T${hh}:${mm}:${ss}`;
+  }
+
+  // ISO format or any other parseable date
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString();
+
+  return null;
 }
 
 function parseNum(val: unknown): number | null {
