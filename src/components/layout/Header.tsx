@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Bell, CheckSquare, MessageSquare, X, CheckCheck } from "lucide-react";
+import { Bell, CheckSquare, MessageSquare, X, CheckCheck, Clock } from "lucide-react";
 
 interface Notification {
   id: string;
@@ -23,6 +23,9 @@ export default function Header({ title }: HeaderProps) {
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [checkedIn, setCheckedIn] = useState(false);
+  const [checkTime, setCheckTime] = useState<string | null>(null);
+  const [checkLoading, setCheckLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   // Load read IDs from localStorage
@@ -57,6 +60,39 @@ export default function Header({ title }: HeaderProps) {
   }
 
   useEffect(() => { fetchNotifications(); }, []);
+
+  // Check-in status
+  useEffect(() => {
+    fetch("/api/time-tracking?action=status")
+      .then((r) => r.json())
+      .then((d) => {
+        setCheckedIn(d.active);
+        if (d.entry?.check_in) setCheckTime(new Date(d.entry.check_in).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }));
+      })
+      .catch(() => {});
+  }, []);
+
+  async function toggleCheckIn() {
+    setCheckLoading(true);
+    const action = checkedIn ? "check_out" : "check_in";
+    const res = await fetch("/api/time-tracking", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setCheckedIn(!checkedIn);
+      if (!checkedIn && data.entry?.check_in) {
+        setCheckTime(new Date(data.entry.check_in).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }));
+      } else {
+        setCheckTime(null);
+      }
+    } else if (data.error) {
+      alert(data.error);
+    }
+    setCheckLoading(false);
+  }
   useEffect(() => {
     const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
@@ -107,6 +143,23 @@ export default function Header({ title }: HeaderProps) {
       style={{ borderBottom: "1px solid #e4e4e4" }}
     >
       <h1 className="text-sm font-semibold" style={{ color: "#333" }}>{title}</h1>
+
+      <div className="flex items-center gap-2">
+        {/* Check-in/out button */}
+        <button
+          onClick={toggleCheckIn}
+          disabled={checkLoading}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
+          style={{
+            background: checkedIn ? "#e8f5e9" : "#f5f5f5",
+            color: checkedIn ? "#2e7d32" : "#888",
+            border: `1px solid ${checkedIn ? "#a5d6a7" : "#e0e0e0"}`,
+          }}
+          title={checkedIn ? `На работе с ${checkTime}` : "Начать рабочий день"}
+        >
+          <Clock size={12} />
+          {checkedIn ? `На работе${checkTime ? ` с ${checkTime}` : ""}` : "Начать день"}
+        </button>
 
       <div className="relative" ref={ref}>
         <button
@@ -193,6 +246,7 @@ export default function Header({ title }: HeaderProps) {
             </div>
           </div>
         )}
+      </div>
       </div>
     </header>
   );
