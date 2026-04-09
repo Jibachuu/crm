@@ -9,15 +9,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 const WEBHOOK_KEY = process.env.TILDA_WEBHOOK_KEY || "";
 
 export async function POST(req: NextRequest) {
-  // Auth: check key from query param or header
-  const { searchParams } = new URL(req.url);
-  const keyParam = searchParams.get("key") || "";
-  const keyHeader = req.headers.get("x-webhook-key") || "";
-
-  if (WEBHOOK_KEY && keyParam !== WEBHOOK_KEY && keyHeader !== WEBHOOK_KEY) {
-    return NextResponse.json({ error: "Invalid webhook key" }, { status: 403 });
-  }
-
   const admin = createAdminClient();
 
   let body: Record<string, string>;
@@ -29,6 +20,16 @@ export async function POST(req: NextRequest) {
     // Tilda sends form-urlencoded
     const text = await req.text();
     body = Object.fromEntries(new URLSearchParams(text));
+  }
+
+  // Auth: check key from query param, header, or POST body (Tilda sends in body)
+  const { searchParams } = new URL(req.url);
+  const keyParam = searchParams.get("key") || "";
+  const keyHeader = req.headers.get("x-webhook-key") || "";
+  const keyBody = body["TILDA_WEBHOOK_KEY"] || body["api_key"] || "";
+
+  if (WEBHOOK_KEY && keyParam !== WEBHOOK_KEY && keyHeader !== WEBHOOK_KEY && keyBody !== WEBHOOK_KEY) {
+    return NextResponse.json({ error: "Invalid webhook key" }, { status: 403 });
   }
 
   // Log all received fields for debugging
@@ -54,7 +55,8 @@ export async function POST(req: NextRequest) {
   const finalEmail = email || anyEmail;
 
   if (!finalName && !finalPhone && !finalEmail) {
-    return NextResponse.json({ error: "No contact data", receivedFields: Object.keys(body) }, { status: 400 });
+    // Return 200 even for empty data (Tilda test pings) — otherwise Tilda marks webhook as broken
+    return NextResponse.json({ ok: true, skipped: true, reason: "No contact data", receivedFields: Object.keys(body) });
   }
 
   // Get admin user for created_by
