@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       new Api.contacts.ImportContacts({
         contacts: [
           new Api.InputPhoneContact({
-            clientId: BigInt(Date.now()),
+            clientId: BigInt(Date.now()) as unknown as import("big-integer").BigInteger,
             phone: phone.replace(/\D/g, ""),
             firstName: firstName || phone,
             lastName: lastName || "",
