@@ -20,6 +20,15 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
 
   if (!deal) notFound();
 
+  // Load funnel stages for this deal's funnel
+  const { data: funnelStages } = deal.funnel_id
+    ? await supabase
+        .from("funnel_stages")
+        .select("*")
+        .eq("funnel_id", deal.funnel_id)
+        .order("sort_order")
+    : { data: [] };
+
   const { data: communications } = await supabase
     .from("communications")
     .select("*, users!communications_created_by_fkey(full_name)")
@@ -48,6 +57,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           communications={communications ?? []}
           tasks={tasks ?? []}
           dealProducts={dealProducts ?? []}
+          funnelStages={funnelStages ?? []}
         />
       </main>
     </>

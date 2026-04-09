@@ -20,6 +20,22 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   if (!lead) notFound();
 
+  // Load funnel stages for this lead's funnel
+  const { data: funnelStages } = lead.funnel_id
+    ? await supabase
+        .from("funnel_stages")
+        .select("*")
+        .eq("funnel_id", lead.funnel_id)
+        .order("sort_order")
+    : { data: [] };
+
+  // Load all lead funnels (for funnel switcher)
+  const { data: leadFunnels } = await supabase
+    .from("funnels")
+    .select("id, name, type, is_default")
+    .eq("type", "lead")
+    .order("is_default", { ascending: false });
+
   const { data: communications } = await supabase
     .from("communications")
     .select("*, users!communications_created_by_fkey(full_name)")
@@ -48,6 +64,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           communications={communications ?? []}
           tasks={tasks ?? []}
           leadProducts={leadProducts ?? []}
+          funnelStages={funnelStages ?? []}
+          leadFunnels={leadFunnels ?? []}
         />
       </main>
     </>

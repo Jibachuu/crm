@@ -23,11 +23,17 @@ const SOURCE_LABELS: Record<string, string> = {
   social: "Соцсети", event: "Мероприятие", other: "Другое",
 };
 
+interface FunnelStage { id: string; funnel_id: string; name: string; slug: string; color: string; sort_order: number; is_final: boolean; is_success: boolean; }
+interface Funnel { id: string; name: string; type: string; is_default: boolean; }
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function LeadsList({ initialLeads, users }: { initialLeads: any[]; users: any[] }) {
+export default function LeadsList({ initialLeads, users, funnelStages = [], funnels = [] }: { initialLeads: any[]; users: any[]; funnelStages?: FunnelStage[]; funnels?: Funnel[] }) {
+  const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
+  const funnelMap = Object.fromEntries(funnels.map((f) => [f.id, f]));
   const [leads, setLeads] = useState(initialLeads);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [funnelFilter, setFunnelFilter] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -52,8 +58,9 @@ export default function LeadsList({ initialLeads, users }: { initialLeads: any[]
       l.title.toLowerCase().includes(search.toLowerCase()) ||
       l.contacts?.full_name?.toLowerCase().includes(search.toLowerCase()) ||
       l.companies?.name?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || l.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesStatus = statusFilter === "all" || l.status === statusFilter || (l.stage_id && stageMap[l.stage_id]?.slug === statusFilter);
+    const matchesFunnel = funnelFilter === "all" || l.funnel_id === funnelFilter;
+    return matchesSearch && matchesStatus && matchesFunnel;
   });
 
   const filteredIds = filtered.map((l) => l.id);
@@ -145,6 +152,17 @@ export default function LeadsList({ initialLeads, users }: { initialLeads: any[]
             {LEAD_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </div>
+        {funnels.length > 1 && (
+          <select
+            value={funnelFilter}
+            onChange={(e) => setFunnelFilter(e.target.value)}
+            className="px-3 py-1.5 text-sm focus:outline-none appearance-none"
+            style={{ border: "1px solid #d0d0d0", borderRadius: 4, background: "#fff", color: "#333" }}
+          >
+            <option value="all">Все воронки</option>
+            {funnels.map((f) => <option key={f.id} value={f.id}>{f.name.replace(/Воронка [АБ] — /, "")}</option>)}
+          </select>
+        )}
         <ExportImportButtons entity="leads" onImported={() => window.location.reload()} />
         <PurgeButton table="leads" onPurged={() => window.location.reload()} />
         {/* View toggle */}
@@ -250,7 +268,13 @@ export default function LeadsList({ initialLeads, users }: { initialLeads: any[]
                           {SOURCE_LABELS[lead.source] ?? lead.source ?? "—"}
                         </td>
                         <td className="px-4 py-2.5">
-                          <Badge variant={STATUS_VARIANTS[lead.status] ?? "default"}>{LEAD_STATUS_LABELS[lead.status] ?? lead.status}</Badge>
+                          {lead.stage_id && stageMap[lead.stage_id] ? (
+                            <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: stageMap[lead.stage_id].color + "20", color: stageMap[lead.stage_id].color }}>
+                              {stageMap[lead.stage_id].name}
+                            </span>
+                          ) : (
+                            <Badge variant={STATUS_VARIANTS[lead.status] ?? "default"}>{LEAD_STATUS_LABELS[lead.status] ?? lead.status}</Badge>
+                          )}
                         </td>
                         <td className="px-4 py-2.5">
                           {lead.users ? (

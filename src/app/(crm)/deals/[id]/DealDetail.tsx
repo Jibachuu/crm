@@ -35,8 +35,10 @@ const PRIORITY_LABELS: Record<string, string> = { low: "Низкий", medium: "
 const CHANNEL_ICONS: Record<string, string> = { email: "✉️", telegram: "💬", phone: "📞", maks: "🔵", note: "📝" };
 const CHANNEL_LABELS: Record<string, string> = { email: "Email", telegram: "Telegram", phone: "Звонок", maks: "МАКС", note: "Заметка" };
 
+interface FunnelStage { id: string; funnel_id: string; name: string; slug: string; color: string; sort_order: number; is_final: boolean; is_success: boolean; }
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function DealDetail({ deal: initialDeal, communications: initialComms, tasks: initialTasks, dealProducts: initialDealProducts }: any) {
+export default function DealDetail({ deal: initialDeal, communications: initialComms, tasks: initialTasks, dealProducts: initialDealProducts, funnelStages: initialFunnelStages }: any) {
   const router = useRouter();
   const [deal, setDeal] = useState(initialDeal);
   const [communications, setCommunications] = useState(initialComms);
@@ -49,6 +51,11 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   const [taskOpen, setTaskOpen] = useState(false);
   const [addProductBlock, setAddProductBlock] = useState<"request" | "order" | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const funnelStages: FunnelStage[] = initialFunnelStages ?? [];
+  const hasFunnelStages = funnelStages.length > 0;
+  const regularStages = funnelStages.filter((s) => !s.is_final);
+  const finalStages = funnelStages.filter((s) => s.is_final);
+  const currentFunnelStage = funnelStages.find((s) => s.id === deal.stage_id);
 
   const requestProducts = dealProducts.filter((p: { product_block: string }) => p.product_block !== "order");
   const orderProducts = dealProducts.filter((p: { product_block: string }) => p.product_block === "order");
@@ -108,6 +115,52 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
     setDeal((p: typeof deal) => ({ ...p, stage: newStage }));
   }
 
+  async function updateFunnelStage(stage: FunnelStage) {
+    if (deal.stage_id === stage.id) return;
+    const supabase = createClient();
+    const oldStageSlug = currentFunnelStage?.slug;
+    // Map funnel slug to old stage for backwards compat
+    const slugMap: Record<string, string> = {
+      qualified: "lead", kp_sent: "proposal", objections: "negotiation",
+      price_calc: "order_assembly", invoice: "order_assembly", won: "won", lost: "lost",
+    };
+    const newOldStage = slugMap[stage.slug] ?? deal.stage;
+
+    // Stock management same as before
+    const orderProds = dealProducts.filter((p: { product_block: string }) => p.product_block === "order");
+    if (stage.slug === "won" && oldStageSlug !== "won" && orderProds.length > 0) {
+      let warnings: string[] = [];
+      for (const dp of orderProds) {
+        if (!dp.product_id) continue;
+        const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
+        if (variants?.[0]) {
+          const newStock = variants[0].stock - (dp.quantity ?? 0);
+          if (newStock < 0) warnings.push(`${dp.products?.name}: не хватает ${Math.abs(newStock)} шт.`);
+          await supabase.from("product_variants").update({ stock: Math.max(0, newStock) }).eq("id", variants[0].id);
+        }
+      }
+      if (warnings.length) alert("Недостаточно остатков:\n" + warnings.join("\n"));
+    }
+    if (oldStageSlug === "won" && stage.slug !== "won" && orderProds.length > 0) {
+      for (const dp of orderProds) {
+        if (!dp.product_id) continue;
+        const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
+        if (variants?.[0]) {
+          await supabase.from("product_variants").update({ stock: variants[0].stock + (dp.quantity ?? 0) }).eq("id", variants[0].id);
+        }
+      }
+    }
+
+    await supabase.from("deals").update({
+      stage: newOldStage,
+      stage_id: stage.id,
+      stage_changed_at: new Date().toISOString(),
+      ...(stage.slug === "won" ? { closed_at: new Date().toISOString() } : {}),
+    }).eq("id", deal.id);
+
+    setDeal((p: typeof deal) => ({ ...p, stage: newOldStage, stage_id: stage.id }));
+  }
+
   async function deleteDeal() {
     if (!confirm("Удалить сделку? Это действие нельзя отменить.")) return;
     setDeleteLoading(true);
@@ -147,38 +200,79 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
         </div>
       </div>
 
-      {/* Stage pipeline */}
-      <Card className="mb-4">
-        <div className="px-5 py-3">
-          <div className="flex items-center gap-0">
-            {STAGES.map((stage, idx) => {
-              const isActive = deal.stage === stage.key;
-              const isPast = idx < stageIndex;
-              const isLost = stage.key === "lost";
+      {/* Stage pipeline - funnel stages */}
+      {hasFunnelStages ? (
+        <div className="mb-4 flex gap-1.5">
+          <div className="flex-1 rounded overflow-hidden flex" style={{ border: "1px solid #e0e0e0" }}>
+            {regularStages.map((stage, idx) => {
+              const isActive = deal.stage_id === stage.id;
+              const activeIdx = regularStages.findIndex((s) => s.id === deal.stage_id);
+              const isPast = activeIdx >= 0 && idx < activeIdx;
               return (
                 <button
-                  key={stage.key}
-                  onClick={() => updateStage(stage.key)}
-                  className="flex-1 text-center py-2 text-xs font-medium transition-colors relative"
+                  key={stage.id}
+                  onClick={() => updateFunnelStage(stage)}
+                  className="flex-1 text-center py-2.5 text-xs font-medium transition-colors"
                   style={{
-                    background: isActive
-                      ? STAGE_COLORS[stage.key]
-                      : isPast
-                      ? "#e8f4fd"
-                      : "#f5f5f5",
+                    background: isActive ? stage.color : isPast ? "#e8f4fd" : "#f5f5f5",
                     color: isActive ? "#fff" : isPast ? "#0067a5" : "#888",
-                    borderRadius: idx === 0 ? "4px 0 0 4px" : idx === STAGES.length - 1 ? "0 4px 4px 0" : 0,
-                    borderRight: idx < STAGES.length - 1 ? "1px solid #ddd" : "none",
-                    ...(isLost && isActive ? { background: "#c62828" } : {}),
+                    borderRight: idx < regularStages.length - 1 ? "1px solid #ddd" : "none",
                   }}
                 >
-                  {stage.label}
+                  {stage.name}
                 </button>
               );
             })}
           </div>
+          {finalStages.map((stage) => {
+            const isActive = deal.stage_id === stage.id;
+            return (
+              <button
+                key={stage.id}
+                onClick={() => updateFunnelStage(stage)}
+                className="rounded px-3 text-xs font-medium transition-colors"
+                style={{
+                  background: isActive ? stage.color : "#f8f8f8",
+                  color: isActive ? "#fff" : stage.color,
+                  border: `1px solid ${isActive ? stage.color : "#e0e0e0"}`,
+                  padding: "9px 10px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {stage.name}
+              </button>
+            );
+          })}
         </div>
-      </Card>
+      ) : (
+        <Card className="mb-4">
+          <div className="px-5 py-3">
+            <div className="flex items-center gap-0">
+              {STAGES.map((stage, idx) => {
+                const isActive = deal.stage === stage.key;
+                const isPast = idx < stageIndex;
+                const isLost = stage.key === "lost";
+                return (
+                  <button
+                    key={stage.key}
+                    onClick={() => updateStage(stage.key)}
+                    className="flex-1 text-center py-2 text-xs font-medium transition-colors relative"
+                    style={{
+                      background: isActive ? STAGE_COLORS[stage.key] : isPast ? "#e8f4fd" : "#f5f5f5",
+                      color: isActive ? "#fff" : isPast ? "#0067a5" : "#888",
+                      borderRadius: idx === 0 ? "4px 0 0 4px" : idx === STAGES.length - 1 ? "0 4px 4px 0" : 0,
+                      borderRight: idx < STAGES.length - 1 ? "1px solid #ddd" : "none",
+                      ...(isLost && isActive ? { background: "#c62828" } : {}),
+                    }}
+                  >
+                    {stage.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">

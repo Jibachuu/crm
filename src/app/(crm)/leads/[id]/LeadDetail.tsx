@@ -34,6 +34,24 @@ export const LEAD_STATUS_LABELS: Record<string, string> = Object.fromEntries(
 );
 LEAD_STATUS_LABELS["converted"] = "Конвертирован";
 
+interface FunnelStage {
+  id: string;
+  funnel_id: string;
+  name: string;
+  slug: string;
+  color: string;
+  sort_order: number;
+  is_final: boolean;
+  is_success: boolean;
+}
+
+interface LeadFunnel {
+  id: string;
+  name: string;
+  type: string;
+  is_default: boolean;
+}
+
 const CHANNEL_LABELS: Record<string, string> = {
   email: "Email", telegram: "Telegram", phone: "Звонок", maks: "МАКС", note: "Заметка",
 };
@@ -43,7 +61,7 @@ const CHANNEL_ICONS: Record<string, string> = {
 const PRIORITY_LABELS: Record<string, string> = { low: "Низкий", medium: "Средний", high: "Высокий" };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function LeadDetail({ lead: initialLead, communications: initialComms, tasks: initialTasks, leadProducts: initialProducts }: any) {
+export default function LeadDetail({ lead: initialLead, communications: initialComms, tasks: initialTasks, leadProducts: initialProducts, funnelStages: initialStages, leadFunnels }: any) {
   const router = useRouter();
   const [lead, setLead] = useState(initialLead);
   const [communications, setCommunications] = useState(initialComms);
@@ -58,6 +76,8 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [convertLoading, setConvertLoading] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
+  const [funnelStages, setFunnelStages] = useState<FunnelStage[]>(initialStages ?? []);
+  const [funnelSwitching, setFunnelSwitching] = useState(false);
 
   const requestProducts = leadProducts.filter((p: { product_block: string }) => p.product_block !== "order");
   const orderProducts = leadProducts.filter((p: { product_block: string }) => p.product_block === "order");
@@ -83,6 +103,50 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
     const supabase = createClient();
     await supabase.from("leads").update({ status }).eq("id", lead.id);
     setStatusSaving(false);
+  }
+
+  async function updateStage(stage: FunnelStage) {
+    if (lead.stage_id === stage.id || statusSaving) return;
+    setStatusSaving(true);
+    // Map slug to old status for backwards compatibility
+    const statusMap: Record<string, string> = {
+      new_contact: "new", qualification: "in_progress", probniki: "samples",
+      sleeping: "rejected", rejected: "rejected", converted: "converted",
+    };
+    const newStatus = statusMap[stage.slug] ?? lead.status;
+    setLead((prev: typeof lead) => ({ ...prev, stage_id: stage.id, status: newStatus }));
+    const supabase = createClient();
+    await supabase.from("leads").update({
+      stage_id: stage.id,
+      status: newStatus,
+      stage_changed_at: new Date().toISOString(),
+    }).eq("id", lead.id);
+    setStatusSaving(false);
+  }
+
+  async function switchFunnel(funnelId: string) {
+    if (lead.funnel_id === funnelId || funnelSwitching) return;
+    if (!confirm("Текущая стадия будет сброшена. Продолжить?")) return;
+    setFunnelSwitching(true);
+    const supabase = createClient();
+    // Load stages for new funnel
+    const { data: newStages } = await supabase
+      .from("funnel_stages")
+      .select("*")
+      .eq("funnel_id", funnelId)
+      .order("sort_order");
+    if (newStages && newStages.length > 0) {
+      const firstStage = newStages[0];
+      setFunnelStages(newStages);
+      setLead((prev: typeof lead) => ({ ...prev, funnel_id: funnelId, stage_id: firstStage.id, status: "new" }));
+      await supabase.from("leads").update({
+        funnel_id: funnelId,
+        stage_id: firstStage.id,
+        status: "new",
+        stage_changed_at: new Date().toISOString(),
+      }).eq("id", lead.id);
+    }
+    setFunnelSwitching(false);
   }
 
   async function deleteLead() {
@@ -129,9 +193,11 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   ];
 
   const isConverted = lead.status === "converted";
-  const visibleStatuses = isConverted
-    ? [{ key: "converted", label: "Конвертирован" }]
-    : LEAD_STATUSES;
+  const hasFunnelStages = funnelStages.length > 0;
+  const regularStages = funnelStages.filter((s: FunnelStage) => !s.is_final);
+  const finalStages = funnelStages.filter((s: FunnelStage) => s.is_final);
+  const currentStage = funnelStages.find((s: FunnelStage) => s.id === lead.stage_id);
+  const currentFunnel = (leadFunnels ?? []).find((f: LeadFunnel) => f.id === lead.funnel_id);
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -155,43 +221,118 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
         </div>
       </div>
 
-      {/* Stage bar */}
-      <div className="mb-4 rounded overflow-hidden" style={{ border: "1px solid #e0e0e0", display: "flex" }}>
-        {visibleStatuses.map((s, idx) => {
-          const isActive = lead.status === s.key;
-          const isRejected = s.key === "rejected";
-          const isConvertedStage = s.key === "converted";
-          const activeColor = isRejected || isConvertedStage ? "#e74c3c" : "#0067a5";
-          return (
+      {/* Funnel selector */}
+      {hasFunnelStages && !isConverted && (leadFunnels ?? []).length > 1 && (
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs" style={{ color: "#888" }}>Воронка:</span>
+          {(leadFunnels ?? []).map((f: LeadFunnel) => (
             <button
-              key={s.key}
-              onClick={() => updateStatus(s.key)}
-              disabled={isConvertedStage}
+              key={f.id}
+              onClick={() => switchFunnel(f.id)}
+              disabled={funnelSwitching}
+              className="text-xs px-2.5 py-1 rounded-full transition-colors"
               style={{
-                flex: 1,
-                padding: "9px 6px",
-                fontSize: 11,
-                fontWeight: isActive ? 700 : 400,
-                background: isActive ? activeColor : "#f8f8f8",
-                color: isActive ? "#fff" : isRejected ? "#e74c3c" : "#555",
-                borderRight: idx < visibleStatuses.length - 1 ? "1px solid #e0e0e0" : "none",
-                cursor: isConvertedStage ? "default" : "pointer",
-                transition: "background 0.12s",
-                textAlign: "center",
-                lineHeight: 1.3,
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive && !isConvertedStage) (e.currentTarget as HTMLButtonElement).style.background = "#ebebeb";
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "#f8f8f8";
+                background: f.id === lead.funnel_id ? "#0067a5" : "#f0f0f0",
+                color: f.id === lead.funnel_id ? "#fff" : "#666",
+                fontWeight: f.id === lead.funnel_id ? 600 : 400,
               }}
             >
-              {s.label}
+              {f.name.replace(/Воронка [АБ] — /, "")}
             </button>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {/* Stage bar - funnel stages */}
+      {hasFunnelStages ? (
+        <div className="mb-4 flex gap-1.5">
+          {/* Regular (non-final) stages as pipeline */}
+          <div className="flex-1 rounded overflow-hidden flex" style={{ border: "1px solid #e0e0e0" }}>
+            {regularStages.map((s: FunnelStage, idx: number) => {
+              const isActive = lead.stage_id === s.id;
+              const activeIdx = regularStages.findIndex((st: FunnelStage) => st.id === lead.stage_id);
+              const isPast = activeIdx >= 0 && idx < activeIdx;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => updateStage(s)}
+                  style={{
+                    flex: 1,
+                    padding: "9px 6px",
+                    fontSize: 11,
+                    fontWeight: isActive ? 700 : 400,
+                    background: isActive ? s.color : isPast ? "#e8f4fd" : "#f8f8f8",
+                    color: isActive ? "#fff" : isPast ? "#0067a5" : "#555",
+                    borderRight: idx < regularStages.length - 1 ? "1px solid #e0e0e0" : "none",
+                    cursor: "pointer",
+                    transition: "background 0.12s",
+                    textAlign: "center",
+                    lineHeight: 1.3,
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "#ebebeb"; }}
+                  onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = isPast ? "#e8f4fd" : "#f8f8f8"; }}
+                >
+                  {s.name}
+                </button>
+              );
+            })}
+          </div>
+          {/* Final stages as separate buttons */}
+          {finalStages.map((s: FunnelStage) => {
+            const isActive = lead.stage_id === s.id;
+            return (
+              <button
+                key={s.id}
+                onClick={() => updateStage(s)}
+                disabled={s.slug === "converted"}
+                className="rounded px-3 text-xs font-medium transition-colors"
+                style={{
+                  background: isActive ? s.color : "#f8f8f8",
+                  color: isActive ? "#fff" : s.color,
+                  border: `1px solid ${isActive ? s.color : "#e0e0e0"}`,
+                  cursor: s.slug === "converted" ? "default" : "pointer",
+                  fontSize: 11,
+                  padding: "9px 10px",
+                  lineHeight: 1.3,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {s.name}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        /* Fallback: old status bar */
+        <div className="mb-4 rounded overflow-hidden" style={{ border: "1px solid #e0e0e0", display: "flex" }}>
+          {(isConverted ? [{ key: "converted", label: "Конвертирован" }] : LEAD_STATUSES).map((s, idx) => {
+            const isActive = lead.status === s.key;
+            const isRejected = s.key === "rejected";
+            const isConvertedStage = s.key === "converted";
+            const activeColor = isRejected || isConvertedStage ? "#e74c3c" : "#0067a5";
+            return (
+              <button
+                key={s.key}
+                onClick={() => updateStatus(s.key)}
+                disabled={isConvertedStage}
+                style={{
+                  flex: 1, padding: "9px 6px", fontSize: 11,
+                  fontWeight: isActive ? 700 : 400,
+                  background: isActive ? activeColor : "#f8f8f8",
+                  color: isActive ? "#fff" : isRejected ? "#e74c3c" : "#555",
+                  borderRight: idx < LEAD_STATUSES.length - 1 ? "1px solid #e0e0e0" : "none",
+                  cursor: isConvertedStage ? "default" : "pointer",
+                  transition: "background 0.12s", textAlign: "center", lineHeight: 1.3,
+                }}
+                onMouseEnter={(e) => { if (!isActive && !isConvertedStage) (e.currentTarget as HTMLButtonElement).style.background = "#ebebeb"; }}
+                onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "#f8f8f8"; }}
+              >
+                {s.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">
