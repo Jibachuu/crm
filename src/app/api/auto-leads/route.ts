@@ -245,94 +245,41 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, results, created: results.filter((r) => r.startsWith("Lead")).length });
 }
 
-// GET for cron trigger or manual browser call
-export async function GET(req: NextRequest) {
-  // Run the same logic as POST with source=all
+// GET for cron trigger or manual browser call — MAX only (IMAP too slow for serverless)
+export async function GET() {
   const admin = createAdminClient();
   const results: string[] = [];
 
   try {
-    // Reuse POST logic by calling it internally
-    const { data: existingContacts } = await admin.from("contacts").select("id, telegram_id, maks_id, email, phone, full_name");
+    const { data: existingContacts } = await admin.from("contacts").select("id, maks_id");
     const maksIds = new Set((existingContacts ?? []).filter((c) => c.maks_id).map((c) => c.maks_id));
 
-    // MAX check
     const maxProxy = process.env.MAX_PROXY_URL;
     const maxKey = process.env.MAX_PROXY_KEY;
     if (maxProxy && maxKey) {
-      try {
-        const res = await fetch(`${maxProxy}/chats`, { headers: { Authorization: maxKey } });
-        if (res.ok) {
-          const data = await res.json();
-          for (const chat of data.chats ?? []) {
-            const chatId = String(chat.chatId ?? "");
-            const name = chat.title ?? chatId;
-            if (!chatId || maksIds.has(chatId) || Number(chatId) < 0) continue;
+      const res = await fetch(`${maxProxy}/chats`, { headers: { Authorization: maxKey } });
+      if (res.ok) {
+        const data = await res.json();
+        for (const chat of data.chats ?? []) {
+          const chatId = String(chat.chatId ?? "");
+          const name = chat.title ?? chatId;
+          if (!chatId || maksIds.has(chatId) || Number(chatId) < 0) continue;
 
-            const { data: existing } = await admin.from("contacts").select("id").eq("maks_id", chatId).limit(1).single();
-            if (existing) continue;
-            const { data: existingLead } = await admin.from("leads").select("id").eq("source", "maks").ilike("title", `%${chatId}%`).limit(1).single();
-            if (existingLead) continue;
+          const { data: existing } = await admin.from("contacts").select("id").eq("maks_id", chatId).limit(1).single();
+          if (existing) continue;
 
-            const adminId = (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id;
-            const { data: contact } = await admin.from("contacts").insert({ full_name: name, maks_id: chatId, created_by: adminId }).select("id").single();
-            if (contact) {
-              const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
-              const { data: firstStage } = funnel ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single() : { data: null };
-              await admin.from("leads").insert({ title: `МАКС: ${name}`, source: "maks", status: "new", contact_id: contact.id, funnel_id: funnel?.id ?? null, stage_id: firstStage?.id ?? null, created_by: adminId });
-              results.push(`Lead: MAX ${name}`);
-            }
+          const adminId = (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id;
+          const { data: contact } = await admin.from("contacts").insert({ full_name: name, maks_id: chatId, created_by: adminId }).select("id").single();
+          if (contact) {
+            const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
+            const { data: firstStage } = funnel ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single() : { data: null };
+            await admin.from("leads").insert({ title: `МАКС: ${name}`, source: "maks", status: "new", contact_id: contact.id, funnel_id: funnel?.id ?? null, stage_id: firstStage?.id ?? null, created_by: adminId });
+            results.push(`Lead: MAX ${name}`);
           }
         }
-      } catch (e) { results.push(`MAX error: ${e}`); }
-    }
-
-    // Email check
-    const imapHost = process.env.IMAP_HOST || process.env.SMTP_HOST;
-    const imapUser = process.env.IMAP_USER || process.env.SMTP_USER;
-    const imapPass = process.env.IMAP_PASS || process.env.SMTP_PASS;
-    const imapMods = await getImapModules();
-    if (imapHost && imapUser && imapPass && imapMods) {
-      let client: InstanceType<typeof imapMods.ImapFlow> | null = null;
-      try {
-        const emailSet = new Set((existingContacts ?? []).filter((c) => c.email).map((c) => c.email!.toLowerCase()));
-        client = new imapMods.ImapFlow({ host: imapHost, port: Number(process.env.IMAP_PORT || 993), secure: true, auth: { user: imapUser, pass: imapPass }, logger: false });
-        await client.connect();
-        const lock = await client.getMailboxLock("INBOX");
-        try {
-          const mailbox = client.mailbox as { exists?: number } | false;
-          const total = (mailbox && typeof mailbox === "object") ? (mailbox.exists ?? 0) : 0;
-          if (total > 0) {
-            const startSeq = Math.max(1, total - 20 + 1);
-            for await (const msg of client.fetch(`${startSeq}:*`, { uid: true, source: true })) {
-              try {
-                const parsed = await imapMods.simpleParser(msg.source as Buffer);
-                const fromEmail = parsed.from?.value?.[0]?.address?.toLowerCase();
-                const fromName = parsed.from?.value?.[0]?.name ?? fromEmail ?? "";
-                if (!fromEmail || fromEmail === imapUser.toLowerCase()) continue;
-                if (emailSet.has(fromEmail)) continue;
-                const { data: el } = await admin.from("leads").select("id").eq("source", "email").ilike("title", `%${fromEmail}%`).limit(1).single();
-                if (el) { emailSet.add(fromEmail); continue; }
-                const { data: ec } = await admin.from("contacts").select("id").ilike("email", fromEmail).limit(1).single();
-                if (ec) { emailSet.add(fromEmail); continue; }
-                const adminId = (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id;
-                const { data: contact } = await admin.from("contacts").insert({ full_name: fromName || fromEmail, email: fromEmail, created_by: adminId }).select("id").single();
-                if (contact) {
-                  const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
-                  const { data: firstStage } = funnel ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single() : { data: null };
-                  await admin.from("leads").insert({ title: `Email: ${fromName || fromEmail}`, source: "email", status: "new", contact_id: contact.id, funnel_id: funnel?.id ?? null, stage_id: firstStage?.id ?? null, created_by: adminId });
-                  results.push(`Lead: Email ${fromName} <${fromEmail}>`);
-                  emailSet.add(fromEmail);
-                }
-              } catch { /* skip */ }
-            }
-          }
-        } finally { lock.release(); }
-        await client.logout();
-      } catch (e) {
-        results.push(`Email error: ${e}`);
-        if (client) try { await client.logout(); } catch { /* */ }
       }
+    } else {
+      results.push("MAX_PROXY_URL not configured");
     }
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
