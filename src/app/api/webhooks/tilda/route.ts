@@ -22,14 +22,16 @@ export async function POST(req: NextRequest) {
     body = Object.fromEntries(new URLSearchParams(text));
   }
 
-  // Auth: check key from query param, header, or POST body (Tilda sends in body)
-  const { searchParams } = new URL(req.url);
-  const keyParam = searchParams.get("key") || "";
-  const keyHeader = req.headers.get("x-webhook-key") || "";
-  const keyBody = body["TILDA_WEBHOOK_KEY"] || body["api_key"] || "";
-
-  if (WEBHOOK_KEY && keyParam !== WEBHOOK_KEY && keyHeader !== WEBHOOK_KEY && keyBody !== WEBHOOK_KEY) {
-    return NextResponse.json({ error: "Invalid webhook key" }, { status: 403 });
+  // Auth: check key from query param, header, or POST body
+  // Skip auth if TILDA_WEBHOOK_KEY env not set
+  if (WEBHOOK_KEY) {
+    const { searchParams } = new URL(req.url);
+    const keyParam = searchParams.get("key") || "";
+    const keyHeader = req.headers.get("x-webhook-key") || "";
+    const keyBody = body["TILDA_WEBHOOK_KEY"] || body["api_key"] || "";
+    if (keyParam !== WEBHOOK_KEY && keyHeader !== WEBHOOK_KEY && keyBody !== WEBHOOK_KEY) {
+      return NextResponse.json({ error: "Invalid webhook key" }, { status: 403 });
+    }
   }
 
   // Log all received fields for debugging — save to DB for inspection
