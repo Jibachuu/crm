@@ -2,9 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // Tilda webhook: receives form submissions, creates leads
-// Configure in Tilda: Form → Data → Webhook URL → https://crm-six-teal.vercel.app/api/webhooks/tilda
+// Configure in Tilda: Form → Data → Webhook URL:
+//   https://crm-six-teal.vercel.app/api/webhooks/tilda?key=YOUR_KEY
+// Set TILDA_WEBHOOK_KEY in Vercel env vars
+
+const WEBHOOK_KEY = process.env.TILDA_WEBHOOK_KEY || "";
 
 export async function POST(req: NextRequest) {
+  // Auth: check key from query param or header
+  const { searchParams } = new URL(req.url);
+  const keyParam = searchParams.get("key") || "";
+  const keyHeader = req.headers.get("x-webhook-key") || "";
+
+  if (WEBHOOK_KEY && keyParam !== WEBHOOK_KEY && keyHeader !== WEBHOOK_KEY) {
+    return NextResponse.json({ error: "Invalid webhook key" }, { status: 403 });
+  }
+
   const admin = createAdminClient();
 
   let body: Record<string, string>;
