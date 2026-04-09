@@ -8,6 +8,8 @@ import ExportImportButtons from "@/components/ui/ExportImportButtons";
 import BulkTaskModal from "@/components/ui/BulkTaskModal";
 import { formatDate, getInitials } from "@/lib/utils";
 import PurgeButton from "@/components/ui/PurgeButton";
+import { usePagination } from "@/hooks/usePagination";
+import ShowMore from "@/components/ui/ShowMore";
 import CreateContactModal from "./CreateContactModal";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,6 +28,8 @@ export default function ContactsList({ initialContacts, companies, users }: any)
     c.phone?.includes(search) ||
     c.companies?.name?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const { visible: paginatedContacts, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);
 
   const filteredIds = filtered.map((c: { id: string }) => c.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id: string) => selected.has(id));
@@ -108,7 +112,7 @@ export default function ContactsList({ initialContacts, companies, users }: any)
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((contact: {
+                {(paginatedContacts as any[]).map((contact: {
                   id: string; full_name: string; position?: string; phone?: string; email?: string;
                   telegram_id?: string; created_at: string; companies?: { id: string; name: string }; users?: { full_name: string };
                 }) => {
@@ -162,6 +166,7 @@ export default function ContactsList({ initialContacts, companies, users }: any)
           </div>
         )}
       </div>
+      <ShowMore hasMore={hasMore} remaining={remaining} total={totalFiltered} visibleCount={visibleCount} onShowMore={showMore} onShowAll={showAll} />
 
       <CreateContactModal
         open={showCreate}

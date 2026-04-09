@@ -11,6 +11,8 @@ import { formatDate, getInitials, formatCurrency } from "@/lib/utils";
 import PurgeButton from "@/components/ui/PurgeButton";
 import CreateLeadModal from "./CreateLeadModal";
 import { createClient } from "@/lib/supabase/client";
+import { usePagination } from "@/hooks/usePagination";
+import ShowMore from "@/components/ui/ShowMore";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "./[id]/LeadDetail";
 
 const STATUS_VARIANTS: Record<string, "info" | "warning" | "success" | "default" | "danger" | "purple"> = {
@@ -62,6 +64,8 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
     const matchesFunnel = funnelFilter === "all" || l.funnel_id === funnelFilter;
     return matchesSearch && matchesStatus && matchesFunnel;
   });
+
+  const { visible: paginatedLeads, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);
 
   const filteredIds = filtered.map((l) => l.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
@@ -275,7 +279,7 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((lead) => {
+                  {paginatedLeads.map((lead) => {
                     const isSelected = selected.has(lead.id);
                     return (
                       <tr key={lead.id} style={{ borderBottom: "1px solid #f0f0f0", background: isSelected ? "#f0f7ff" : "transparent" }}>
@@ -326,6 +330,9 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
             </div>
           )}
         </div>
+      )}
+      {viewMode === "list" && (
+        <ShowMore hasMore={hasMore} remaining={remaining} total={totalFiltered} visibleCount={visibleCount} onShowMore={showMore} onShowAll={showAll} />
       )}
 
       {/* KANBAN VIEW */}

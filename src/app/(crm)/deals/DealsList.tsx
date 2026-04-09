@@ -11,6 +11,8 @@ import { formatDate, formatCurrency, getInitials } from "@/lib/utils";
 import PurgeButton from "@/components/ui/PurgeButton";
 import CreateDealModal from "./CreateDealModal";
 import { createClient } from "@/lib/supabase/client";
+import { usePagination } from "@/hooks/usePagination";
+import ShowMore from "@/components/ui/ShowMore";
 
 interface FunnelStage { id: string; funnel_id: string; name: string; slug: string; color: string; sort_order: number; is_final: boolean; is_success: boolean; }
 
@@ -40,6 +42,8 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
     const matchesStage = stageFilter === "all" || d.stage === stageFilter || d.stage_id === stageFilter;
     return matchesSearch && matchesStage;
   });
+
+  const { visible: paginatedDeals, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);
 
   const filteredIds = filtered.map((d) => d.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
@@ -168,7 +172,7 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
       </div>
 
       {view === "table" ? (
-        <div className="bg-white overflow-hidden" style={{ border: "1px solid #e4e4e4", borderRadius: 6 }}>
+        <><div className="bg-white overflow-hidden" style={{ border: "1px solid #e4e4e4", borderRadius: 6 }}>
           {filtered.length === 0 ? (
             <div className="text-center py-12 text-sm" style={{ color: "#aaa" }}>Сделки не найдены</div>
           ) : (
@@ -185,7 +189,7 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((deal) => {
+                  {paginatedDeals.map((deal) => {
                     const isSel = selected.has(deal.id);
                     const color = getStageColor(deal);
                     return (
@@ -221,6 +225,8 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
             </div>
           )}
         </div>
+        <ShowMore hasMore={hasMore} remaining={remaining} total={totalFiltered} visibleCount={visibleCount} onShowMore={showMore} onShowAll={showAll} />
+        </>
       ) : (
         /* KANBAN VIEW using funnel stages */
         <div className="flex gap-3 overflow-x-auto pb-4">

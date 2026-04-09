@@ -7,6 +7,8 @@ import Button from "@/components/ui/Button";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
 import BulkTaskModal from "@/components/ui/BulkTaskModal";
 import PurgeButton from "@/components/ui/PurgeButton";
+import { usePagination } from "@/hooks/usePagination";
+import ShowMore from "@/components/ui/ShowMore";
 import CreateCompanyModal from "./CreateCompanyModal";
 
 const COMPANY_TYPE_LABELS: Record<string, string> = {
@@ -39,6 +41,8 @@ export default function CompaniesList({ initialCompanies, users }: any) {
     const matchContract = !contractFilter || (c.contract_status ?? "none") === contractFilter;
     return matchSearch && matchContract;
   });
+
+  const { visible: paginatedCompanies, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);
 
   const filteredIds = filtered.map((c: { id: string }) => c.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id: string) => selected.has(id));
@@ -132,7 +136,7 @@ export default function CompaniesList({ initialCompanies, users }: any) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((company: {
+                {(paginatedCompanies as any[]).map((company: {
                   id: string; name: string; inn?: string; company_type?: string; contract_status?: string;
                   phone?: string; email?: string; website?: string; users?: { full_name: string };
                 }) => {
@@ -194,6 +198,7 @@ export default function CompaniesList({ initialCompanies, users }: any) {
           </div>
         )}
       </div>
+      <ShowMore hasMore={hasMore} remaining={remaining} total={totalFiltered} visibleCount={visibleCount} onShowMore={showMore} onShowAll={showAll} />
 
       <CreateCompanyModal
         open={showCreate}
