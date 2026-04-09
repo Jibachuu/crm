@@ -8,6 +8,7 @@ import ChannelsSettings from "./ChannelsSettings";
 import DirectoriesSettings from "./DirectoriesSettings";
 import EmailTemplatesSettings from "./EmailTemplatesSettings";
 import SupplierSettings from "./SupplierSettings";
+import BulkTransferSettings from "./BulkTransferSettings";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -31,6 +32,7 @@ export default async function SettingsPage() {
       <main className="p-6 max-w-5xl">
         <div className="space-y-8">
           <UsersSettings users={users ?? []} permissions={permissions ?? []} />
+          <BulkTransferSettings users={users ?? []} />
           <DirectoriesSettings />
           <CustomFieldsSettings customFields={customFields ?? []} />
           <SupplierSettings />

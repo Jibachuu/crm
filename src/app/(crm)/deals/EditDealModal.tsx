@@ -73,8 +73,19 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
       .select(`*, contacts(id, full_name, phone, email), companies(id, name), users!deals_assigned_to_fkey(id, full_name)`)
       .single();
 
-    if (err) setError(err.message);
-    else { onSaved(data); onClose(); }
+    if (err) { setError(err.message); setLoading(false); return; }
+
+    // Cascade: if assigned_to changed on deal, cascade to company + linked entities
+    const newAssignedTo = (fd.get("assigned_to") as string) || null;
+    if (newAssignedTo && newAssignedTo !== deal.assigned_to) {
+      await fetch("/api/responsible", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cascade_deal", deal_id: deal.id, new_assigned_to: newAssignedTo }),
+      }).catch(() => {});
+    }
+
+    onSaved(data); onClose();
     setLoading(false);
   }
 

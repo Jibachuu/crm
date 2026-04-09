@@ -108,8 +108,19 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
       .select("*, users!companies_assigned_to_fkey(id, full_name), venue_types(id, name), suppliers(id, name)")
       .single();
 
-    if (err) setError(err.message);
-    else { onSaved(data); onClose(); }
+    if (err) { setError(err.message); setLoading(false); return; }
+
+    // Cascade: if assigned_to changed, update all linked entities
+    const newAssignedTo = (fd.get("assigned_to") as string) || null;
+    if (newAssignedTo && newAssignedTo !== company.assigned_to) {
+      await fetch("/api/responsible", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cascade_company", company_id: company.id, new_assigned_to: newAssignedTo }),
+      }).catch(() => {});
+    }
+
+    onSaved(data); onClose();
     setLoading(false);
   }
 
