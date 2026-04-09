@@ -31,8 +31,13 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // Skip auth for webhooks and API endpoints that need external access
+  if (pathname.startsWith("/api/webhooks") || pathname.startsWith("/api/auto-leads")) {
+    return supabaseResponse;
+  }
+
   // Public routes
-  const publicRoutes = ["/login", "/register", "/forgot-password", "/reset-password", "/q/", "/api/image-proxy", "/api/webhooks/", "/api/auto-leads"];
+  const publicRoutes = ["/login", "/register", "/forgot-password", "/reset-password", "/q/", "/api/image-proxy"];
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
   if (!user && !isPublicRoute) {
@@ -56,6 +61,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/webhooks|api/auto-leads|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
