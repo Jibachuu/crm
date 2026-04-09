@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
 
 // Auto-create leads from new messages (Telegram, MAX, Email)
 // Called by cron or manually
@@ -135,6 +137,98 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) {
       results.push(`MAX error: ${e}`);
+    }
+  }
+
+  // ── EMAIL: check INBOX for new senders not in contacts ──
+  if (source === "all" || source === "email") {
+    const host = process.env.IMAP_HOST || process.env.SMTP_HOST;
+    const imapUser = process.env.IMAP_USER || process.env.SMTP_USER;
+    const imapPass = process.env.IMAP_PASS || process.env.SMTP_PASS;
+    const port = Number(process.env.IMAP_PORT || 993);
+
+    if (host && imapUser && imapPass) {
+      let client: ImapFlow | null = null;
+      try {
+        const emailSet = new Set((existingContacts ?? []).filter((c) => c.email).map((c) => c.email!.toLowerCase()));
+
+        client = new ImapFlow({
+          host, port, secure: true,
+          auth: { user: imapUser, pass: imapPass },
+          logger: false,
+        });
+        await client.connect();
+        const lock = await client.getMailboxLock("INBOX");
+
+        try {
+          const mailbox = client.mailbox as { exists?: number } | false;
+          const total = (mailbox && typeof mailbox === "object") ? (mailbox.exists ?? 0) : 0;
+          if (total > 0) {
+            // Check last 20 emails
+            const startSeq = Math.max(1, total - 20 + 1);
+            for await (const msg of client.fetch(`${startSeq}:*`, { uid: true, source: true })) {
+              try {
+                const parsed = await simpleParser(msg.source as Buffer);
+                const fromEmail = parsed.from?.value?.[0]?.address?.toLowerCase();
+                const fromName = parsed.from?.value?.[0]?.name ?? parsed.from?.text ?? fromEmail ?? "";
+
+                if (!fromEmail || fromEmail === imapUser.toLowerCase()) continue;
+                if (emailSet.has(fromEmail)) continue;
+
+                // Check if lead already exists for this email
+                const { data: existingLead } = await admin.from("leads")
+                  .select("id")
+                  .eq("source", "email")
+                  .ilike("title", `%${fromEmail}%`)
+                  .limit(1)
+                  .single();
+                if (existingLead) { emailSet.add(fromEmail); continue; }
+
+                // Also check contacts table directly
+                const { data: existingContact } = await admin.from("contacts")
+                  .select("id")
+                  .ilike("email", fromEmail)
+                  .limit(1)
+                  .single();
+                if (existingContact) { emailSet.add(fromEmail); continue; }
+
+                const adminId = (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id;
+
+                // Create contact
+                const { data: contact } = await admin.from("contacts")
+                  .insert({ full_name: fromName || fromEmail, email: fromEmail, created_by: adminId })
+                  .select("id")
+                  .single();
+
+                if (contact) {
+                  const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
+                  const { data: firstStage } = funnel
+                    ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
+                    : { data: null };
+
+                  await admin.from("leads").insert({
+                    title: `Email: ${fromName || fromEmail}`,
+                    source: "email",
+                    status: "new",
+                    contact_id: contact.id,
+                    funnel_id: funnel?.id ?? null,
+                    stage_id: firstStage?.id ?? null,
+                    created_by: adminId,
+                  });
+                  results.push(`Lead created: Email ${fromName} <${fromEmail}>`);
+                  emailSet.add(fromEmail);
+                }
+              } catch { /* skip individual email */ }
+            }
+          }
+        } finally {
+          lock.release();
+        }
+        await client.logout();
+      } catch (e) {
+        results.push(`Email error: ${e}`);
+        if (client) try { await client.logout(); } catch { /* */ }
+      }
     }
   }
 
