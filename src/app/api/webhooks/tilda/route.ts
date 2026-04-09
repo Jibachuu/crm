@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Create contact if not found
+  // Create or update contact
   if (!contactId) {
     const { data: newContact } = await admin.from("contacts").insert({
       full_name: finalName || finalEmail || finalPhone,
@@ -90,6 +90,18 @@ export async function POST(req: NextRequest) {
       created_by: adminId,
     }).select("id").single();
     contactId = newContact?.id ?? null;
+  } else {
+    // Update existing contact with missing data
+    const updates: Record<string, string> = {};
+    if (finalPhone) updates.phone = finalPhone;
+    if (finalEmail) updates.email = finalEmail;
+    if (finalName) updates.full_name = finalName;
+    if (Object.keys(updates).length > 0) {
+      await admin.from("contacts").update(updates).eq("id", contactId).is("phone", null);
+      // Also update name/email if missing
+      if (finalEmail) await admin.from("contacts").update({ email: finalEmail }).eq("id", contactId).is("email", null);
+      if (finalName) await admin.from("contacts").update({ full_name: finalName }).eq("id", contactId);
+    }
   }
 
   // Create company if provided
