@@ -104,6 +104,16 @@ export async function POST(req: NextRequest) {
   const { action } = body;
 
   try {
+    if (action === "add_contact") {
+      const { phone, firstName, lastName } = body;
+      if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });
+      const data = await maxProxy("/add-contact", {
+        method: "POST",
+        body: JSON.stringify({ phone, firstName, lastName }),
+      });
+      return NextResponse.json(data);
+    }
+
     if (action === "send") {
       const { chat_id, text, fileId } = body;
       if (!chat_id || (!text && !fileId)) return NextResponse.json({ error: "chat_id and (text or fileId) required" }, { status: 400 });

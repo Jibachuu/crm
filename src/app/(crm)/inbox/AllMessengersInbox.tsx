@@ -74,8 +74,28 @@ export default function AllMessengersInbox() {
           setAddError(data.error || "Контакт не найден");
         }
       } else {
-        // MAX: search by phone not supported yet, show message
-        setAddError("Поиск по телефону в МАКС пока не поддерживается. Найдите контакт в приложении МАКС.");
+        // MAX: add contact by phone via VPS proxy
+        const maxRes = await fetch("/api/max", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "add_contact", phone: newPhone.trim(), firstName: "", lastName: "" }),
+        });
+        const maxData = await maxRes.json();
+        if (maxData.ok && maxData.contact) {
+          setShowNewChat(false);
+          setNewPhone("");
+          setSelected({
+            id: `max_${maxData.contact.id}`,
+            name: maxData.contact.name || newPhone,
+            channel: "maks",
+            lastMessage: "",
+            lastTime: Date.now() / 1000,
+            chatId: String(maxData.contact.id),
+          });
+          refresh();
+        } else {
+          setAddError(maxData.error || "Контакт не найден в МАКС");
+        }
       }
     } catch (e) {
       setAddError(String(e));
