@@ -76,12 +76,22 @@ export default function FileTemplatesSettings() {
           className="flex-1 text-sm px-3 py-1.5 rounded focus:outline-none"
           style={{ border: "1px solid #d0d0d0" }}
         />
-        <label className="flex items-center gap-1 text-xs px-3 py-1.5 rounded cursor-pointer"
-          style={{ background: "#0067a5", color: "#fff" }}>
-          <Upload size={12} /> Загрузить в папку
-          <input type="file" multiple className="hidden" disabled={!newFolder.trim() || uploading}
-            onChange={(e) => { if (e.target.files?.length && newFolder.trim()) uploadFiles(newFolder.trim(), e.target.files); e.target.value = ""; }} />
-        </label>
+        <button
+          type="button"
+          onClick={() => {
+            if (!newFolder.trim()) { alert("Введите название папки"); return; }
+            const input = document.createElement("input");
+            input.type = "file";
+            input.multiple = true;
+            input.onchange = () => { if (input.files?.length) uploadFiles(newFolder.trim(), input.files); };
+            input.click();
+          }}
+          disabled={uploading}
+          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded text-white disabled:opacity-50"
+          style={{ background: "#0067a5" }}
+        >
+          <Upload size={12} /> {uploading ? "Загрузка..." : "Загрузить в папку"}
+        </button>
       </div>
 
       {loading ? (
