@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { ImapFlow } from "imapflow";
-import { simpleParser } from "mailparser";
+
+// Dynamic imports for IMAP (may not work in all serverless environments)
+async function getImapModules() {
+  try {
+    const { ImapFlow } = await import("imapflow");
+    const { simpleParser } = await import("mailparser");
+    return { ImapFlow, simpleParser };
+  } catch {
+    return null;
+  }
+}
 
 // Auto-create leads from new messages (Telegram, MAX, Email)
 // Called by cron or manually
@@ -146,13 +155,14 @@ export async function POST(req: NextRequest) {
     const imapUser = process.env.IMAP_USER || process.env.SMTP_USER;
     const imapPass = process.env.IMAP_PASS || process.env.SMTP_PASS;
     const port = Number(process.env.IMAP_PORT || 993);
+    const imap = await getImapModules();
 
-    if (host && imapUser && imapPass) {
-      let client: ImapFlow | null = null;
+    if (host && imapUser && imapPass && imap) {
+      let client: InstanceType<typeof imap.ImapFlow> | null = null;
       try {
         const emailSet = new Set((existingContacts ?? []).filter((c) => c.email).map((c) => c.email!.toLowerCase()));
 
-        client = new ImapFlow({
+        client = new imap.ImapFlow({
           host, port, secure: true,
           auth: { user: imapUser, pass: imapPass },
           logger: false,
@@ -168,7 +178,7 @@ export async function POST(req: NextRequest) {
             const startSeq = Math.max(1, total - 20 + 1);
             for await (const msg of client.fetch(`${startSeq}:*`, { uid: true, source: true })) {
               try {
-                const parsed = await simpleParser(msg.source as Buffer);
+                const parsed = await imap.simpleParser(msg.source as Buffer);
                 const fromEmail = parsed.from?.value?.[0]?.address?.toLowerCase();
                 const fromName = parsed.from?.value?.[0]?.name ?? parsed.from?.text ?? fromEmail ?? "";
 
@@ -281,11 +291,12 @@ export async function GET(req: NextRequest) {
     const imapHost = process.env.IMAP_HOST || process.env.SMTP_HOST;
     const imapUser = process.env.IMAP_USER || process.env.SMTP_USER;
     const imapPass = process.env.IMAP_PASS || process.env.SMTP_PASS;
-    if (imapHost && imapUser && imapPass) {
-      let client: ImapFlow | null = null;
+    const imapMods = await getImapModules();
+    if (imapHost && imapUser && imapPass && imapMods) {
+      let client: InstanceType<typeof imapMods.ImapFlow> | null = null;
       try {
         const emailSet = new Set((existingContacts ?? []).filter((c) => c.email).map((c) => c.email!.toLowerCase()));
-        client = new ImapFlow({ host: imapHost, port: Number(process.env.IMAP_PORT || 993), secure: true, auth: { user: imapUser, pass: imapPass }, logger: false });
+        client = new imapMods.ImapFlow({ host: imapHost, port: Number(process.env.IMAP_PORT || 993), secure: true, auth: { user: imapUser, pass: imapPass }, logger: false });
         await client.connect();
         const lock = await client.getMailboxLock("INBOX");
         try {
@@ -295,7 +306,7 @@ export async function GET(req: NextRequest) {
             const startSeq = Math.max(1, total - 20 + 1);
             for await (const msg of client.fetch(`${startSeq}:*`, { uid: true, source: true })) {
               try {
-                const parsed = await simpleParser(msg.source as Buffer);
+                const parsed = await imapMods.simpleParser(msg.source as Buffer);
                 const fromEmail = parsed.from?.value?.[0]?.address?.toLowerCase();
                 const fromName = parsed.from?.value?.[0]?.name ?? fromEmail ?? "";
                 if (!fromEmail || fromEmail === imapUser.toLowerCase()) continue;
