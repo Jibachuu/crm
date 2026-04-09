@@ -5,10 +5,12 @@ import { Users, Handshake, ContactRound, Building2, TrendingUp, CheckSquare } fr
 import { Card, CardBody } from "@/components/ui/Card";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import Link from "next/link";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function DashboardClient({ leads, deals, contacts, companies, tasks }: { leads: any[]; deals: any[]; contacts: any[]; companies: any[]; tasks: any[] }) {
+  const { user: currentUser, isManager } = useCurrentUser();
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
 
@@ -17,15 +19,21 @@ export default function DashboardClient({ leads, deals, contacts, companies, tas
     return (!dateFrom || created_at >= dateFrom) && (!dateTo || created_at <= dateTo + "T23:59:59");
   }
 
-  const fLeads = leads.filter((l) => inRange(l.created_at));
-  const fDeals = deals.filter((d) => inRange(d.created_at));
-  const fContacts = contacts.filter((c) => inRange(c.created_at));
-  const fCompanies = companies.filter((c) => inRange(c.created_at));
+  function isOwned(item: { assigned_to?: string }) {
+    if (!isManager || !currentUser) return true;
+    return item.assigned_to === currentUser.id;
+  }
+
+  const fLeads = leads.filter((l) => inRange(l.created_at) && isOwned(l));
+  const fDeals = deals.filter((d) => inRange(d.created_at) && isOwned(d));
+  const fContacts = contacts.filter((c) => inRange(c.created_at) && isOwned(c));
+  const fCompanies = companies.filter((c) => inRange(c.created_at) && isOwned(c));
 
   const newLeads = fLeads.filter((l) => l.status === "new").length;
   const wonDeals = fDeals.filter((d) => d.stage === "won");
   const totalRevenue = wonDeals.reduce((sum, d) => sum + (d.amount ?? 0), 0);
-  const pendingTasks = tasks.filter((t) => t.status !== "done" && t.status !== "cancelled").length;
+  const ownTasks = isManager && currentUser ? tasks.filter((t) => t.assigned_to === currentUser.id) : tasks;
+  const pendingTasks = ownTasks.filter((t) => t.status !== "done" && t.status !== "cancelled").length;
 
   const statCards = [
     { title: "Лиды", value: fLeads.length, sub: `${newLeads} новых`, icon: Users, color: "text-blue-600", bg: "bg-blue-50", href: "/leads" },

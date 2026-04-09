@@ -12,6 +12,7 @@ import PurgeButton from "@/components/ui/PurgeButton";
 import CreateLeadModal from "./CreateLeadModal";
 import { createClient } from "@/lib/supabase/client";
 import { usePagination } from "@/hooks/usePagination";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "./[id]/LeadDetail";
@@ -31,6 +32,7 @@ interface Funnel { id: string; name: string; type: string; is_default: boolean; 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function LeadsList({ initialLeads, users, funnelStages = [], funnels = [] }: { initialLeads: any[]; users: any[]; funnelStages?: FunnelStage[]; funnels?: Funnel[] }) {
+  const { user: currentUser, isManager } = useCurrentUser();
   const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
   const funnelMap = Object.fromEntries(funnels.map((f) => [f.id, f]));
   const [leads, setLeads] = useState(initialLeads);
@@ -66,7 +68,8 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
     const matchesStatus = statusFilter === "all" || l.status === statusFilter || (l.stage_id && stageMap[l.stage_id]?.slug === statusFilter);
     const matchesFunnel = funnelFilter === "all" || l.funnel_id === funnelFilter;
     const matchesDate = (!dateFrom || l.created_at >= dateFrom) && (!dateTo || l.created_at <= dateTo + "T23:59:59");
-    return matchesSearch && matchesStatus && matchesFunnel && matchesDate;
+    const matchesOwner = !isManager || !currentUser || l.assigned_to === currentUser.id;
+    return matchesSearch && matchesStatus && matchesFunnel && matchesDate && matchesOwner;
   });
 
   const { visible: paginatedLeads, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);

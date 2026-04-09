@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import { usePagination } from "@/hooks/usePagination";
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 interface FunnelStage { id: string; funnel_id: string; name: string; slug: string; color: string; sort_order: number; is_final: boolean; is_success: boolean; }
 
@@ -24,6 +25,7 @@ const OLD_STAGE_LABELS: Record<string, string> = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function DealsList({ initialDeals, users, funnelStages = [] }: { initialDeals: any[]; users: any[]; funnelStages?: FunnelStage[] }) {
+  const { user: currentUser, isManager } = useCurrentUser();
   const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
   const hasFunnelStages = funnelStages.length > 0;
   const [deals, setDeals] = useState(initialDeals);
@@ -44,7 +46,8 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
       d.companies?.name?.toLowerCase().includes(search.toLowerCase());
     const matchesStage = stageFilter === "all" || d.stage === stageFilter || d.stage_id === stageFilter;
     const matchesDate = (!dateFrom || d.created_at >= dateFrom) && (!dateTo || d.created_at <= dateTo + "T23:59:59");
-    return matchesSearch && matchesStage && matchesDate;
+    const matchesOwner = !isManager || !currentUser || d.assigned_to === currentUser.id;
+    return matchesSearch && matchesStage && matchesDate && matchesOwner;
   });
 
   const { visible: paginatedDeals, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);

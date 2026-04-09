@@ -9,6 +9,7 @@ import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import EditTaskModal from "@/components/ui/EditTaskModal";
 import { formatDate } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import Link from "next/link";
 
 const PRIORITY_VARIANTS: Record<string, "danger" | "warning" | "default"> = {
@@ -46,15 +47,20 @@ interface Task {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
+  const { user: currentUser, isManager } = useCurrentUser();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [modalOpen, setModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
+  const visibleTasks = isManager && currentUser
+    ? tasks.filter((t) => (t as any).assigned_to === currentUser.id)
+    : tasks;
+
   const grouped = {
-    pending: tasks.filter((t) => t.status === "pending"),
-    in_progress: tasks.filter((t) => t.status === "in_progress"),
-    done: tasks.filter((t) => t.status === "done"),
+    pending: visibleTasks.filter((t) => t.status === "pending"),
+    in_progress: visibleTasks.filter((t) => t.status === "in_progress"),
+    done: visibleTasks.filter((t) => t.status === "done"),
   };
 
   async function changeStatus(id: string, status: string) {

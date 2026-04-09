@@ -10,6 +10,7 @@ import PurgeButton from "@/components/ui/PurgeButton";
 import { usePagination } from "@/hooks/usePagination";
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import CreateCompanyModal from "./CreateCompanyModal";
 
 const COMPANY_TYPE_LABELS: Record<string, string> = {
@@ -26,6 +27,7 @@ const CONTRACT_COLORS: Record<string, { bg: string; color: string }> = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function CompaniesList({ initialCompanies, users }: any) {
+  const { user: currentUser, isManager } = useCurrentUser();
   const [companies, setCompanies] = useState(initialCompanies);
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -43,7 +45,8 @@ export default function CompaniesList({ initialCompanies, users }: any) {
       COMPANY_TYPE_LABELS[c.company_type ?? ""]?.toLowerCase().includes(search.toLowerCase());
     const matchContract = !contractFilter || (c.contract_status ?? "none") === contractFilter;
     const matchesDate = (!dateFrom || (c.created_at ?? "") >= dateFrom) && (!dateTo || (c.created_at ?? "") <= dateTo + "T23:59:59");
-    return matchSearch && matchContract && matchesDate;
+    const matchesOwner = !isManager || !currentUser || (c as any).assigned_to === currentUser.id;
+    return matchSearch && matchContract && matchesDate && matchesOwner;
   });
 
   const { visible: paginatedCompanies, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);

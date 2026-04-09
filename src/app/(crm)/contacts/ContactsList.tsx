@@ -11,10 +11,12 @@ import PurgeButton from "@/components/ui/PurgeButton";
 import { usePagination } from "@/hooks/usePagination";
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import CreateContactModal from "./CreateContactModal";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function ContactsList({ initialContacts, companies, users }: any) {
+  const { user: currentUser, isManager } = useCurrentUser();
   const [contacts, setContacts] = useState(initialContacts);
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -31,7 +33,8 @@ export default function ContactsList({ initialContacts, companies, users }: any)
       c.phone?.includes(search) ||
       c.companies?.name?.toLowerCase().includes(search.toLowerCase());
     const matchesDate = (!dateFrom || (c.created_at ?? "") >= dateFrom) && (!dateTo || (c.created_at ?? "") <= dateTo + "T23:59:59");
-    return matchesSearch && matchesDate;
+    const matchesOwner = !isManager || !currentUser || (c as any).assigned_to === currentUser.id;
+    return matchesSearch && matchesDate && matchesOwner;
   });
 
   const { visible: paginatedContacts, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);

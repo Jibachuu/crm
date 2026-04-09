@@ -230,10 +230,13 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                     </div>
                     <CardBody className="p-0">
                       <ul className="divide-y divide-slate-100">
-                        {deals.map((d: { id: string; title: string; stage: string; amount: number }) => (
+                        {deals.map((d: { id: string; title: string; stage: string; amount: number; created_at?: string }) => (
                           <li key={d.id}>
                             <Link href={`/deals/${d.id}`} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50">
-                              <span className="text-sm text-blue-600 hover:underline">{d.title}</span>
+                              <div>
+                                <span className="text-sm text-blue-600 hover:underline">{d.title}</span>
+                                {d.created_at && <p className="text-xs text-slate-400">{new Date(d.created_at).toLocaleDateString("ru-RU")}</p>}
+                              </div>
                               <div className="flex items-center gap-2">
                                 {d.amount > 0 && <span className="text-xs font-medium" style={{ color: "#2e7d32" }}>{Number(d.amount).toLocaleString("ru-RU")} ₽</span>}
                                 <Badge variant={d.stage === "won" ? "success" : d.stage === "lost" ? "danger" : "default"}>
