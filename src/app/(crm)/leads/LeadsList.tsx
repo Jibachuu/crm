@@ -46,6 +46,7 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
+  const [kanbanLimits, setKanbanLimits] = useState<Record<string, number>>({});
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
 
@@ -379,17 +380,35 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
                 </div>
 
                 {/* Cards */}
-                <div className="p-2 space-y-2" style={{ minHeight: 80 }}>
-                  {columnLeads.map((lead) => (
-                    <KanbanCard
-                      key={lead.id}
-                      lead={lead}
-                      color={stage.color}
-                      isDragging={draggingId === lead.id}
-                      onDragStart={(e) => handleDragStart(e, lead.id)}
-                      onDragEnd={() => setDraggingId(null)}
-                    />
-                  ))}
+                <div className="p-2 space-y-2" style={{ minHeight: 80, maxHeight: 600, overflowY: "auto" }}>
+                  {(() => {
+                    const limit = kanbanLimits[stage.id] || 20;
+                    const visible = columnLeads.slice(0, limit);
+                    const hasMore = columnLeads.length > limit;
+                    return (
+                      <>
+                        {visible.map((lead) => (
+                          <KanbanCard
+                            key={lead.id}
+                            lead={lead}
+                            color={stage.color}
+                            isDragging={draggingId === lead.id}
+                            onDragStart={(e) => handleDragStart(e, lead.id)}
+                            onDragEnd={() => setDraggingId(null)}
+                          />
+                        ))}
+                        {hasMore && (
+                          <button
+                            onClick={() => setKanbanLimits((p) => ({ ...p, [stage.id]: limit + 20 }))}
+                            className="w-full text-xs py-2 rounded hover:bg-blue-50"
+                            style={{ color: "#0067a5", border: "1px dashed #d0e8f5" }}
+                          >
+                            Ещё {columnLeads.length - limit}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
                   {columnLeads.length === 0 && !isDragOver && (
                     <p className="text-xs text-center py-4" style={{ color: "#bbb" }}>Пусто</p>
                   )}

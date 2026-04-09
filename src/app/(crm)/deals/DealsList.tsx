@@ -36,6 +36,7 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkTaskOpen, setBulkTaskOpen] = useState(false);
+  const [kanbanLimits, setKanbanLimits] = useState<Record<string, number>>({});
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
 
@@ -255,20 +256,38 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
                   </span>
                   <span className="text-xs font-medium" style={{ color: "#888" }}>{formatCurrency(stageTotal)}</span>
                 </div>
-                <div className="space-y-2" style={{ minHeight: 60 }}>
-                  {stageDeals.map((deal) => (
-                    <Link key={deal.id} href={`/deals/${deal.id}`}>
-                      <div
-                        draggable={hasFunnelStages}
-                        onDragStart={(e) => { e.dataTransfer.setData("dealId", deal.id); e.dataTransfer.effectAllowed = "move"; }}
-                        className="bg-white p-3 hover:shadow-sm transition-shadow cursor-pointer"
-                        style={{ border: "1px solid #e4e4e4", borderRadius: 6, borderLeft: `3px solid ${stage.color}` }}>
-                        <p className="text-sm font-medium mb-0.5" style={{ color: "#333" }}>{deal.title}</p>
-                        {deal.contacts && <p className="text-xs" style={{ color: "#888" }}>{deal.contacts.full_name}</p>}
-                        {deal.amount > 0 && <p className="text-xs font-semibold mt-1" style={{ color: "#2e7d32" }}>{formatCurrency(deal.amount)}</p>}
-                      </div>
-                    </Link>
-                  ))}
+                <div className="space-y-2" style={{ minHeight: 60, maxHeight: 600, overflowY: "auto" }}>
+                  {(() => {
+                    const limit = kanbanLimits[stage.id] || 20;
+                    const visible = stageDeals.slice(0, limit);
+                    const hasMore = stageDeals.length > limit;
+                    return (
+                      <>
+                        {visible.map((deal) => (
+                          <Link key={deal.id} href={`/deals/${deal.id}`}>
+                            <div
+                              draggable={hasFunnelStages}
+                              onDragStart={(e) => { e.dataTransfer.setData("dealId", deal.id); e.dataTransfer.effectAllowed = "move"; }}
+                              className="bg-white p-3 hover:shadow-sm transition-shadow cursor-pointer"
+                              style={{ border: "1px solid #e4e4e4", borderRadius: 6, borderLeft: `3px solid ${stage.color}` }}>
+                              <p className="text-sm font-medium mb-0.5" style={{ color: "#333" }}>{deal.title}</p>
+                              {deal.contacts && <p className="text-xs" style={{ color: "#888" }}>{deal.contacts.full_name}</p>}
+                              {deal.amount > 0 && <p className="text-xs font-semibold mt-1" style={{ color: "#2e7d32" }}>{formatCurrency(deal.amount)}</p>}
+                            </div>
+                          </Link>
+                        ))}
+                        {hasMore && (
+                          <button
+                            onClick={() => setKanbanLimits((p) => ({ ...p, [stage.id]: limit + 20 }))}
+                            className="w-full text-xs py-2 rounded hover:bg-blue-50"
+                            style={{ color: "#0067a5", border: "1px dashed #d0e8f5" }}
+                          >
+                            Ещё {stageDeals.length - limit}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
                   {stageDeals.length === 0 && (
                     <div className="p-4 text-center text-xs" style={{ border: "1px dashed #ddd", borderRadius: 6, color: "#ccc" }}>Нет сделок</div>
                   )}
