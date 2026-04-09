@@ -114,6 +114,7 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
         subcategory: selected.subcategory || null,
         flavor: selected.flavor || null,
         volume: selected.volume || null,
+        volume_ml: (selected as any).volume_ml || null,
         lifecycle_days: lifecycleDays > 0 ? lifecycleDays : null,
       })
       .select("*, products(name, sku)")

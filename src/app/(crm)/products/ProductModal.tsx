@@ -17,6 +17,8 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
   const isEdit = !!product;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [category, setCategory] = useState(product?.category ?? "");
+  const showVolumeFlavor = ["Косметика", "Аромажидкость", "косметика", "аромажидкость"].some((c) => category.toLowerCase().includes(c.toLowerCase()));
   const [attributes, setAttributes] = useState<Attribute[]>(
     product?.product_attributes?.map((a: { name: string; values: string[] }) => ({ name: a.name, values: a.values.join(", ") })) ?? []
   );
@@ -73,6 +75,8 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
       subcategory: (fd.get("subcategory") as string) || null,
       description: (fd.get("description") as string) || null,
       base_price: Number(fd.get("base_price")) || 0,
+      volume_ml: fd.get("volume_ml") ? Number(fd.get("volume_ml")) : null,
+      flavor: (fd.get("flavor") as string) || null,
       is_active: true,
     };
 
@@ -148,9 +152,20 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
         </div>
         <Input label="Название товара" name="name" defaultValue={product?.name} required placeholder="Название" />
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Категория" name="category" defaultValue={product?.category ?? ""} placeholder="Диффузоры" />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Категория</label>
+            <input name="category" value={category} onChange={(e) => setCategory(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Косметика, Держатели, Флаконы..." />
+          </div>
           <Input label="Подкатегория" name="subcategory" defaultValue={product?.subcategory ?? ""} placeholder="Настольные" />
         </div>
+        {showVolumeFlavor && (
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Объём (мл)" name="volume_ml" type="number" defaultValue={product?.volume_ml ?? ""} placeholder="1000" min="0" />
+            <Input label="Аромат" name="flavor" defaultValue={product?.flavor ?? ""} placeholder="Роза, Ваниль..." />
+          </div>
+        )}
         <Textarea label="Описание" name="description" defaultValue={product?.description ?? ""} />
 
         {/* Attributes */}

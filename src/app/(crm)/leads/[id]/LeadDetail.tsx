@@ -637,11 +637,15 @@ function ProductBlock({ title, description, items, total, onAdd }: { title: stri
                 </tr>
               </thead>
               <tbody>
-                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; category?: string; subcategory?: string; quantity: number; unit_price: number; discount_percent: number; total_price: number }) => (
+                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; quantity: number; unit_price: number; discount_percent: number; total_price: number }) => (
                   <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                     <td className="px-4 py-2">
-                      <p className="font-medium" style={{ color: "#333" }}>{item.products?.name}</p>
+                      <p className="font-medium" style={{ color: "#333" }}>
+                        {item.products?.name}
+                        {item.volume_ml && <span className="text-xs font-normal ml-1" style={{ color: "#888" }}>{item.volume_ml} мл</span>}
+                      </p>
                       <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products?.sku}</p>
+                      {item.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{item.flavor}</p>}
                       {(item.category || item.subcategory) && (
                         <p className="text-xs" style={{ color: "#0067a5" }}>{[item.category, item.subcategory].filter(Boolean).join(" → ")}</p>
                       )}

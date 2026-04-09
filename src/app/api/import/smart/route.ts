@@ -508,6 +508,8 @@ export async function POST(req: NextRequest) {
           product_block: "order",
           category: pr.category ?? null,
           subcategory: pr.subcategory ?? null,
+          volume_ml: pr.volume ? parseInt(String(pr.volume).replace(/\D/g, "")) || null : null,
+          flavor: pr.aroma ?? null,
         }))
         .filter((dp) => dp.product_id);
 
