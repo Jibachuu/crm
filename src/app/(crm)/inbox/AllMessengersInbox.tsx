@@ -173,12 +173,12 @@ export default function AllMessengersInbox() {
               className="w-full text-sm px-3 py-1.5 rounded mb-2 focus:outline-none"
               style={{ border: "1px solid #d0d0d0" }} />
             <div className="flex gap-2">
-              <button onClick={() => addContact("telegram")} disabled={addingContact || !newPhone.trim()}
+              <button onClick={() => addContact("telegram")} disabled={!!addingContact || !newPhone.trim()}
                 className="flex-1 text-xs py-1.5 rounded font-medium disabled:opacity-40"
                 style={{ background: "#0088cc", color: "#fff" }}>
                 {addingContact === "telegram" ? "..." : "Telegram"}
               </button>
-              <button onClick={() => addContact("maks")} disabled={addingContact || !newPhone.trim()}
+              <button onClick={() => addContact("maks")} disabled={!!addingContact || !newPhone.trim()}
                 className="flex-1 text-xs py-1.5 rounded font-medium disabled:opacity-40"
                 style={{ background: "#0067a5", color: "#fff" }}>
                 {addingContact === "maks" ? "..." : "МАКС"}
