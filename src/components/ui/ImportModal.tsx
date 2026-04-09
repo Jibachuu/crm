@@ -67,6 +67,7 @@ const ENTITY_FIELDS: Record<Entity, CrmField[]> = {
   ],
   deals: [
     { key: "title", label: "Название", required: true },
+    { key: "bitrix_id", label: "Битрикс ID" },
     { key: "stage", label: "Стадия" },
     { key: "source", label: "Источник" },
     { key: "amount", label: "Сумма итого" },

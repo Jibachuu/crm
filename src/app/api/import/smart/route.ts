@@ -368,7 +368,10 @@ export async function POST(req: NextRequest) {
         assigned_to: findUserId(row.assigned_to_name),
         created_by: user.id,
       };
-      if (table === "deals") rec.amount = parseNum(row.amount);
+      if (table === "deals") {
+        rec.amount = parseNum(row.amount);
+        if (row.bitrix_id) rec.bitrix_id = String(row.bitrix_id).trim();
+      }
       if (table === "leads") {
         rec.telegram_username = row.telegram_username || null;
         rec.had_call = row.had_call || null;
