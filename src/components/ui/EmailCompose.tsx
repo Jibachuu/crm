@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send, X, Paperclip, FileText, ChevronDown } from "lucide-react";
+import FileTemplatesPanel from "./FileTemplatesPanel";
 import Button from "./Button";
 import { createClient } from "@/lib/supabase/client";
 
@@ -206,6 +207,11 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
             <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-gray-100 transition-colors" style={{ color: "#888" }}>
               <Paperclip size={13} /> Файл
             </button>
+            <FileTemplatesPanel onInsert={(tplFiles) => {
+              Promise.all(tplFiles.map((f) =>
+                fetch(f.url).then((r) => r.blob()).then((blob) => new File([blob], f.name, { type: f.type || "application/octet-stream" }))
+              )).then((newFiles) => setFiles((prev) => [...prev, ...newFiles]));
+            }} />
             {/* Signature indicator */}
             {signatureAppended && (
               <span className="text-xs px-2 py-0.5 rounded" style={{ background: "#f0f0f0", color: "#888", fontSize: 10 }}>

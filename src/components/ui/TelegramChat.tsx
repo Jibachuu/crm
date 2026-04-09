@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Send, Paperclip, Mic, MicOff, Download, FileText, Image, Music, Video, X } from "lucide-react";
+import FileTemplatesPanel from "./FileTemplatesPanel";
 
 interface TgMessage {
   id: number;
@@ -328,7 +329,16 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
           <span className="text-xs" style={{ color: "#aaa" }}>Это канал — отправка сообщений недоступна</span>
         </div>
       ) : (
-      <div className="flex items-center gap-2 px-3 py-2" style={{ borderTop: "1px solid #e4e4e4", background: "#fff" }}>
+      <div className="flex items-center gap-2 px-3 py-2 relative" style={{ borderTop: "1px solid #e4e4e4", background: "#fff" }}>
+        {/* File templates */}
+        <FileTemplatesPanel onInsert={(files) => {
+          for (const f of files) {
+            fetch(f.url).then((r) => r.blob()).then((blob) => {
+              const file = new File([blob], f.name, { type: f.type || "application/octet-stream" });
+              sendFile(file);
+            }).catch(() => {});
+          }
+        }} />
         {/* File picker */}
         <button
           onClick={() => fileInputRef.current?.click()}

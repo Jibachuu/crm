@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Send, RefreshCw, Paperclip, Mic, MicOff } from "lucide-react";
+import FileTemplatesPanel from "./FileTemplatesPanel";
 
 export default function MaxChat({ chatId, compact = false }: { chatId: string; compact?: boolean }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -236,7 +237,15 @@ export default function MaxChat({ chatId, compact = false }: { chatId: string; c
       )}
 
       {/* Input */}
-      <div className="flex items-center gap-2 px-3 py-2" style={{ borderTop: "1px solid #e4e4e4" }}>
+      <div className="flex items-center gap-2 px-3 py-2 relative" style={{ borderTop: "1px solid #e4e4e4" }}>
+        <FileTemplatesPanel onInsert={(files) => {
+          for (const f of files) {
+            fetch(f.url).then((r) => r.blob()).then((blob) => {
+              const file = new File([blob], f.name, { type: f.type || "application/octet-stream" });
+              sendFile(file);
+            }).catch(() => {});
+          }
+        }} />
         <button onClick={() => fileRef.current?.click()} disabled={uploading || recording}
           className="p-1.5 rounded-full hover:bg-slate-100 transition-colors disabled:opacity-40">
           <Paperclip size={16} style={{ color: "#888" }} />
