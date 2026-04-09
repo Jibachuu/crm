@@ -39,7 +39,10 @@ export async function POST(req: NextRequest) {
     const freshSession = new StringSession("");
     const client = new TelegramClient(freshSession, apiId, apiHash, { connectionRetries: 3 });
     await client.connect();
-    await client.sendCode({ apiId, apiHash }, phone);
+    const sendResult = await client.sendCode({ apiId, apiHash }, phone);
+    // Store phoneCodeHash for SignIn
+    if (!(client as any)._phoneCodeHash) (client as any)._phoneCodeHash = new Map();
+    (client as any)._phoneCodeHash.set(phone, sendResult.phoneCodeHash);
     clients.set(sessionKey, client);
     return NextResponse.json({ status: "code_sent" });
   }
@@ -49,7 +52,32 @@ export async function POST(req: NextRequest) {
     if (!client) return NextResponse.json({ error: "Сессия не найдена, начните заново" }, { status: 400 });
 
     try {
-      await (client as unknown as { signIn: (auth: unknown, opts: unknown) => Promise<void> }).signIn({ apiId, apiHash }, { phoneNumber: phone, phoneCode: async () => code, password: async () => password ?? "" });
+      // gramJS v2: use client.start() or invoke SignIn directly
+      const { Api } = await import("telegram");
+      try {
+        await client.invoke(
+          new Api.auth.SignIn({
+            phoneNumber: phone,
+            phoneCodeHash: (client as any)._phoneCodeHash?.get(phone) ?? "",
+            phoneCode: code,
+          })
+        );
+      } catch (signErr: any) {
+        // If phoneCodeHash not cached, try start() method
+        if (signErr.message?.includes("PHONE_CODE_HASH") || signErr.message?.includes("phoneCodeHash")) {
+          await client.start({
+            phoneNumber: async () => phone,
+            phoneCode: async () => code,
+            password: async () => password ?? "",
+            onError: (err: Error) => { throw err; },
+          });
+        } else if (signErr.message?.includes("SESSION_PASSWORD_NEEDED")) {
+          return NextResponse.json({ status: "need_password" });
+        } else {
+          throw signErr;
+        }
+      }
+
       const sessionStr = (client.session as StringSession).save();
       const me = await client.getMe();
       clients.delete(sessionKey);
