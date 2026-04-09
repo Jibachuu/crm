@@ -1,21 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Modal from "@/components/ui/Modal";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import Button from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
-
-const STAGE_OPTIONS = [
-  { value: "lead", label: "Лид" },
-  { value: "proposal", label: "Предложение" },
-  { value: "negotiation", label: "Переговоры" },
-  { value: "order_assembly", label: "Сборка заказа" },
-  { value: "won", label: "Выиграна" },
-  { value: "lost", label: "Проиграна" },
-];
 
 const SOURCE_OPTIONS = [
   { value: "website", label: "Сайт" },
@@ -30,6 +21,19 @@ const SOURCE_OPTIONS = [
 export default function CreateDealModal({ open, onClose, users, onCreated }: any) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dealFunnel, setDealFunnel] = useState<{ id: string; stages: { id: string; slug: string; name: string; sort_order: number }[] } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const supabase = createClient();
+    supabase.from("funnels").select("id").eq("type", "deal").eq("is_default", true).single().then(({ data: funnel }) => {
+      if (funnel) {
+        supabase.from("funnel_stages").select("id, slug, name, sort_order").eq("funnel_id", funnel.id).order("sort_order").then(({ data: stages }) => {
+          setDealFunnel({ id: funnel.id, stages: stages ?? [] });
+        });
+      }
+    });
+  }, [open]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -40,14 +44,19 @@ export default function CreateDealModal({ open, onClose, users, onCreated }: any
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    const firstStage = dealFunnel?.stages?.[0];
+
     const payload = {
       title: fd.get("title") as string,
       source: (fd.get("source") as string) || null,
-      stage: (fd.get("stage") as string) || "lead",
+      stage: "lead",
       amount: fd.get("amount") ? Number(fd.get("amount")) : null,
       description: (fd.get("description") as string) || null,
       assigned_to: (fd.get("assigned_to") as string) || null,
       created_by: user.id,
+      funnel_id: dealFunnel?.id || null,
+      stage_id: firstStage?.id || null,
+      stage_changed_at: new Date().toISOString(),
     };
 
     const { data, error: err } = await supabase
@@ -69,10 +78,9 @@ export default function CreateDealModal({ open, onClose, users, onCreated }: any
         {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>}
         <Input label="Название сделки" name="title" placeholder="Название сделки" required />
         <div className="grid grid-cols-2 gap-3">
-          <Select label="Стадия" name="stage" options={STAGE_OPTIONS} />
           <Select label="Источник" name="source" options={SOURCE_OPTIONS} placeholder="Источник" />
+          <Input label="Сумма" name="amount" type="number" placeholder="0" min="0" />
         </div>
-        <Input label="Сумма (₽)" name="amount" type="number" placeholder="0" min="0" />
         <Select label="Ответственный" name="assigned_to" options={userOptions} placeholder="Выберите сотрудника" />
         <Textarea label="Описание" name="description" placeholder="Дополнительная информация..." />
         <div className="flex justify-end gap-3 pt-2">

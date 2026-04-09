@@ -25,7 +25,6 @@ export const LEAD_STATUSES = [
   { key: "in_progress", label: "В работе" },
   { key: "samples", label: "Пробники" },
   { key: "samples_shipped", label: "Пробники отгружены" },
-  { key: "invoice", label: "Счёт на предоплату" },
   { key: "rejected", label: "Отказ" },
 ];
 

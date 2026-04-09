@@ -15,7 +15,7 @@ import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "./[id]/LeadDetail";
 
 const STATUS_VARIANTS: Record<string, "info" | "warning" | "success" | "default" | "danger" | "purple"> = {
   new: "info", callback: "warning", in_progress: "warning", samples: "info",
-  samples_shipped: "info", invoice: "success", rejected: "danger", converted: "purple",
+  samples_shipped: "info", rejected: "danger", converted: "purple",
 };
 
 const SOURCE_LABELS: Record<string, string> = {

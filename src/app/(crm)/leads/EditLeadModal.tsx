@@ -14,7 +14,6 @@ const STATUS_OPTIONS = [
   { value: "in_progress", label: "В работе" },
   { value: "samples", label: "Пробники" },
   { value: "samples_shipped", label: "Пробники отгружены" },
-  { value: "invoice", label: "Счёт на предоплату" },
   { value: "rejected", label: "Отказ" },
 ];
 
