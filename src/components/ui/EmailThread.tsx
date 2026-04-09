@@ -55,6 +55,27 @@ export default function EmailThread({ email, compact = false, entityType, entity
         e.to?.toLowerCase().includes(email.toLowerCase())
       );
       setEmails(filtered);
+      // Sync to communications timeline
+      if (entityType && entityId && filtered.length > 0) {
+        fetch("/api/sync-messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: filtered.map((e: Email) => ({
+              id: e.uid || e.dbId || e.date,
+              text: e.preview,
+              subject: e.subject,
+              isMe: e.folder === "SENT",
+              sender: e.from,
+              from: e.fromEmail,
+              time: new Date(e.date).getTime(),
+            })),
+            channel: "email",
+            entity_type: entityType,
+            entity_id: entityId,
+          }),
+        }).catch(() => {});
+      }
     } catch (e) {
       setError(String(e));
     }
