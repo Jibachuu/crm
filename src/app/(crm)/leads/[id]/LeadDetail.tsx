@@ -192,9 +192,9 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
     { id: "communications", label: `Коммуникации (${communications.length})` },
     { id: "tasks", label: `Задачи (${tasks.length})` },
     { id: "products", label: `Товары (${leadProducts.length})` },
-    ...(lead.contacts?.email ? [{ id: "email", label: "📧 Почта" }] : []),
-    ...(lead.contacts?.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
-    ...(lead.contacts?.maks_id ? [{ id: "maks", label: "🔵 МАКС" }] : []),
+    { id: "email", label: "📧 Почта" },
+    { id: "telegram", label: "💬 Telegram" },
+    { id: "maks", label: "🔵 МАКС" },
   ];
 
   const isConverted = lead.status === "converted";
@@ -480,27 +480,48 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
               </div>
             )}
 
-            {activeTab === "email" && lead.contacts?.email && (
-              <EmailThread email={lead.contacts.email} compact entityType="lead" entityId={lead.id} />
+            {activeTab === "email" && (
+              lead.contacts?.email ? (
+                <EmailThread email={lead.contacts.email} compact entityType="lead" entityId={lead.id} />
+              ) : (
+                <div className="text-center py-8">
+                  <Mail size={24} className="mx-auto mb-2" style={{ color: "#ddd" }} />
+                  <p className="text-sm" style={{ color: "#aaa" }}>{lead.contacts ? "У контакта не указан email" : "Привяжите контакт с email"}</p>
+                </div>
+              )
             )}
 
-            {activeTab === "telegram" && lead.contacts?.telegram_id && (
-              <div>
-                <p className="text-xs mb-2" style={{ color: "#888" }}>
-                  Переписка с <strong>{lead.contacts.full_name}</strong>
-                  {lead.contacts.telegram_id && <> · <span style={{ color: "#0067a5" }}>@{lead.contacts.telegram_id}</span></>}
-                </p>
-                <TelegramChat peer={lead.contacts.telegram_id} compact />
-              </div>
+            {activeTab === "telegram" && (
+              lead.contacts?.telegram_id ? (
+                <div>
+                  <p className="text-xs mb-2" style={{ color: "#888" }}>
+                    Переписка с <strong>{lead.contacts.full_name}</strong>
+                    {lead.contacts.telegram_id && <> · <span style={{ color: "#0067a5" }}>@{lead.contacts.telegram_id}</span></>}
+                  </p>
+                  <TelegramChat peer={lead.contacts.telegram_id} compact />
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <MessageSquare size={24} className="mx-auto mb-2" style={{ color: "#ddd" }} />
+                  <p className="text-sm" style={{ color: "#aaa" }}>{lead.contacts ? "У контакта не указан Telegram" : "Привяжите контакт с Telegram"}</p>
+                </div>
+              )
             )}
 
-            {activeTab === "maks" && lead.contacts?.maks_id && (
-              <div>
-                <p className="text-xs mb-2" style={{ color: "#888" }}>
-                  МАКС: <strong>{lead.contacts.full_name}</strong>
-                </p>
-                <MaxChat chatId={lead.contacts.maks_id} compact />
-              </div>
+            {activeTab === "maks" && (
+              lead.contacts?.maks_id ? (
+                <div>
+                  <p className="text-xs mb-2" style={{ color: "#888" }}>
+                    МАКС: <strong>{lead.contacts.full_name}</strong>
+                  </p>
+                  <MaxChat chatId={lead.contacts.maks_id} compact />
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <MessageSquare size={24} className="mx-auto mb-2" style={{ color: "#ddd" }} />
+                  <p className="text-sm" style={{ color: "#aaa" }}>{lead.contacts ? "У контакта не указан МАКС" : "Привяжите контакт с МАКС"}</p>
+                </div>
+              )
             )}
           </div>
         </div>

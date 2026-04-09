@@ -300,9 +300,9 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 { id: "products", label: `Товары (${dealProducts.length})` },
                 { id: "quotes", label: "📋 КП" },
                 { id: "production", label: "🏭 Производство" },
-                ...(deal.contacts?.email ? [{ id: "email", label: "📧 Почта" }] : []),
-                ...(deal.contacts?.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
-                ...(deal.contacts?.maks_id ? [{ id: "maks", label: "🔵 МАКС" }] : []),
+                { id: "email", label: "📧 Почта" },
+                { id: "telegram", label: "💬 Telegram" },
+                { id: "maks", label: "🔵 МАКС" },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -413,26 +413,34 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
               </div>
             )}
 
-            {activeTab === "email" && deal.contacts?.email && (
-              <EmailThread email={deal.contacts.email} compact entityType="deal" entityId={deal.id} />
+            {activeTab === "email" && (
+              deal.contacts?.email ? (
+                <EmailThread email={deal.contacts.email} compact entityType="deal" entityId={deal.id} />
+              ) : (
+                <div className="text-center py-8"><p className="text-sm" style={{ color: "#aaa" }}>{deal.contacts ? "У контакта не указан email" : "Привяжите контакт с email"}</p></div>
+              )
             )}
 
-            {activeTab === "telegram" && deal.contacts?.telegram_id && (
-              <div>
-                <p className="text-xs mb-2" style={{ color: "#888" }}>
-                  Переписка с <strong>{deal.contacts.full_name}</strong> (@{deal.contacts.telegram_id})
-                </p>
-                <TelegramChat peer={deal.contacts.telegram_id} compact />
-              </div>
+            {activeTab === "telegram" && (
+              deal.contacts?.telegram_id ? (
+                <div>
+                  <p className="text-xs mb-2" style={{ color: "#888" }}>Переписка с <strong>{deal.contacts.full_name}</strong> (@{deal.contacts.telegram_id})</p>
+                  <TelegramChat peer={deal.contacts.telegram_id} compact />
+                </div>
+              ) : (
+                <div className="text-center py-8"><p className="text-sm" style={{ color: "#aaa" }}>{deal.contacts ? "У контакта не указан Telegram" : "Привяжите контакт с Telegram"}</p></div>
+              )
             )}
 
-            {activeTab === "maks" && deal.contacts?.maks_id && (
-              <div>
-                <p className="text-xs mb-2" style={{ color: "#888" }}>
-                  МАКС: <strong>{deal.contacts.full_name}</strong>
-                </p>
-                <MaxChat chatId={deal.contacts.maks_id} compact />
-              </div>
+            {activeTab === "maks" && (
+              deal.contacts?.maks_id ? (
+                <div>
+                  <p className="text-xs mb-2" style={{ color: "#888" }}>МАКС: <strong>{deal.contacts.full_name}</strong></p>
+                  <MaxChat chatId={deal.contacts.maks_id} compact />
+                </div>
+              ) : (
+                <div className="text-center py-8"><p className="text-sm" style={{ color: "#aaa" }}>{deal.contacts ? "У контакта не указан МАКС" : "Привяжите контакт с МАКС"}</p></div>
+              )
             )}
 
             {activeTab === "production" && (
