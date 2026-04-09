@@ -6,6 +6,7 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import Button from "@/components/ui/Button";
+import SelectOrCreate from "@/components/ui/SelectOrCreate";
 import { createClient } from "@/lib/supabase/client";
 
 const STAGE_OPTIONS = [
@@ -88,19 +89,23 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
         </div>
         <Input label="Сумма (₽)" name="amount" type="number" defaultValue={deal?.amount ?? ""} min="0" />
         <div className="grid grid-cols-2 gap-3">
-          <Select
+          <SelectOrCreate
             label="Контакт"
             name="contact_id"
+            entityType="contact"
             options={contacts.map((c) => ({ value: c.id, label: c.full_name }))}
             placeholder="Выберите контакт"
             defaultValue={deal?.contact_id ?? ""}
+            onCreated={(item) => setContacts((prev) => [...prev, { id: item.id, full_name: item.label }])}
           />
-          <Select
+          <SelectOrCreate
             label="Компания"
             name="company_id"
+            entityType="company"
             options={companies.map((c) => ({ value: c.id, label: c.name }))}
             placeholder="Выберите компанию"
             defaultValue={deal?.company_id ?? ""}
+            onCreated={(item) => setCompanies((prev) => [...prev, { id: item.id, name: item.label }])}
           />
         </div>
         <Select

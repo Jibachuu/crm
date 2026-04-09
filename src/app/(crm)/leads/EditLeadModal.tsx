@@ -6,6 +6,7 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import Button from "@/components/ui/Button";
+import SelectOrCreate from "@/components/ui/SelectOrCreate";
 import { createClient } from "@/lib/supabase/client";
 
 const STATUS_OPTIONS = [
@@ -86,19 +87,23 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
           <Select label="Источник" name="source" options={SOURCE_OPTIONS} placeholder="Выберите источник" defaultValue={lead?.source ?? ""} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Select
+          <SelectOrCreate
             label="Контакт"
             name="contact_id"
+            entityType="contact"
             options={contacts.map((c) => ({ value: c.id, label: c.full_name }))}
             placeholder="Выберите контакт"
             defaultValue={lead?.contact_id ?? ""}
+            onCreated={(item) => setContacts((prev) => [...prev, { id: item.id, full_name: item.label }])}
           />
-          <Select
+          <SelectOrCreate
             label="Компания"
             name="company_id"
+            entityType="company"
             options={companies.map((c) => ({ value: c.id, label: c.name }))}
             placeholder="Выберите компанию"
             defaultValue={lead?.company_id ?? ""}
+            onCreated={(item) => setCompanies((prev) => [...prev, { id: item.id, name: item.label }])}
           />
         </div>
         <Select
