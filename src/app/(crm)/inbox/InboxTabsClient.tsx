@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { MessageSquare, Mail, Send, CircleDot } from "lucide-react";
+import { MessageSquare, Mail, Send, CircleDot, MessagesSquare } from "lucide-react";
 import InboxClient from "./InboxClient";
 import EmailInbox from "./EmailInbox";
 import CampaignsInbox from "./CampaignsInbox";
 import MaxInbox from "./MaxInbox";
+import AllMessengersInbox from "./AllMessengersInbox";
 
 const TABS = [
+  { id: "all", label: "Все чаты", icon: MessagesSquare },
   { id: "telegram", label: "Telegram", icon: MessageSquare },
   { id: "maks", label: "МАКС", icon: CircleDot },
   { id: "email", label: "Почта", icon: Mail },
@@ -15,7 +17,7 @@ const TABS = [
 ] as const;
 
 export default function InboxTabsClient() {
-  const [tab, setTab] = useState<"telegram" | "maks" | "email" | "campaigns">("telegram");
+  const [tab, setTab] = useState<"all" | "telegram" | "maks" | "email" | "campaigns">("all");
 
   return (
     <div className="flex flex-col h-full">
@@ -36,6 +38,7 @@ export default function InboxTabsClient() {
         })}
       </div>
       <div className="flex-1 min-h-0">
+        {tab === "all" && <AllMessengersInbox />}
         {tab === "telegram" && <InboxClient />}
         {tab === "maks" && <MaxInbox />}
         {tab === "email" && <EmailInbox />}
