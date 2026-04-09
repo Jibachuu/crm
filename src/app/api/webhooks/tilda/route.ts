@@ -32,8 +32,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid webhook key" }, { status: 403 });
   }
 
-  // Log all received fields for debugging
+  // Log all received fields for debugging — save to DB for inspection
   console.log("[TILDA] Received fields:", JSON.stringify(body));
+  // Store raw webhook data in lead description for debugging
+  const rawData = Object.entries(body).map(([k, v]) => `${k}: ${v}`).join("\n");
 
   // Extract fields — Tilda uses various naming conventions
   const name = body.Name || body.name || body.FIO || body.fio || body["Имя"] || body.firstname || body["Ваше имя"] || body["Как вас зовут?"] || "";
@@ -117,7 +119,7 @@ export async function POST(req: NextRequest) {
     title: leadTitle,
     source: "website",
     status: "new",
-    description: [message, pageUrl ? `Страница: ${pageUrl}` : "", `Форма: ${source}`].filter(Boolean).join("\n"),
+    description: [message, pageUrl ? `Страница: ${pageUrl}` : "", `Форма: ${source}`, `\n--- Сырые данные ---\n${rawData}`].filter(Boolean).join("\n"),
     contact_id: contactId,
     company_id: companyId,
     funnel_id: funnel?.id ?? null,
