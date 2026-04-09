@@ -29,9 +29,9 @@ export default async function CRMLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar user={profile as User} permissions={permissions} />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-auto">
         <PageLoader />
         {children}
       </div>

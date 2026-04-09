@@ -9,7 +9,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import Link from "next/link";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function DashboardClient({ leads, deals, contacts, companies, tasks }: { leads: any[]; deals: any[]; contacts: any[]; companies: any[]; tasks: any[] }) {
+export default function DashboardClient({ leads, deals, contacts, companies, tasks, users = [] }: { leads: any[]; deals: any[]; contacts: any[]; companies: any[]; tasks: any[]; users?: any[] }) {
   const { user: currentUser, isManager } = useCurrentUser();
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
@@ -114,6 +114,51 @@ export default function DashboardClient({ leads, deals, contacts, companies, tas
           );
         })}
       </div>
+
+      {/* Per-manager stats */}
+      {!isManager && users.length > 0 && (
+        <Card className="mb-8">
+          <div className="px-6 py-4 border-b border-slate-100">
+            <h3 className="font-semibold text-slate-900">По менеджерам</h3>
+          </div>
+          <CardBody className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ background: "#fafafa", borderBottom: "1px solid #e4e4e4" }}>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-slate-500">Менеджер</th>
+                    <th className="text-center px-3 py-2 text-xs font-semibold text-slate-500">Новые лиды</th>
+                    <th className="text-center px-3 py-2 text-xs font-semibold text-slate-500">Всего лидов</th>
+                    <th className="text-center px-3 py-2 text-xs font-semibold text-slate-500">Сделок</th>
+                    <th className="text-center px-3 py-2 text-xs font-semibold text-slate-500">Выиграно</th>
+                    <th className="text-right px-4 py-2 text-xs font-semibold text-slate-500">Выручка</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.filter((u) => u.role === "manager" || u.role === "admin").map((u) => {
+                    const uLeads = fLeads.filter((l) => l.assigned_to === u.id);
+                    const uNewLeads = uLeads.filter((l) => l.status === "new").length;
+                    const uDeals = fDeals.filter((d) => d.assigned_to === u.id);
+                    const uWon = uDeals.filter((d) => d.stage === "won");
+                    const uRevenue = uWon.reduce((sum, d) => sum + (d.amount ?? 0), 0);
+                    if (uLeads.length === 0 && uDeals.length === 0) return null;
+                    return (
+                      <tr key={u.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                        <td className="px-4 py-2.5 font-medium text-slate-700">{u.full_name}</td>
+                        <td className="text-center px-3 py-2.5"><span className="inline-block bg-blue-50 text-blue-700 rounded-full px-2 py-0.5 text-xs font-medium">{uNewLeads}</span></td>
+                        <td className="text-center px-3 py-2.5 text-slate-600">{uLeads.length}</td>
+                        <td className="text-center px-3 py-2.5 text-slate-600">{uDeals.length}</td>
+                        <td className="text-center px-3 py-2.5"><span className="inline-block bg-green-50 text-green-700 rounded-full px-2 py-0.5 text-xs font-medium">{uWon.length}</span></td>
+                        <td className="text-right px-4 py-2.5 font-medium" style={{ color: "#2e7d32" }}>{formatCurrency(uRevenue)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Recent lists */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
