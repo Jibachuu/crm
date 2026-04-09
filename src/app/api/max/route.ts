@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+export const maxDuration = 30;
+
 async function maxProxy(path: string, options?: RequestInit) {
   const url = process.env.MAX_PROXY_URL;
   const key = process.env.MAX_PROXY_KEY;
@@ -126,7 +128,12 @@ export async function POST(req: NextRequest) {
         method: "POST",
         headers: { Authorization: proxyKey, "Content-Type": fileType || "application/octet-stream" },
         body: new Uint8Array(fileBuffer),
+        signal: AbortSignal.timeout(25000),
+      }).catch((e) => {
+        console.error("[MAX Upload] Fetch error:", e);
+        return null;
       });
+      if (!uploadRes) return NextResponse.json({ error: "Upload timeout - try again" }, { status: 504 });
       const uploadData = await uploadRes.json();
 
       if (uploadData.fileId) {
