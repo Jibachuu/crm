@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Edit2 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
+import EditTaskModal from "@/components/ui/EditTaskModal";
 import { formatDate } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
@@ -48,6 +49,7 @@ export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [modalOpen, setModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const grouped = {
     pending: tasks.filter((t) => t.status === "pending"),
@@ -131,6 +133,12 @@ export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
                         {NEXT_LABEL[task.status]}
                       </button>
                       <button
+                        onClick={() => setEditingTask(task)}
+                        className="text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded px-2 py-1 transition-colors"
+                      >
+                        <Edit2 size={12} />
+                      </button>
+                      <button
                         onClick={() => deleteTask(task.id)}
                         disabled={deletingId === task.id}
                         className="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded px-2 py-1 transition-colors"
@@ -157,6 +165,12 @@ export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
         entityType="lead"
         entityId=""
         onCreated={(task) => setTasks((p) => [task, ...p])}
+      />
+      <EditTaskModal
+        open={editingTask !== null}
+        onClose={() => setEditingTask(null)}
+        task={editingTask}
+        onSaved={(updated) => setTasks((p) => p.map((t) => t.id === updated.id ? updated : t))}
       />
     </div>
   );
