@@ -40,6 +40,48 @@ export default function AllMessengersInbox() {
   const [selected, setSelected] = useState<UnifiedDialog | null>(null);
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [newPhone, setNewPhone] = useState("");
+  const [addingContact, setAddingContact] = useState<string | false>(false);
+  const [addError, setAddError] = useState("");
+
+  async function addContact(channel: "telegram" | "maks") {
+    if (!newPhone.trim()) return;
+    setAddingContact(channel);
+    setAddError("");
+    try {
+      if (channel === "telegram") {
+        const res = await fetch("/api/telegram/add-contact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: newPhone.trim() }),
+        });
+        const data = await res.json();
+        if (data.ok && data.user) {
+          setShowNewChat(false);
+          setNewPhone("");
+          // Open the new chat
+          setSelected({
+            id: `tg_${data.user.id}`,
+            name: `${data.user.firstName || ""} ${data.user.lastName || ""}`.trim() || newPhone,
+            channel: "telegram",
+            lastMessage: "",
+            lastTime: Date.now() / 1000,
+            peer: data.user.username || data.user.phone || data.user.id,
+          });
+          refresh();
+        } else {
+          setAddError(data.error || "Контакт не найден");
+        }
+      } else {
+        // MAX: search by phone not supported yet, show message
+        setAddError("Поиск по телефону в МАКС пока не поддерживается. Найдите контакт в приложении МАКС.");
+      }
+    } catch (e) {
+      setAddError(String(e));
+    }
+    setAddingContact(false);
+  }
 
   async function loadAll() {
     setLoading(true);
@@ -114,10 +156,40 @@ export default function AllMessengersInbox() {
               className="w-full pl-7 pr-2 py-1.5 text-xs rounded focus:outline-none"
               style={{ border: "1px solid #e0e0e0" }} />
           </div>
+          <button onClick={() => setShowNewChat(true)} className="p-1.5 rounded hover:bg-blue-50" title="Новый чат по номеру">
+            <UserPlus size={13} style={{ color: "#0067a5" }} />
+          </button>
           <button onClick={refresh} disabled={refreshing} className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40">
             <RefreshCw size={13} style={{ color: "#888" }} className={refreshing ? "animate-spin" : ""} />
           </button>
         </div>
+
+        {/* New chat by phone */}
+        {showNewChat && (
+          <div className="px-3 py-3" style={{ borderBottom: "1px solid #f0f0f0", background: "#f8f9fa" }}>
+            <p className="text-xs font-medium mb-2" style={{ color: "#555" }}>Начать чат по номеру телефона</p>
+            <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)}
+              placeholder="+7 999 123 45 67"
+              className="w-full text-sm px-3 py-1.5 rounded mb-2 focus:outline-none"
+              style={{ border: "1px solid #d0d0d0" }} />
+            <div className="flex gap-2">
+              <button onClick={() => addContact("telegram")} disabled={addingContact || !newPhone.trim()}
+                className="flex-1 text-xs py-1.5 rounded font-medium disabled:opacity-40"
+                style={{ background: "#0088cc", color: "#fff" }}>
+                {addingContact === "telegram" ? "..." : "Telegram"}
+              </button>
+              <button onClick={() => addContact("maks")} disabled={addingContact || !newPhone.trim()}
+                className="flex-1 text-xs py-1.5 rounded font-medium disabled:opacity-40"
+                style={{ background: "#0067a5", color: "#fff" }}>
+                {addingContact === "maks" ? "..." : "МАКС"}
+              </button>
+              <button onClick={() => { setShowNewChat(false); setNewPhone(""); }} className="text-xs px-2" style={{ color: "#888" }}>
+                Отмена
+              </button>
+            </div>
+            {addError && <p className="text-xs mt-1" style={{ color: "#e74c3c" }}>{addError}</p>}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto">
           {loading && <p className="text-xs text-center py-12" style={{ color: "#aaa" }}>Загрузка чатов...</p>}
