@@ -70,19 +70,29 @@ export async function POST(req: NextRequest) {
 
   // Pre-load deal mapping by bitrix_id
   const entityIds = [...new Set(rows.map((r: { ENTITY_ID?: string }) => r.ENTITY_ID).filter(Boolean))];
-  const dealMap = new Map<string, { id: string; company_id?: string; contact_id?: string }>();
+  // Search both deals and leads by bitrix_id
+  const entityMap = new Map<string, { type: "deal" | "lead"; id: string; company_id?: string; contact_id?: string }>();
 
   for (let i = 0; i < entityIds.length; i += 100) {
     const batch = entityIds.slice(i, i + 100);
+    // Search deals
     const { data: deals } = await admin.from("deals").select("id, bitrix_id, company_id, contact_id").in("bitrix_id", batch);
     for (const d of deals ?? []) {
-      if (d.bitrix_id) dealMap.set(d.bitrix_id, { id: d.id, company_id: d.company_id, contact_id: d.contact_id });
+      if (d.bitrix_id) entityMap.set(d.bitrix_id, { type: "deal", id: d.id, company_id: d.company_id, contact_id: d.contact_id });
+    }
+    // Search leads
+    const { data: leads } = await admin.from("leads").select("id, bitrix_id, company_id, contact_id").in("bitrix_id", batch);
+    for (const l of leads ?? []) {
+      if (l.bitrix_id && !entityMap.has(l.bitrix_id)) {
+        entityMap.set(l.bitrix_id, { type: "lead", id: l.id, company_id: l.company_id, contact_id: l.contact_id });
+      }
     }
   }
 
   // Process rows in batches
   const toInsert: {
     deal_id: string | null;
+    lead_id: string | null;
     company_id: string | null;
     contact_id: string | null;
     channel: string;
@@ -92,7 +102,7 @@ export async function POST(req: NextRequest) {
     external_id: string;
     bitrix_deal_id: string;
     created_at: string;
-    entity_type: "deal";
+    entity_type: "deal" | "lead";
     entity_id: string;
     created_by: string | null;
   }[] = [];
@@ -111,9 +121,9 @@ export async function POST(req: NextRequest) {
     if (skipInternal && channel === "internal") { skipped++; continue; }
     if (skipSystem && text.includes("=== SYSTEM WZ ===")) { skipped++; continue; }
 
-    // Find deal
-    const deal = dealMap.get(entityId);
-    if (!deal) { errors.push(`Сделка не найдена: ENTITY_ID=${entityId}`); skipped++; continue; }
+    // Find deal or lead
+    const entity = entityMap.get(entityId);
+    if (!entity) { errors.push(`Не найдено: ENTITY_ID=${entityId}`); skipped++; continue; }
 
     // Extract sender and content
     const { sender, content } = extractSenderAndContent(text);
@@ -132,9 +142,10 @@ export async function POST(req: NextRequest) {
     }
 
     toInsert.push({
-      deal_id: deal.id,
-      company_id: deal.company_id ?? null,
-      contact_id: deal.contact_id ?? null,
+      deal_id: entity.type === "deal" ? entity.id : null,
+      lead_id: entity.type === "lead" ? entity.id : null,
+      company_id: entity.company_id ?? null,
+      contact_id: entity.contact_id ?? null,
       channel,
       direction,
       sender_name: senderName,
@@ -142,8 +153,8 @@ export async function POST(req: NextRequest) {
       external_id: externalId,
       bitrix_deal_id: entityId,
       created_at: createdAt,
-      entity_type: "deal",
-      entity_id: deal.id,
+      entity_type: entity.type,
+      entity_id: entity.id,
       created_by: null,
     });
   }
@@ -171,7 +182,7 @@ export async function POST(req: NextRequest) {
     imported,
     skipped,
     errors: errors.slice(0, 50),
-    totalDeals: dealMap.size,
+    totalDeals: entityMap.size,
     totalRows: rows.length,
   });
 }

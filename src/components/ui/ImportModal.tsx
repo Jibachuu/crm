@@ -53,6 +53,7 @@ const ENTITY_FIELDS: Record<Entity, CrmField[]> = {
   ],
   leads: [
     { key: "title", label: "Название", required: true },
+    { key: "bitrix_id", label: "Битрикс ID" },
     { key: "status", label: "Статус" },
     { key: "source", label: "Источник" },
     { key: "company_name", label: "Компания" },

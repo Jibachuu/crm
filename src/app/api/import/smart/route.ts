@@ -394,6 +394,7 @@ export async function POST(req: NextRequest) {
       if (table === "leads") {
         rec.telegram_username = row.telegram_username || null;
         rec.had_call = row.had_call || null;
+        if (row.bitrix_id) rec.bitrix_id = String(row.bitrix_id).trim();
       }
       if (row.created_at) { const d = parseDate(row.created_at); if (d) rec.created_at = d; }
 
