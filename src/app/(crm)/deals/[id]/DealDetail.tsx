@@ -118,6 +118,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   async function updateFunnelStage(stage: FunnelStage) {
     if (deal.stage_id === stage.id) return;
     const supabase = createClient();
+    const oldStageId = deal.stage_id;
     const oldStageSlug = currentFunnelStage?.slug;
     // Map funnel slug to old stage for backwards compat
     const slugMap: Record<string, string> = {
@@ -159,6 +160,12 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
     }).eq("id", deal.id);
 
     setDeal((p: typeof deal) => ({ ...p, stage: newOldStage, stage_id: stage.id }));
+    // Trigger automations
+    fetch("/api/automations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "stage_change", entity_type: "deal", entity_id: deal.id, stage_id: stage.id, old_stage_id: oldStageId }),
+    }).catch(() => {});
   }
 
   async function deleteDeal() {

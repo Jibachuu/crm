@@ -108,7 +108,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   async function updateStage(stage: FunnelStage) {
     if (lead.stage_id === stage.id || statusSaving) return;
     setStatusSaving(true);
-    // Map slug to old status for backwards compatibility
+    const oldStageId = lead.stage_id;
     const statusMap: Record<string, string> = {
       new_contact: "new", qualification: "in_progress", probniki: "samples",
       sleeping: "rejected", rejected: "rejected", converted: "converted",
@@ -121,6 +121,12 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
       status: newStatus,
       stage_changed_at: new Date().toISOString(),
     }).eq("id", lead.id);
+    // Trigger automations
+    fetch("/api/automations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "stage_change", entity_type: "lead", entity_id: lead.id, stage_id: stage.id, old_stage_id: oldStageId }),
+    }).catch(() => {});
     setStatusSaving(false);
   }
 
