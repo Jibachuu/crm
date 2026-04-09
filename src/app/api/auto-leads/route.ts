@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
           for (const chat of chats) {
             const chatId = String(chat.chatId ?? "");
             const name = chat.title ?? chatId;
-            if (!chatId || maksIds.has(chatId) || Number(chatId) < 0) continue; // Skip group chats (negative IDs)
+            if (!chatId || maksIds.has(chatId) || Number(chatId) < 0) continue;
 
             // Check if lead exists
             const { data: existingLead } = await admin.from("leads")
@@ -111,19 +111,33 @@ export async function POST(req: NextRequest) {
               .ilike("title", `%${chatId}%`)
               .limit(1)
               .single();
-            if (existingLead) continue;
+            if (existingLead) { maksIds.add(chatId); continue; }
 
-            // Create contact
-            const { data: contact } = await admin.from("contacts")
-              .insert({
-                full_name: name,
-                maks_id: chatId,
-                created_by: (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id,
-              })
-              .select("id")
+            const adminId = (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id;
+
+            // Check if contact exists by maks_id
+            let contactId: string | null = null;
+            const { data: existingContact } = await admin.from("contacts")
+              .select("id, full_name")
+              .eq("maks_id", chatId)
+              .limit(1)
               .single();
 
-            if (contact) {
+            if (existingContact) {
+              contactId = existingContact.id;
+              // Update name if better
+              if (name && name !== chatId && (!existingContact.full_name || existingContact.full_name === chatId)) {
+                await admin.from("contacts").update({ full_name: name }).eq("id", contactId);
+              }
+            } else {
+              const { data: contact } = await admin.from("contacts")
+                .insert({ full_name: name, maks_id: chatId, created_by: adminId })
+                .select("id")
+                .single();
+              contactId = contact?.id ?? null;
+            }
+
+            if (contactId) {
               const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
               const { data: firstStage } = funnel
                 ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
@@ -133,10 +147,10 @@ export async function POST(req: NextRequest) {
                 title: `МАКС: ${name}`,
                 source: "maks",
                 status: "new",
-                contact_id: contact.id,
+                contact_id: contactId,
                 funnel_id: funnel?.id ?? null,
                 stage_id: firstStage?.id ?? null,
-                created_by: (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id,
+                created_by: adminId,
               });
               results.push(`Lead created: MAX ${name}`);
               maksIds.add(chatId);

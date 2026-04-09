@@ -71,16 +71,25 @@ async function checkInbox() {
           if (!fromEmail || fromEmail === IMAP_USER.toLowerCase()) continue;
 
           // Check if contact exists in Supabase
-          const contacts = await supabaseQuery(
-            `/rest/v1/contacts?email=ilike.${encodeURIComponent(fromEmail)}&select=id&limit=1`
+          const existingContacts = await supabaseQuery(
+            `/rest/v1/contacts?email=ilike.${encodeURIComponent(fromEmail)}&select=id,full_name,phone&limit=1`
           );
-          if (Array.isArray(contacts) && contacts.length > 0) continue;
+          let contactId = null;
+
+          if (Array.isArray(existingContacts) && existingContacts.length > 0) {
+            contactId = existingContacts[0].id;
+            // Update name if current name looks like email
+            const current = existingContacts[0];
+            if (fromName && fromName !== fromEmail && (!current.full_name || current.full_name === fromEmail || current.full_name.includes("@"))) {
+              await supabaseQuery(`/rest/v1/contacts?id=eq.${contactId}`, "PATCH", { full_name: fromName });
+            }
+          }
 
           // Check if lead already exists
           const leads = await supabaseQuery(
             `/rest/v1/leads?source=eq.email&title=ilike.%25${encodeURIComponent(fromEmail)}%25&select=id&limit=1`
           );
-          if (Array.isArray(leads) && leads.length > 0) continue;
+          if (Array.isArray(leads) && leads.length > 0) { emailSet.add(fromEmail); continue; }
 
           // Get admin user ID
           const admins = await supabaseQuery(`/rest/v1/users?role=eq.admin&select=id&limit=1`);
@@ -97,14 +106,16 @@ async function checkInbox() {
             stageId = stages?.[0]?.id || null;
           }
 
-          // Create contact
-          const newContacts = await supabaseQuery("/rest/v1/contacts", "POST", {
-            full_name: fromName || fromEmail,
-            email: fromEmail,
-            created_by: adminId,
-          });
-          const contactId = newContacts?.[0]?.id;
-          if (!contactId) { console.log("[EMAIL] Failed to create contact for", fromEmail); continue; }
+          // Create contact if not found
+          if (!contactId) {
+            const newContacts = await supabaseQuery("/rest/v1/contacts", "POST", {
+              full_name: fromName || fromEmail,
+              email: fromEmail,
+              created_by: adminId,
+            });
+            contactId = newContacts?.[0]?.id;
+            if (!contactId) { console.log("[EMAIL] Failed to create contact for", fromEmail); continue; }
+          }
 
           // Create lead
           await supabaseQuery("/rest/v1/leads", "POST", {

@@ -145,7 +145,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, lead_id: lead?.id, contact_id: contactId });
+  // Parse Tilda products/cart data and add to lead_products
+  // Tilda sends: payment[products][0][name], payment[products][0][quantity], payment[products][0][price], payment[products][0][amount]
+  if (lead?.id) {
+    const products: { name: string; quantity: number; price: number }[] = [];
+    // Try array format
+    for (let i = 0; i < 20; i++) {
+      const pName = body[`payment[products][${i}][name]`] || body[`products[${i}][name]`];
+      if (!pName) break;
+      const qty = Number(body[`payment[products][${i}][quantity]`] || body[`products[${i}][quantity]`] || 1);
+      const price = Number(body[`payment[products][${i}][price]`] || body[`products[${i}][price]`] || 0);
+      products.push({ name: pName, quantity: qty, price });
+    }
+
+    for (const p of products) {
+      // Try to find product in DB by name
+      const { data: dbProduct } = await admin.from("products").select("id").ilike("name", `%${p.name}%`).limit(1).single();
+      await admin.from("lead_products").insert({
+        lead_id: lead.id,
+        product_id: dbProduct?.id ?? null,
+        quantity: p.quantity || 1,
+        unit_price: p.price,
+        total_price: p.price * (p.quantity || 1),
+        product_block: "request",
+      });
+    }
+  }
+
+  return NextResponse.json({ ok: true, lead_id: lead?.id, contact_id: contactId, products_count: 0 });
 }
 
 // Also accept GET for Tilda test pings
