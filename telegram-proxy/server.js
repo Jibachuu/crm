@@ -6,6 +6,7 @@ const http = require("http");
 const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { Api } = require("telegram");
+const { ConnectionTCPFull } = require("telegram/network");
 const bigInt = require("big-integer");
 
 const PORT = Number(process.env.PORT || 3300);
@@ -20,12 +21,31 @@ if (!API_ID || !API_HASH || !SESSION) {
 }
 
 const session = new StringSession(SESSION);
+
 const client = new TelegramClient(session, API_ID, API_HASH, {
   connectionRetries: 999,
   retryDelay: 2000,
   autoReconnect: true,
   useWSS: false,
+  // TCPFull — needed because RU ISPs block the Telegram-specific obfuscated
+  // transport on 443. Port 80 is open here.
+  connection: ConnectionTCPFull,
 });
+
+// MONKEY-PATCH: gramJS hardcodes port 443 in getDC(). Force port 80.
+// RU networks block 443 for Telegram DCs but leave 80 open.
+const origGetDC = client.getDC.bind(client);
+client.getDC = async function (dcId, downloadDC = false, web = false) {
+  const dc = await origGetDC(dcId, downloadDC, web);
+  if (dc && dc.port === 443) dc.port = 80;
+  return dc;
+};
+
+// Force session port 80 on startup
+try {
+  const anyS = session;
+  if (anyS._port && anyS._port !== 80) anyS._port = 80;
+} catch {}
 
 try { client.setLogLevel("error"); } catch {}
 
