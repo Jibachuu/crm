@@ -104,6 +104,20 @@ export async function POST(req: NextRequest) {
   const { action } = body;
 
   try {
+    if (action === "mark_read") {
+      const { chat_id } = body;
+      if (!chat_id) return NextResponse.json({ error: "chat_id required" }, { status: 400 });
+      const data = await maxProxy("/mark-read", { method: "POST", body: JSON.stringify({ chatId: chat_id }) });
+      return NextResponse.json(data);
+    }
+
+    if (action === "mark_unread") {
+      const { chat_id } = body;
+      if (!chat_id) return NextResponse.json({ error: "chat_id required" }, { status: 400 });
+      const data = await maxProxy("/mark-unread", { method: "POST", body: JSON.stringify({ chatId: chat_id }) });
+      return NextResponse.json(data);
+    }
+
     if (action === "add_contact") {
       const { phone, firstName, lastName } = body;
       if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });

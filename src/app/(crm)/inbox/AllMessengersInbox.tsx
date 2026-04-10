@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RefreshCw, Search, MessageSquare, UserPlus } from "lucide-react";
+import { RefreshCw, Search, MessageSquare, UserPlus, Link2 } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
 import MaxChat from "@/components/ui/MaxChat";
+import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
 
 interface UnifiedDialog {
   id: string;
@@ -12,8 +13,9 @@ interface UnifiedDialog {
   lastMessage: string;
   lastTime: number;
   unreadCount?: number;
-  peer?: string; // telegram peer
-  chatId?: string; // max chatId
+  unread?: boolean;
+  peer?: string;
+  chatId?: string;
   avatar?: string;
   phone?: string;
 }
@@ -46,6 +48,7 @@ export default function AllMessengersInbox() {
   const [newPhone, setNewPhone] = useState("");
   const [addingContact, setAddingContact] = useState<string | false>(false);
   const [addError, setAddError] = useState("");
+  const [linkedOpen, setLinkedOpen] = useState(false);
 
   async function addContact(channel: "telegram" | "maks") {
     if (!newPhone.trim()) return;
@@ -148,6 +151,8 @@ export default function AllMessengersInbox() {
             chatId,
             avatar: c.avatar || undefined,
             phone: c.phone ? String(c.phone) : undefined,
+            unread: c.unread || false,
+            unreadCount: c.unreadCount || 0,
           });
         }
       }
@@ -250,16 +255,13 @@ export default function AllMessengersInbox() {
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-sm font-medium truncate" style={{ color: "#333" }}>{d.name}</span>
-                      <span className="text-xs flex-shrink-0 ml-2" style={{ color: "#aaa" }}>{formatTime(d.lastTime)}</span>
+                      <span className="text-sm truncate" style={{ color: d.unread ? "#0067a5" : "#333", fontWeight: d.unread ? 700 : 500 }}>{d.name}</span>
+                      <span className="text-xs flex-shrink-0 ml-2" style={{ color: d.unread ? "#0067a5" : "#aaa", fontWeight: d.unread ? 600 : 400 }}>{formatTime(d.lastTime)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <p className="text-xs truncate" style={{ color: "#888" }}>{d.lastMessage || "..."}</p>
-                      {(d.unreadCount ?? 0) > 0 && (
-                        <span className="text-xs text-white rounded-full px-1.5 py-0.5 flex-shrink-0 ml-1"
-                          style={{ background: cfg.badge, minWidth: 18, textAlign: "center", fontSize: 10 }}>
-                          {d.unreadCount}
-                        </span>
+                      <p className="text-xs truncate" style={{ color: d.unread ? "#333" : "#888", fontWeight: d.unread ? 600 : 400 }}>{d.lastMessage || "..."}</p>
+                      {d.unread && (
+                        <span className="rounded-full flex-shrink-0 ml-1" style={{ background: cfg.badge, width: 8, height: 8 }} />
                       )}
                     </div>
                   </div>
@@ -271,7 +273,8 @@ export default function AllMessengersInbox() {
       </div>
 
       {/* Chat area */}
-      <div className="flex-1 flex flex-col min-w-0" style={{ background: "#f5f5f5" }}>
+      <div className="flex-1 flex min-w-0" style={{ background: "#f5f5f5" }}>
+      <div className="flex-1 flex flex-col min-w-0">
         {!selected ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <MessageSquare size={40} style={{ color: "#ddd" }} />
@@ -283,6 +286,26 @@ export default function AllMessengersInbox() {
               <div className="w-3 h-3 rounded-full" style={{ background: "#0088cc" }} />
               <span className="text-sm font-medium" style={{ color: "#333" }}>{selected.name}</span>
               <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "#0088cc20", color: "#0088cc" }}>Telegram</span>
+              <div className="flex-1" />
+              <button
+                onClick={() => setLinkedOpen(!linkedOpen)}
+                className="text-xs px-2 py-1 rounded hover:bg-blue-50 flex items-center gap-1"
+                style={{ color: "#0088cc", border: "1px solid #b3e0f5" }}
+                title="Связанные данные"
+              >
+                <Link2 size={11} /> Связи
+              </button>
+              <button
+                onClick={async () => {
+                  await fetch("/api/telegram/mark-unread", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ peer: selected.peer }) });
+                  refresh();
+                }}
+                className="text-xs px-2 py-1 rounded hover:bg-blue-50"
+                style={{ color: "#0088cc", border: "1px solid #b3e0f5" }}
+                title="Пометить как непрочитанное"
+              >
+                Не прочитано
+              </button>
             </div>
             <div className="flex-1 min-h-0">
               <TelegramChat peer={selected.peer} compact />
@@ -294,12 +317,44 @@ export default function AllMessengersInbox() {
               <div className="w-3 h-3 rounded-full" style={{ background: "#0067a5" }} />
               <span className="text-sm font-medium" style={{ color: "#333" }}>{selected.name}</span>
               <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "#0067a520", color: "#0067a5" }}>МАКС</span>
+              <div className="flex-1" />
+              <button
+                onClick={() => setLinkedOpen(!linkedOpen)}
+                className="text-xs px-2 py-1 rounded hover:bg-blue-50 flex items-center gap-1"
+                style={{ color: "#0067a5", border: "1px solid #d0e8f5" }}
+                title="Связанные данные"
+              >
+                <Link2 size={11} /> Связи
+              </button>
+              <button
+                onClick={async () => {
+                  await fetch("/api/max", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark_unread", chat_id: selected.chatId }) });
+                  refresh();
+                }}
+                className="text-xs px-2 py-1 rounded hover:bg-blue-50"
+                style={{ color: "#0067a5", border: "1px solid #d0e8f5" }}
+                title="Пометить как непрочитанное"
+              >
+                Не прочитано
+              </button>
             </div>
             <div className="flex-1 min-h-0">
               <MaxChat chatId={selected.chatId} compact />
             </div>
           </div>
         ) : null}
+      </div>
+      {linkedOpen && selected && (
+        <div style={{ width: 320, borderLeft: "1px solid #e4e4e4" }}>
+          <LinkedEntitiesPanel
+            phone={selected.phone}
+            telegramId={selected.channel === "telegram" ? selected.id.replace("tg_", "") : undefined}
+            telegramUsername={selected.channel === "telegram" ? selected.peer : undefined}
+            maksId={selected.channel === "maks" ? selected.chatId : undefined}
+            onClose={() => setLinkedOpen(false)}
+          />
+        </div>
+      )}
       </div>
     </div>
   );
