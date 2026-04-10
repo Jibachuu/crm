@@ -66,6 +66,8 @@ async function ensureConnected() {
     connected = true;
     const me = await client.getMe();
     console.log("[telegram-proxy] connected as", me?.username || me?.firstName || "user");
+    // Preload all dialogs into entity cache so numeric-id lookups work
+    warmupEntities("connect").catch(() => {});
   } catch (e) {
     connectError = String(e);
     console.error("[telegram-proxy] connect failed:", connectError);
@@ -84,6 +86,11 @@ setInterval(async () => {
     connected = false;
   }
 }, 60000);
+
+// Periodic entity-cache warmup — catches new incoming chats
+setInterval(() => {
+  if (connected) warmupEntities("periodic").catch(() => {});
+}, 10 * 60 * 1000);
 
 // ───────── helpers ─────────
 
@@ -147,6 +154,72 @@ function extractMediaInfo(msg) {
   return { type: "unsupported", fileName: null, mimeType: null, duration: null };
 }
 
+// ───────── Entity cache ─────────
+// gramJS can only resolve a user/chat by numeric ID if it has already seen
+// the corresponding InputPeer (with access_hash). We proactively iterate
+// dialogs on startup and cache every entity by its id string so CRM can look
+// up chats by plain numeric peer without hitting "Could not find input entity".
+const entityCache = new Map(); // id(string) -> InputPeer / entity
+let lastWarmup = 0;
+
+async function warmupEntities(reason = "manual") {
+  const start = Date.now();
+  let count = 0;
+  try {
+    for await (const dialog of client.iterDialogs({ limit: 500 })) {
+      if (!dialog.entity) continue;
+      const id = String(dialog.id);
+      entityCache.set(id, dialog.entity);
+      // Also cache by username for faster lookups
+      if (dialog.entity.username) {
+        entityCache.set("@" + String(dialog.entity.username).toLowerCase(), dialog.entity);
+      }
+      count++;
+    }
+    // Also include contacts not yet in dialogs (saved contacts without chats)
+    try {
+      const res = await client.invoke(new Api.contacts.GetContacts({ hash: bigInt(0) }));
+      for (const u of res.users ?? []) {
+        entityCache.set(String(u.id), u);
+        if (u.username) entityCache.set("@" + String(u.username).toLowerCase(), u);
+        count++;
+      }
+    } catch {}
+    lastWarmup = Date.now();
+    console.log(`[tg-warmup:${reason}] cached ${count} entities in ${Date.now() - start}ms`);
+  } catch (e) {
+    console.error("[tg-warmup] error:", e?.message || String(e));
+  }
+}
+
+async function resolvePeer(peer) {
+  // 1) Exact entity cache hit (by numeric id or @username)
+  const key = String(peer);
+  if (entityCache.has(key)) return entityCache.get(key);
+  const lowered = key.toLowerCase();
+  if (entityCache.has(lowered)) return entityCache.get(lowered);
+  if (lowered.startsWith("@") && entityCache.has(lowered)) return entityCache.get(lowered);
+
+  // 2) If looks like @username, let gramJS resolve it (doesn't need access_hash)
+  if (/^@?[a-zA-Z][a-zA-Z0-9_]{3,}$/.test(key)) {
+    try {
+      const e = await client.getEntity(key);
+      entityCache.set(String(e.id), e);
+      return e;
+    } catch {}
+  }
+
+  // 3) Numeric-only input: re-warmup (maybe dialog appeared since last cache)
+  //    but only if last warmup was >30s ago to avoid hammering
+  if (/^-?\d+$/.test(key) && Date.now() - lastWarmup > 30000) {
+    await warmupEntities("miss-" + key);
+    if (entityCache.has(key)) return entityCache.get(key);
+  }
+
+  // 4) Last resort: let gramJS try directly. May fail with "input entity" error.
+  return await client.getEntity(peer);
+}
+
 async function downloadProfilePhotoBase64(entity) {
   try {
     if (!entity || !entity.photo) return null;
@@ -169,6 +242,9 @@ const routes = {
     for await (const dialog of client.iterDialogs({ limit: 100 })) {
       const entity = dialog.entity;
       if (!entity) continue;
+      // Cache entity by numeric id for later resolvePeer lookups
+      entityCache.set(String(dialog.id), entity);
+      if (entity.username) entityCache.set("@" + String(entity.username).toLowerCase(), entity);
       const photoUrl = await downloadProfilePhotoBase64(entity);
       dialogs.push({
         id: dialog.id?.toString(),
@@ -192,11 +268,12 @@ const routes = {
     const { peer, limit = 50, offsetId } = body;
     if (!peer) throw new Error("peer required");
 
+    const entity = await resolvePeer(peer);
     const opts = { limit };
     if (offsetId && offsetId > 0) opts.offsetId = offsetId;
 
     const messages = [];
-    for await (const m of client.iterMessages(peer, opts)) {
+    for await (const m of client.iterMessages(entity, opts)) {
       messages.push({
         id: m.id,
         text: m.message ?? "",
@@ -213,7 +290,7 @@ const routes = {
     await ensureConnected();
     const { peer, message } = body;
     if (!peer || !message) throw new Error("peer and message required");
-    const entity = await client.getEntity(peer);
+    const entity = await resolvePeer(peer);
     const sent = await client.sendMessage(entity, { message });
     return { ok: true, id: sent.id };
   },
@@ -266,7 +343,7 @@ const routes = {
     await ensureConnected();
     const { peer } = body;
     if (!peer) throw new Error("peer required");
-    const entity = await client.getEntity(peer);
+    const entity = await resolvePeer(peer);
     await client.invoke(new Api.messages.MarkDialogUnread({ unread: true, peer: entity }));
     return { ok: true };
   },
@@ -275,7 +352,7 @@ const routes = {
     await ensureConnected();
     const { peer } = body;
     if (!peer) throw new Error("peer required");
-    const entity = await client.getEntity(peer);
+    const entity = await resolvePeer(peer);
     await client.invoke(new Api.messages.ReadHistory({ peer: entity, maxId: 0 }));
     return { ok: true };
   },
@@ -292,14 +369,15 @@ async function handleUpload(req, res, url) {
   if (!peer) return json(res, 400, { error: "peer required" });
 
   try {
+    const entity = await resolvePeer(peer);
     const chunks = [];
     for await (const c of req) chunks.push(c);
     const buffer = Buffer.concat(chunks);
 
     if (kind === "voice") {
-      await client.sendFile(peer, { file: buffer, voiceNote: true });
+      await client.sendFile(entity, { file: buffer, voiceNote: true });
     } else {
-      await client.sendFile(peer, { file: buffer, caption });
+      await client.sendFile(entity, { file: buffer, caption });
     }
     json(res, 200, { ok: true });
   } catch (e) {
@@ -317,7 +395,8 @@ async function handleMediaDownload(req, res, url) {
     return json(res, 400, { error: "peer and msgId required" });
   }
   try {
-    const [message] = await client.getMessages(peer, { ids: [msgId] });
+    const entity = await resolvePeer(peer);
+    const [message] = await client.getMessages(entity, { ids: [msgId] });
     if (!message?.media) return json(res, 404, { error: "Медиа не найдено" });
 
     const media = message.media;
