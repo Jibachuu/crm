@@ -63,9 +63,21 @@ export default function AllMessengersInbox() {
         });
         const data = await res.json();
         if (data.ok && data.user) {
+          // Save to CRM DB
+          try {
+            await fetch("/api/contacts/upsert-by-phone", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                phone: newPhone.trim(),
+                full_name: `${data.user.firstName || ""} ${data.user.lastName || ""}`.trim() || data.user.username,
+                telegram_id: data.user.id,
+                telegram_username: data.user.username,
+              }),
+            });
+          } catch { /* skip */ }
           setShowNewChat(false);
           setNewPhone("");
-          // Open the new chat
           setSelected({
             id: `tg_${data.user.id}`,
             name: `${data.user.firstName || ""} ${data.user.lastName || ""}`.trim() || newPhone,
@@ -73,6 +85,7 @@ export default function AllMessengersInbox() {
             lastMessage: "",
             lastTime: Date.now() / 1000,
             peer: data.user.username || data.user.phone || data.user.id,
+            phone: newPhone.trim(),
           });
           refresh();
         } else {
@@ -88,6 +101,18 @@ export default function AllMessengersInbox() {
         const maxData = await maxRes.json();
         if (maxData.ok && maxData.contact) {
           const cId = String(maxData.chatId || maxData.contact.id);
+          // Save contact to CRM DB with phone (the one user entered)
+          try {
+            await fetch("/api/contacts/upsert-by-phone", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                phone: newPhone.trim(),
+                full_name: maxData.contact.name,
+                maks_id: cId,
+              }),
+            });
+          } catch { /* skip */ }
           setShowNewChat(false);
           setNewPhone("");
           setSelected({
@@ -97,6 +122,7 @@ export default function AllMessengersInbox() {
             lastMessage: "",
             lastTime: Date.now() / 1000,
             chatId: cId,
+            phone: newPhone.trim(),
           });
           refresh();
         } else {
