@@ -18,6 +18,20 @@ export async function POST() {
 
   const admin = createAdminClient();
 
+  // Ensure 'avatars' storage bucket exists (idempotent)
+  try {
+    const { data: buckets } = await admin.storage.listBuckets();
+    const exists = (buckets ?? []).some((b) => b.name === "avatars");
+    if (!exists) {
+      const { error: bErr } = await admin.storage.createBucket("avatars", { public: true });
+      if (bErr && !String(bErr.message).toLowerCase().includes("already")) {
+        return NextResponse.json({ error: "Не удалось создать bucket avatars: " + bErr.message }, { status: 500 });
+      }
+    }
+  } catch (e) {
+    return NextResponse.json({ error: "Bucket check failed: " + String(e) }, { status: 500 });
+  }
+
   let chatsRes;
   try {
     chatsRes = await fetch(`${proxyUrl}/chats`, { headers: { Authorization: proxyKey } });
@@ -27,7 +41,27 @@ export async function POST() {
   if (!chatsRes.ok) return NextResponse.json({ error: "MAX proxy returned " + chatsRes.status }, { status: 502 });
 
   const chatsData = await chatsRes.json();
-  const chats: Array<{ chatId?: number | string; title?: string; phone?: string; username?: string; avatar?: string }> = chatsData.chats ?? [];
+  let chats: Array<{ chatId?: number | string; title?: string; phone?: string; username?: string; avatar?: string }> = chatsData.chats ?? [];
+
+  // If proxy lost its contact cache (post-restart), most chats come back without name/avatar.
+  // Try to force-load contacts via /load-contacts, then re-fetch /chats.
+  const enrichedCount = chats.filter((c) => c.title || c.avatar || c.phone).length;
+  if (chats.length > 0 && enrichedCount < chats.length / 2) {
+    try {
+      const ids = chats.map((c) => String(c.chatId)).filter(Boolean);
+      await fetch(`${proxyUrl}/load-contacts`, {
+        method: "POST",
+        headers: { Authorization: proxyKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      // Re-fetch chats after load
+      const reRes = await fetch(`${proxyUrl}/chats`, { headers: { Authorization: proxyKey } });
+      if (reRes.ok) {
+        const reData = await reRes.json();
+        chats = reData.chats ?? chats;
+      }
+    } catch { /* ignore — fall through with whatever we have */ }
+  }
 
   let updatedNames = 0;
   let updatedAvatars = 0;

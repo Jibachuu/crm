@@ -43,7 +43,10 @@ export default function SyncMaxContactsSettings() {
             Чатов: <strong>{result.chatsScanned}</strong>, новых контактов: <strong>{result.createdContacts}</strong>, имён обновлено: <strong>{result.updatedNames}</strong>, аватарок загружено: <strong>{result.updatedAvatars}</strong>
             {result.errors && result.errors.length > 0 && (
               <div className="mt-2 text-xs" style={{ color: "#c62828" }}>
-                Ошибок: {result.errors.length}
+                <strong>Ошибки ({result.errors.length}):</strong>
+                <ul className="mt-1 space-y-0.5 max-h-40 overflow-y-auto font-mono" style={{ fontSize: 10 }}>
+                  {result.errors.map((e, i) => <li key={i}>• {e}</li>)}
+                </ul>
               </div>
             )}
           </div>
