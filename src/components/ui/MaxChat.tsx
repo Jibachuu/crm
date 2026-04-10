@@ -3,8 +3,10 @@
 import { useState, useEffect, useRef } from "react";
 import { Send, RefreshCw, Paperclip, Mic, MicOff } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
+import ImageLightbox from "./ImageLightbox";
 
 export default function MaxChat({ chatId, compact = false, entityType, entityId }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string }) {
+  const [lightbox, setLightbox] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[]; chatId?: string }[]>([]);
   const [text, setText] = useState("");
@@ -193,10 +195,14 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
                 <div key={ai} className="mb-1">
                   {a.type === "PHOTO" || a.type === "IMAGE" || a.type === "STICKER" ? (
                     photoSrc ? (
-                      <a href={photoFull || "#"} target="_blank" rel="noopener noreferrer" download={a.name || "photo"}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={photoSrc} alt="" className="rounded max-w-full cursor-pointer hover:opacity-90" style={{ maxHeight: 200 }} />
-                      </a>
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={photoSrc}
+                        alt={a.name || ""}
+                        onClick={() => photoFull && setLightbox(photoFull)}
+                        className="rounded cursor-zoom-in hover:opacity-95"
+                        style={{ maxWidth: 360, maxHeight: 360, width: "auto", height: "auto", objectFit: "contain", display: "block" }}
+                      />
                     ) : <span className="text-xs">🖼 Фото</span>
                   ) : a.type === "AUDIO" ? (
                     <div>
@@ -227,7 +233,8 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
                     <p className="text-xs italic">📎 {a.type}: {a.name || "вложение"}</p>
                   )}
                 </div>
-              ))}
+                );
+              })}
               {/* Text */}
               {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
               {/* Empty message without attaches */}
@@ -287,6 +294,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
           </button>
         )}
       </div>
+      {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
     </div>
   );
 }

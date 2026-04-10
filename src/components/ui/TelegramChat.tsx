@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Send, Paperclip, Mic, MicOff, Download, FileText, Image, Music, Video, X } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
+import ImageLightbox from "./ImageLightbox";
 
 interface TgMessage {
   id: number;
@@ -56,7 +57,7 @@ function formatDuration(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function MediaBubble({ media, peer, msgId }: { media: NonNullable<TgMessage["media"]>; peer: string; msgId: number }) {
+function MediaBubble({ media, peer, msgId, onLightbox }: { media: NonNullable<TgMessage["media"]>; peer: string; msgId: number; onLightbox?: (src: string) => void }) {
   const mediaUrl = `/api/telegram/media?peer=${encodeURIComponent(peer)}&msgId=${msgId}`;
 
   if (media.type === "photo") {
@@ -66,9 +67,9 @@ function MediaBubble({ media, peer, msgId }: { media: NonNullable<TgMessage["med
         <img
           src={mediaUrl}
           alt="Фото"
-          className="max-w-[240px] rounded-lg cursor-pointer"
-          style={{ maxHeight: 200, objectFit: "cover" }}
-          onClick={() => window.open(mediaUrl, "_blank")}
+          className="rounded-lg cursor-zoom-in hover:opacity-95"
+          style={{ maxWidth: 360, maxHeight: 360, width: "auto", height: "auto", objectFit: "contain", display: "block" }}
+          onClick={() => onLightbox?.(mediaUrl)}
         />
       </div>
     );
@@ -96,7 +97,7 @@ function MediaBubble({ media, peer, msgId }: { media: NonNullable<TgMessage["med
   if (media.type === "video") {
     return (
       <div className="mt-1">
-        <video controls src={mediaUrl} className="max-w-[240px] rounded-lg" style={{ maxHeight: 200 }} />
+        <video controls src={mediaUrl} className="rounded-lg" style={{ maxWidth: 360, maxHeight: 360 }} />
       </div>
     );
   }
@@ -138,6 +139,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -299,7 +301,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                   {!msg.out && msg.fromName && (
                     <p className="text-xs font-semibold mb-0.5" style={{ color: "#0067a5" }}>{msg.fromName}</p>
                   )}
-                  {msg.media && <MediaBubble media={msg.media} peer={peer} msgId={msg.id} />}
+                  {msg.media && <MediaBubble media={msg.media} peer={peer} msgId={msg.id} onLightbox={setLightbox} />}
                   {msg.text && (
                     <p className="text-sm whitespace-pre-wrap leading-snug" style={{ color: "#222" }}>{msg.text}</p>
                   )}
@@ -402,6 +404,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
 
       {/* Hidden media icons used by MediaBubble - keeps lucide from tree-shaking */}
       <span className="hidden"><Image size={1} /><Video size={1} /><X size={1} /></span>
+      {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
     </div>
   );
 }
