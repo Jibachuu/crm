@@ -14,6 +14,8 @@ interface UnifiedDialog {
   unreadCount?: number;
   peer?: string; // telegram peer
   chatId?: string; // max chatId
+  avatar?: string;
+  phone?: string;
 }
 
 const CHANNEL_COLORS: Record<string, { bg: string; badge: string; label: string }> = {
@@ -122,6 +124,8 @@ export default function AllMessengersInbox() {
             lastTime: d.lastDate || 0,
             unreadCount: d.unreadCount || 0,
             peer: d.username || d.phone || String(d.id),
+            avatar: d.photoUrl || d.avatar || undefined,
+            phone: d.phone || undefined,
           });
         }
       }
@@ -142,6 +146,8 @@ export default function AllMessengersInbox() {
             lastMessage: c.lastMessage?.text || "",
             lastTime: c.lastMessage?.time || 0,
             chatId,
+            avatar: c.avatar || undefined,
+            phone: c.phone ? String(c.phone) : undefined,
           });
         }
       }
@@ -227,10 +233,15 @@ export default function AllMessengersInbox() {
                 <div className="flex items-center gap-3">
                   {/* Avatar with channel badge */}
                   <div className="relative flex-shrink-0">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                      style={{ background: cfg.bg + "cc" }}>
-                      {getInitials(d.name)}
-                    </div>
+                    {d.avatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={d.avatar} alt={d.name} className="w-10 h-10 rounded-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                        style={{ background: cfg.bg + "cc" }}>
+                        {getInitials(d.name)}
+                      </div>
+                    )}
                     <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-white border-2 border-white"
                       style={{ background: cfg.badge, fontSize: 7, fontWeight: 700 }}>
                       {cfg.label}
