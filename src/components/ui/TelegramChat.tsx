@@ -23,6 +23,7 @@ interface TgMessage {
   reactions?: { emoji: string; count: number }[] | null;
   forwardedFrom?: { senderName: string | null; senderId?: string | null; date?: number } | null;
   replyTo?: { id: string } | null;
+  read?: boolean | null;
 }
 
 interface Props {
@@ -328,7 +329,11 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                   )}
                   <div className={`flex items-center gap-1 mt-0.5 ${msg.out ? "justify-end" : "justify-start"}`}>
                     <span className="text-xs" style={{ color: "#aaa" }}>{formatMsgTime(msg.date)}</span>
-                    {msg.out && <span className="text-xs" style={{ color: "#4caf50" }}>✓✓</span>}
+                    {msg.out && (
+                      <span className="text-xs" style={{ color: msg.read ? "#0067a5" : "#aaa" }} title={msg.read ? "Прочитано" : "Доставлено"}>
+                        {msg.read ? "✓✓" : "✓"}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

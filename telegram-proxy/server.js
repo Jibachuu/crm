@@ -160,6 +160,7 @@ function extractMediaInfo(msg) {
 // dialogs on startup and cache every entity by its id string so CRM can look
 // up chats by plain numeric peer without hitting "Could not find input entity".
 const entityCache = new Map(); // id(string) -> InputPeer / entity
+const dialogReadState = new Map(); // peerId(string) -> { readOutboxMaxId, readInboxMaxId }
 let lastWarmup = 0;
 
 async function warmupEntities(reason = "manual") {
@@ -170,6 +171,11 @@ async function warmupEntities(reason = "manual") {
       if (!dialog.entity) continue;
       const id = String(dialog.id);
       entityCache.set(id, dialog.entity);
+      // Cache read state for this peer (used for read receipts on outgoing messages)
+      dialogReadState.set(id, {
+        readOutboxMaxId: Number(dialog.dialog?.readOutboxMaxId || 0),
+        readInboxMaxId: Number(dialog.dialog?.readInboxMaxId || 0),
+      });
       // Also cache by username for faster lookups
       if (dialog.entity.username) {
         entityCache.set("@" + String(dialog.entity.username).toLowerCase(), dialog.entity);
@@ -244,6 +250,11 @@ const routes = {
       if (!entity) continue;
       // Cache entity by numeric id for later resolvePeer lookups
       entityCache.set(String(dialog.id), entity);
+      // Cache read state — used for read receipts in /messages
+      dialogReadState.set(String(dialog.id), {
+        readOutboxMaxId: Number(dialog.dialog?.readOutboxMaxId || 0),
+        readInboxMaxId: Number(dialog.dialog?.readInboxMaxId || 0),
+      });
       if (entity.username) entityCache.set("@" + String(entity.username).toLowerCase(), entity);
       const photoUrl = await downloadProfilePhotoBase64(entity);
       dialogs.push({
@@ -271,6 +282,10 @@ const routes = {
     const entity = await resolvePeer(peer);
     const opts = { limit };
     if (offsetId && offsetId > 0) opts.offsetId = offsetId;
+
+    // Read state from warmupEntities cache (refreshed every 10 min)
+    const readState = dialogReadState.get(String(entity.id)) || {};
+    const readOutboxMaxId = Number(readState.readOutboxMaxId || 0);
 
     const messages = [];
     for await (const m of client.iterMessages(entity, opts)) {
@@ -306,16 +321,20 @@ const routes = {
           id: String(m.replyTo?.replyToMsgId || m.replyToMsgId),
         };
       }
+      // Read receipt: outgoing message is read when its id <= readOutboxMaxId
+      const isOut = !!m.out;
+      const read = isOut && readOutboxMaxId > 0 ? Number(m.id) <= readOutboxMaxId : null;
       messages.push({
         id: m.id,
         text: m.message ?? "",
         date: m.date,
-        out: m.out ?? false,
+        out: isOut,
         fromName: m.sender?.firstName ?? m.sender?.username ?? null,
         media: extractMediaInfo(m),
         reactions,
         forwardedFrom,
         replyTo,
+        read,
       });
     }
     return { messages };

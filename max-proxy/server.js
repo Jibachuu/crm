@@ -501,7 +501,16 @@ const srv = http.createServer(async (req, res) => {
     if (cached.length < count) {
       await fetchHistory(cid, Date.now(), count);
     }
-    const result = (chatMessages.get(cid) || []).slice(-count);
+    // Compute read receipts: for outgoing messages, check participants[contactId]
+    // contactId = cid XOR viewerId (MAX peer id encoding)
+    const chat = cachedChats.find(c => (c.chatId || c.id) === cid);
+    const contactId = userId ? Number(BigInt(userId) ^ BigInt(cid)) : null;
+    const peerReadMark = (chat?.participants && contactId) ? Number(chat.participants[String(contactId)] || 0) : 0;
+    const result = (chatMessages.get(cid) || []).slice(-count).map(m => ({
+      ...m,
+      // For our outgoing messages: read = peer's read mark is >= this message's time
+      read: m.senderId === userId && peerReadMark > 0 ? Number(m.time || 0) <= peerReadMark : null,
+    }));
     res.writeHead(200, {"Content-Type":"application/json"});
     res.end(JSON.stringify({ messages: result }));
     return;

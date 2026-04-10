@@ -8,7 +8,7 @@ import ImageLightbox from "./ImageLightbox";
 export default function MaxChat({ chatId, compact = false, entityType, entityId }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[]; chatId?: string; reactions?: { emoji: string; count: number }[]; forwardedFrom?: { senderName?: string; text?: string } | null; replyTo?: { id: string; senderName?: string; text?: string } | null }[]>([]);
+  const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[]; chatId?: string; reactions?: { emoji: string; count: number }[]; forwardedFrom?: { senderName?: string; text?: string } | null; replyTo?: { id: string; senderName?: string; text?: string } | null; read?: boolean | null }[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -270,7 +270,14 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
                 </div>
               )}
 
-              <p className="text-xs mt-0.5" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#aaa", textAlign: "right", fontSize: 10 }}>{formatTime(msg.time)}</p>
+              <div className="flex items-center justify-end gap-1 mt-0.5">
+                <span className="text-xs" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#aaa", fontSize: 10 }}>{formatTime(msg.time)}</span>
+                {msg.isMe && (
+                  <span className="text-xs" style={{ color: msg.read ? (msg.isMe ? "#a0d0ff" : "#0067a5") : (msg.isMe ? "rgba(255,255,255,0.55)" : "#aaa"), fontSize: 10 }} title={msg.read ? "Прочитано" : "Доставлено"}>
+                    {msg.read ? "✓✓" : "✓"}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         ))}
