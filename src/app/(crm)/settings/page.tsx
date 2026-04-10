@@ -10,6 +10,7 @@ import EmailTemplatesSettings from "./EmailTemplatesSettings";
 import SupplierSettings from "./SupplierSettings";
 import BulkTransferSettings from "./BulkTransferSettings";
 import MergeContactsSettings from "./MergeContactsSettings";
+import SyncMaxContactsSettings from "./SyncMaxContactsSettings";
 import FileTemplatesSettings from "./FileTemplatesSettings";
 import ImportCommunications from "./ImportCommunications";
 
@@ -37,6 +38,7 @@ export default async function SettingsPage() {
           <UsersSettings users={users ?? []} permissions={permissions ?? []} />
           <BulkTransferSettings users={users ?? []} />
           <MergeContactsSettings />
+          <SyncMaxContactsSettings />
           <DirectoriesSettings />
           <CustomFieldsSettings customFields={customFields ?? []} />
           <SupplierSettings />

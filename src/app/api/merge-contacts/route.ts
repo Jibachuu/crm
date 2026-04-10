@@ -71,5 +71,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, merged, groups: groups.size, errors });
+  // Bonus: clean up junk names — replace digit-only/empty names with phone/email/username
+  try {
+    const { data: junk } = await admin
+      .from("contacts")
+      .select("id, full_name, phone, email, telegram_username")
+      .or("full_name.is.null,full_name.eq.")
+      .limit(500);
+    const { data: junk2 } = await admin
+      .from("contacts")
+      .select("id, full_name, phone, email, telegram_username");
+    const allJunk = [...(junk ?? []), ...((junk2 ?? []).filter((c) => c.full_name && /^\d+$/.test(c.full_name)))];
+    let renamed = 0;
+    for (const c of allJunk) {
+      const name = c.telegram_username || c.phone || c.email;
+      if (name && name !== c.full_name) {
+        await admin.from("contacts").update({ full_name: name }).eq("id", c.id);
+        renamed++;
+      }
+    }
+    return NextResponse.json({ ok: true, merged, groups: groups.size, errors, renamed });
+  } catch {
+    return NextResponse.json({ ok: true, merged, groups: groups.size, errors });
+  }
 }

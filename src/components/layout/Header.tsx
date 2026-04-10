@@ -52,12 +52,38 @@ export default function Header({ title }: HeaderProps) {
       const res = await fetch("/api/notifications");
       if (res.ok) {
         const data = await res.json();
-        setNotifications(data.notifications ?? []);
-        const unread = (data.notifications ?? []).filter((n: Notification) => !readIds.has(n.id)).length;
-        // Play sound if new notifications appeared
-        if (unread > prevCountRef.current && prevCountRef.current >= 0) {
+        const newNotifs: Notification[] = data.notifications ?? [];
+        setNotifications(newNotifs);
+
+        // Beep dedup: don't replay sound for IDs we already beeped on today.
+        // Stored as { date: "YYYY-MM-DD", ids: [...] } in localStorage.
+        const today = new Date().toISOString().slice(0, 10);
+        let beeped: { date: string; ids: string[] } = { date: today, ids: [] };
+        try {
+          const stored = localStorage.getItem("beeped_notifications");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed?.date === today && Array.isArray(parsed.ids)) beeped = parsed;
+          }
+        } catch { /* ignore */ }
+        const beepedSet = new Set(beeped.ids);
+
+        const unread = newNotifs.filter((n) => !readIds.has(n.id)).length;
+
+        // Find IDs that are NEW (not yet beeped today and not yet read)
+        const freshIds = newNotifs
+          .filter((n) => !readIds.has(n.id) && !beepedSet.has(n.id))
+          .map((n) => n.id);
+
+        if (freshIds.length > 0) {
+          // Beep once per session burst, regardless of count
           try { new Audio("/notification.mp3").play().catch(() => {}); } catch {}
+          freshIds.forEach((id) => beepedSet.add(id));
+          try {
+            localStorage.setItem("beeped_notifications", JSON.stringify({ date: today, ids: Array.from(beepedSet) }));
+          } catch { /* ignore */ }
         }
+
         prevCountRef.current = unread;
         setCount(unread);
       }

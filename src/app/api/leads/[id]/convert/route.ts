@@ -20,6 +20,39 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Лид уже конвертирован" }, { status: 400 });
   }
 
+  // Pick default DEAL funnel + first stage so converted deal appears in kanban + lists
+  const { data: dealFunnel } = await supabase
+    .from("funnels")
+    .select("id")
+    .eq("type", "deal")
+    .eq("is_default", true)
+    .maybeSingle();
+
+  let funnelId: string | null = dealFunnel?.id ?? null;
+  if (!funnelId) {
+    // Fallback: any deal funnel
+    const { data: anyFunnel } = await supabase
+      .from("funnels")
+      .select("id")
+      .eq("type", "deal")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    funnelId = anyFunnel?.id ?? null;
+  }
+
+  let stageId: string | null = null;
+  if (funnelId) {
+    const { data: firstStage } = await supabase
+      .from("funnel_stages")
+      .select("id")
+      .eq("funnel_id", funnelId)
+      .order("sort_order", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    stageId = firstStage?.id ?? null;
+  }
+
   // Create deal from lead
   const { data: deal, error: dealError } = await supabase
     .from("deals")
@@ -31,6 +64,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       assigned_to: lead.assigned_to,
       created_by: lead.created_by,
       stage: "lead",
+      funnel_id: funnelId,
+      stage_id: stageId,
       description: lead.description,
     })
     .select("id")

@@ -5,6 +5,7 @@ import { RefreshCw, Search, MessageSquare, UserPlus, Link2 } from "lucide-react"
 import TelegramChat from "@/components/ui/TelegramChat";
 import MaxChat from "@/components/ui/MaxChat";
 import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
+import { createClient } from "@/lib/supabase/client";
 
 interface UnifiedDialog {
   id: string;
@@ -18,6 +19,7 @@ interface UnifiedDialog {
   chatId?: string;
   avatar?: string;
   phone?: string;
+  username?: string;
 }
 
 const CHANNEL_COLORS: Record<string, { bg: string; badge: string; label: string }> = {
@@ -51,83 +53,118 @@ export default function AllMessengersInbox() {
   const [linkedOpen, setLinkedOpen] = useState(false);
 
   async function addContact(channel: "telegram" | "maks") {
-    if (!newPhone.trim()) return;
+    const raw = newPhone.trim();
+    if (!raw) return;
     setAddingContact(channel);
     setAddError("");
+
+    // Detect input type: @username vs phone
+    const isUsername = raw.startsWith("@") || /^[a-zA-Z][a-zA-Z0-9_]{3,}$/.test(raw);
+    const phone = isUsername ? "" : raw;
+    const username = isUsername ? raw.replace(/^@/, "") : "";
+
     try {
-      if (channel === "telegram") {
-        const res = await fetch("/api/telegram/add-contact", {
+      // Telegram supports both phone and username; MAX only phone
+      const tgBody = username
+        ? { username }
+        : { phone };
+      const [tgRes, maxRes] = await Promise.all([
+        fetch("/api/telegram/add-contact", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: newPhone.trim() }),
-        });
-        const data = await res.json();
-        if (data.ok && data.user) {
-          // Save to CRM DB
-          try {
-            await fetch("/api/contacts/upsert-by-phone", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                phone: newPhone.trim(),
-                full_name: `${data.user.firstName || ""} ${data.user.lastName || ""}`.trim() || data.user.username,
-                telegram_id: data.user.id,
-                telegram_username: data.user.username,
-              }),
-            });
-          } catch { /* skip */ }
-          setShowNewChat(false);
-          setNewPhone("");
+          body: JSON.stringify(tgBody),
+        }).then((r) => r.json()).catch(() => ({ ok: false })),
+        phone ? fetch("/api/max", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "add_contact", phone, firstName: "", lastName: "" }),
+        }).then((r) => r.json()).catch(() => ({ ok: false })) : Promise.resolve({ ok: false }),
+      ]);
+
+      const tgUser = tgRes?.ok && tgRes.user ? tgRes.user : null;
+      const maxContact = maxRes?.ok && maxRes.contact ? maxRes.contact : null;
+      const maxId = maxContact ? String(maxRes.chatId || maxContact.id) : null;
+
+      // Pick best name: prefer Telegram (real names), fallback to MAX
+      const tgName = tgUser ? `${tgUser.firstName || ""} ${tgUser.lastName || ""}`.trim() || tgUser.username || "" : "";
+      const maxName = maxContact?.name || "";
+      const bestName = (tgName && !/^\d+$/.test(tgName) ? tgName : null) || (maxName && !/^\d+$/.test(maxName) ? maxName : null) || "";
+
+      // Save to CRM with whatever we got
+      // Use phone from any source: user input → telegram entity → max contact
+      const finalPhone = phone || tgUser?.phone || null;
+
+      if (tgUser || maxContact) {
+        try {
+          await fetch("/api/contacts/upsert-by-phone", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phone: finalPhone || undefined,
+              full_name: bestName,
+              telegram_id: tgUser?.id ? String(tgUser.id) : undefined,
+              telegram_username: tgUser?.username || username || undefined,
+              maks_id: maxId || undefined,
+            }),
+          });
+        } catch { /* skip */ }
+
+        setShowNewChat(false);
+        setNewPhone("");
+
+        // Open the chat user clicked on, fall back to whichever we found
+        if (channel === "telegram" && tgUser) {
           setSelected({
-            id: `tg_${data.user.id}`,
-            name: `${data.user.firstName || ""} ${data.user.lastName || ""}`.trim() || newPhone,
+            id: `tg_${tgUser.id}`,
+            name: bestName || finalPhone || username,
             channel: "telegram",
             lastMessage: "",
             lastTime: Date.now() / 1000,
-            peer: data.user.username || data.user.phone || data.user.id,
-            phone: newPhone.trim(),
+            peer: tgUser.username || tgUser.phone || tgUser.id,
+            phone: finalPhone || undefined,
+            username: tgUser.username || username || undefined,
           });
-          refresh();
-        } else {
-          setAddError(data.error || "Контакт не найден");
-        }
-      } else {
-        // MAX: add contact by phone via VPS proxy
-        const maxRes = await fetch("/api/max", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "add_contact", phone: newPhone.trim(), firstName: "", lastName: "" }),
-        });
-        const maxData = await maxRes.json();
-        if (maxData.ok && maxData.contact) {
-          const cId = String(maxData.chatId || maxData.contact.id);
-          // Save contact to CRM DB with phone (the one user entered)
-          try {
-            await fetch("/api/contacts/upsert-by-phone", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                phone: newPhone.trim(),
-                full_name: maxData.contact.name,
-                maks_id: cId,
-              }),
-            });
-          } catch { /* skip */ }
-          setShowNewChat(false);
-          setNewPhone("");
+        } else if (channel === "maks" && maxContact) {
           setSelected({
-            id: `max_${cId}`,
-            name: maxData.contact.name || newPhone,
+            id: `max_${maxId}`,
+            name: bestName || finalPhone || maxId!,
             channel: "maks",
             lastMessage: "",
             lastTime: Date.now() / 1000,
-            chatId: cId,
-            phone: newPhone.trim(),
+            chatId: maxId!,
+            phone: finalPhone || undefined,
           });
-          refresh();
-        } else {
-          setAddError(maxData.error || "Контакт не найден в МАКС");
+        } else if (tgUser) {
+          setSelected({
+            id: `tg_${tgUser.id}`,
+            name: bestName || finalPhone || username,
+            channel: "telegram",
+            lastMessage: "",
+            lastTime: Date.now() / 1000,
+            peer: tgUser.username || tgUser.phone || tgUser.id,
+            phone: finalPhone || undefined,
+            username: tgUser.username || username || undefined,
+          });
+        } else if (maxContact) {
+          setSelected({
+            id: `max_${maxId}`,
+            name: bestName || finalPhone || maxId!,
+            channel: "maks",
+            lastMessage: "",
+            lastTime: Date.now() / 1000,
+            chatId: maxId!,
+            phone: finalPhone || undefined,
+          });
         }
+        refresh();
+      } else {
+        setAddError(
+          username
+            ? (tgRes?.error || "Username не найден в Telegram")
+            : (channel === "telegram"
+                ? (tgRes?.error || "Контакт не найден ни в Telegram, ни в МАКС")
+                : (maxRes?.error || "Контакт не найден ни в МАКС, ни в Telegram"))
+        );
       }
     } catch (e) {
       setAddError(String(e));
@@ -155,6 +192,7 @@ export default function AllMessengersInbox() {
             peer: d.username || d.phone || String(d.id),
             avatar: d.photoUrl || d.avatar || undefined,
             phone: d.phone || undefined,
+            username: d.username || undefined,
           });
         }
       }
@@ -177,9 +215,31 @@ export default function AllMessengersInbox() {
             chatId,
             avatar: c.avatar || undefined,
             phone: c.phone ? String(c.phone) : undefined,
+            username: c.username || undefined,
             unread: c.unread || false,
             unreadCount: c.unreadCount || 0,
           });
+        }
+      }
+    } catch { /* skip */ }
+
+    // Enrich missing avatars/names from CRM contacts (fallback when VPS lost cache)
+    try {
+      const supabase = createClient();
+      const maksIds = all.filter((d) => d.channel === "maks" && d.chatId).map((d) => d.chatId!);
+      if (maksIds.length > 0) {
+        const { data: cs } = await supabase
+          .from("contacts")
+          .select("maks_id, full_name, avatar_url, phone")
+          .in("maks_id", maksIds);
+        const byMaksId = new Map((cs ?? []).map((c) => [c.maks_id, c]));
+        for (const d of all) {
+          if (d.channel !== "maks" || !d.chatId) continue;
+          const c = byMaksId.get(d.chatId);
+          if (!c) continue;
+          if (!d.avatar && c.avatar_url) d.avatar = c.avatar_url;
+          if (c.full_name && (!d.name || /^\d+$/.test(d.name)) && !/^\d+$/.test(c.full_name)) d.name = c.full_name;
+          if (!d.phone && c.phone) d.phone = c.phone;
         }
       }
     } catch { /* skip */ }
@@ -198,9 +258,17 @@ export default function AllMessengersInbox() {
 
   useEffect(() => { loadAll(); }, []);
 
-  const filtered = dialogs.filter((d) =>
-    !search || d.name.toLowerCase().includes(search.toLowerCase()) || d.lastMessage.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = dialogs.filter((d) => {
+    if (!search) return true;
+    const q = search.toLowerCase().replace(/^@/, "").trim();
+    const cleanQ = q.replace(/\D/g, "");
+    if (d.name.toLowerCase().includes(q)) return true;
+    if (d.lastMessage.toLowerCase().includes(q)) return true;
+    if (d.username && d.username.toLowerCase().includes(q)) return true;
+    if (d.phone && cleanQ && d.phone.replace(/\D/g, "").includes(cleanQ)) return true;
+    if (d.chatId && d.chatId.includes(q)) return true;
+    return false;
+  });
 
   return (
     <div className="flex h-full">
@@ -225,11 +293,12 @@ export default function AllMessengersInbox() {
         {/* New chat by phone */}
         {showNewChat && (
           <div className="px-3 py-3" style={{ borderBottom: "1px solid #f0f0f0", background: "#f8f9fa" }}>
-            <p className="text-xs font-medium mb-2" style={{ color: "#555" }}>Начать чат по номеру телефона</p>
+            <p className="text-xs font-medium mb-2" style={{ color: "#555" }}>Начать чат: номер телефона или @username</p>
             <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)}
-              placeholder="+7 999 123 45 67"
+              placeholder="+7 999 123 45 67  или  @username"
               className="w-full text-sm px-3 py-1.5 rounded mb-2 focus:outline-none"
               style={{ border: "1px solid #d0d0d0" }} />
+            <p className="text-[10px] mb-2" style={{ color: "#aaa" }}>МАКС работает только по номеру. Telegram — и то, и другое.</p>
             <div className="flex gap-2">
               <button onClick={() => addContact("telegram")} disabled={!!addingContact || !newPhone.trim()}
                 className="flex-1 text-xs py-1.5 rounded font-medium disabled:opacity-40"
@@ -375,8 +444,10 @@ export default function AllMessengersInbox() {
           <LinkedEntitiesPanel
             phone={selected.phone}
             telegramId={selected.channel === "telegram" ? selected.id.replace("tg_", "") : undefined}
-            telegramUsername={selected.channel === "telegram" ? selected.peer : undefined}
+            telegramUsername={selected.channel === "telegram" ? (selected.username || selected.peer) : undefined}
             maksId={selected.channel === "maks" ? selected.chatId : undefined}
+            displayName={selected.name}
+            channel={selected.channel}
             onClose={() => setLinkedOpen(false)}
           />
         </div>

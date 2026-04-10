@@ -351,12 +351,12 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
 
           {/* Tabs */}
           <div>
-            <div className="flex" style={{ borderBottom: "1px solid #e4e4e4", marginBottom: 16 }}>
+            <div className="flex overflow-x-auto whitespace-nowrap" style={{ borderBottom: "1px solid #e4e4e4", marginBottom: 16, scrollbarWidth: "thin" }}>
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className="px-4 py-2 text-sm font-medium transition-colors"
+                  className="px-4 py-2 text-sm font-medium transition-colors flex-shrink-0"
                   style={{
                     borderBottom: activeTab === tab.id ? "2px solid #0067a5" : "2px solid transparent",
                     color: activeTab === tab.id ? "#0067a5" : "#666",

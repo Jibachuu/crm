@@ -14,7 +14,7 @@ interface Product {
   category?: string;
   subcategory?: string;
   flavor?: string;
-  volume?: string;
+  volume_ml?: number;
   product_variants: { id: string; attributes: Record<string, string>; price: number | null; stock: number }[];
 }
 
@@ -113,8 +113,7 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
         category: selected.category || null,
         subcategory: selected.subcategory || null,
         flavor: selected.flavor || null,
-        volume: selected.volume || null,
-        volume_ml: (selected as any).volume_ml || null,
+        volume_ml: selected.volume_ml ?? null,
         lifecycle_days: lifecycleDays > 0 ? lifecycleDays : null,
       })
       .select("*, products(name, sku)")
@@ -124,6 +123,9 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
       onAdded(data);
       onClose();
       setSelected(null);
+    } else if (error) {
+      console.error("[AddProductModal] insert failed:", error);
+      alert("Не удалось добавить товар: " + error.message);
     }
     setLoading(false);
   }
@@ -154,8 +156,12 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-slate-900">{p.name}</p>
+                        <p className="text-sm font-medium text-slate-900">
+                          {p.name}
+                          {p.volume_ml ? <span className="text-xs font-normal ml-1 text-slate-500">{p.volume_ml} мл</span> : null}
+                        </p>
                         <p className="text-xs text-slate-400">Арт. {p.sku}</p>
+                        {p.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{p.flavor}</p>}
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-semibold text-slate-900">{formatCurrency(p.base_price)}</p>
@@ -174,8 +180,15 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
           <>
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-slate-900">{selected.name}</h3>
+                <h3 className="font-semibold text-slate-900">
+                  {selected.name}
+                  {selected.volume_ml ? <span className="text-sm font-normal ml-2 text-slate-500">{selected.volume_ml} мл</span> : null}
+                </h3>
                 <p className="text-xs text-slate-400">Арт. {selected.sku}</p>
+                {selected.flavor && <p className="text-xs mt-0.5" style={{ color: "#7b1fa2" }}>Аромат: {selected.flavor}</p>}
+                {(selected.category || selected.subcategory) && (
+                  <p className="text-xs mt-0.5" style={{ color: "#0067a5" }}>{[selected.category, selected.subcategory].filter(Boolean).join(" → ")}</p>
+                )}
               </div>
               <button onClick={() => setSelected(null)} className="text-xs text-blue-600 hover:underline">← Выбрать другой</button>
             </div>

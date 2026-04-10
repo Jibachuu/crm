@@ -198,6 +198,7 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                 {filtered.map((product: {
                   id: string; name: string; sku: string; base_price: number; is_active: boolean;
                   category?: string; subcategory?: string; image_url?: string;
+                  volume_ml?: number; flavor?: string;
                   product_variants?: { id: string; stock: number }[];
                 }) => {
                   const isSel = selected.has(product.id);
@@ -235,7 +236,11 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                         )}
                       </td>
                       <td className="px-4 py-2.5">
-                        <p className="font-medium" style={{ color: "#333" }}>{product.name}</p>
+                        <p className="font-medium" style={{ color: "#333" }}>
+                          {product.name}
+                          {product.volume_ml ? <span className="text-xs font-normal ml-1" style={{ color: "#888" }}>{product.volume_ml} мл</span> : null}
+                        </p>
+                        {product.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{product.flavor}</p>}
                       </td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>
                         {product.category ? (

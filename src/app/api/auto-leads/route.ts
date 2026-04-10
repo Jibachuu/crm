@@ -122,7 +122,10 @@ export async function POST(req: NextRequest) {
 
           for (const chat of chats) {
             const chatId = String(chat.chatId ?? "");
-            const name = chat.title ?? chatId;
+            const rawName = chat.title ?? "";
+            const isJunkName = (n: string) => !n || /^\d+$/.test(n.trim()) || n.trim().length < 2;
+            const name = isJunkName(rawName) ? "" : rawName;
+            const chatPhone = chat.phone ? String(chat.phone) : null;
             if (!chatId || maksIds.has(chatId) || Number(chatId) < 0) continue;
 
             // Check if lead exists
@@ -136,23 +139,47 @@ export async function POST(req: NextRequest) {
 
             const adminId = (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id;
 
-            // Check if contact exists by maks_id
-            let contactId: string | null = null;
-            const { data: existingContact } = await admin.from("contacts")
-              .select("id, full_name")
+            // Try to find existing contact: by maks_id, then by phone
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            let existingContact: any = null;
+            const { data: byMaksId } = await admin.from("contacts")
+              .select("id, full_name, phone, maks_id")
               .eq("maks_id", chatId)
               .limit(1)
               .single();
+            if (byMaksId) existingContact = byMaksId;
 
+            if (!existingContact && chatPhone) {
+              const cleanPhone = chatPhone.replace(/\D/g, "").slice(-10);
+              if (cleanPhone.length >= 7) {
+                const { data: byPhone } = await admin.from("contacts")
+                  .select("id, full_name, phone, maks_id")
+                  .ilike("phone", `%${cleanPhone}%`)
+                  .limit(1)
+                  .single();
+                if (byPhone) existingContact = byPhone;
+              }
+            }
+
+            let contactId: string | null = null;
             if (existingContact) {
               contactId = existingContact.id;
-              // Update name if better
-              if (name && name !== chatId && (!existingContact.full_name || existingContact.full_name === chatId)) {
-                await admin.from("contacts").update({ full_name: name }).eq("id", contactId);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const upd: any = {};
+              if (name && (isJunkName(existingContact.full_name) || existingContact.full_name === chatId)) upd.full_name = name;
+              if (chatPhone && !existingContact.phone) upd.phone = chatPhone;
+              if (chatId && !existingContact.maks_id) upd.maks_id = chatId;
+              if (Object.keys(upd).length > 0) {
+                await admin.from("contacts").update(upd).eq("id", contactId);
               }
             } else {
               const { data: contact } = await admin.from("contacts")
-                .insert({ full_name: name, maks_id: chatId, created_by: adminId })
+                .insert({
+                  full_name: name || chatPhone || "Контакт",
+                  maks_id: chatId,
+                  phone: chatPhone,
+                  created_by: adminId,
+                })
                 .select("id")
                 .single();
               contactId = contact?.id ?? null;
@@ -289,6 +316,8 @@ export async function GET() {
     const { data: existingContacts } = await admin.from("contacts").select("id, maks_id");
     const maksIds = new Set((existingContacts ?? []).filter((c) => c.maks_id).map((c) => c.maks_id));
 
+    const isJunkName = (n: string) => !n || /^\d+$/.test(n.trim()) || n.trim().length < 2;
+
     const maxProxy = process.env.MAX_PROXY_URL;
     const maxKey = process.env.MAX_PROXY_KEY;
     if (maxProxy && maxKey) {
@@ -297,19 +326,49 @@ export async function GET() {
         const data = await res.json();
         for (const chat of data.chats ?? []) {
           const chatId = String(chat.chatId ?? "");
-          const name = chat.title ?? chatId;
+          const rawName = chat.title ?? "";
+          const name = isJunkName(rawName) ? "" : rawName;
+          const chatPhone = chat.phone ? String(chat.phone) : null;
           if (!chatId || maksIds.has(chatId) || Number(chatId) < 0) continue;
 
-          const { data: existing } = await admin.from("contacts").select("id").eq("maks_id", chatId).limit(1).single();
-          if (existing) continue;
+          // Find existing contact: by maks_id, then by phone (cross-messenger dedup)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let existing: any = null;
+          const { data: byMaksId } = await admin.from("contacts").select("id, full_name, phone, maks_id").eq("maks_id", chatId).limit(1).single();
+          if (byMaksId) existing = byMaksId;
+          if (!existing && chatPhone) {
+            const cleanPhone = chatPhone.replace(/\D/g, "").slice(-10);
+            if (cleanPhone.length >= 7) {
+              const { data: byPhone } = await admin.from("contacts").select("id, full_name, phone, maks_id").ilike("phone", `%${cleanPhone}%`).limit(1).single();
+              if (byPhone) existing = byPhone;
+            }
+          }
 
           const adminId = (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id;
-          const { data: contact } = await admin.from("contacts").insert({ full_name: name, maks_id: chatId, created_by: adminId }).select("id").single();
+
+          if (existing) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const upd: any = {};
+            if (name && (isJunkName(existing.full_name) || existing.full_name === chatId)) upd.full_name = name;
+            if (chatPhone && !existing.phone) upd.phone = chatPhone;
+            if (chatId && !existing.maks_id) upd.maks_id = chatId;
+            if (Object.keys(upd).length > 0) await admin.from("contacts").update(upd).eq("id", existing.id);
+            maksIds.add(chatId);
+            continue;
+          }
+
+          const { data: contact } = await admin.from("contacts").insert({
+            full_name: name || chatPhone || "Контакт",
+            maks_id: chatId,
+            phone: chatPhone,
+            created_by: adminId,
+          }).select("id").single();
           if (contact) {
             const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
             const { data: firstStage } = funnel ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single() : { data: null };
-            await admin.from("leads").insert({ title: `МАКС: ${name}`, source: "maks", status: "new", contact_id: contact.id, funnel_id: funnel?.id ?? null, stage_id: firstStage?.id ?? null, created_by: adminId });
-            results.push(`Lead: MAX ${name}`);
+            await admin.from("leads").insert({ title: `МАКС: ${name || chatId}`, source: "maks", status: "new", contact_id: contact.id, funnel_id: funnel?.id ?? null, stage_id: firstStage?.id ?? null, created_by: adminId });
+            results.push(`Lead: MAX ${name || chatId}`);
+            maksIds.add(chatId);
           }
         }
       }

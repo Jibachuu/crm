@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Building2, User, Briefcase, Tag, X, Phone, Mail } from "lucide-react";
+import { Building2, User, Briefcase, Tag, X, Phone, Mail, Plus } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface Props {
@@ -11,6 +12,8 @@ interface Props {
   telegramUsername?: string;
   maksId?: string;
   email?: string;
+  displayName?: string;
+  channel?: "telegram" | "maks" | "email";
   onClose: () => void;
 }
 
@@ -19,13 +22,43 @@ interface Company { id: string; name: string; inn?: string; phone?: string; emai
 interface Lead { id: string; title: string; status?: string; created_at: string; }
 interface Deal { id: string; title: string; stage?: string; amount?: number; created_at: string; }
 
-export default function LinkedEntitiesPanel({ phone, telegramId, telegramUsername, maksId, email, onClose }: Props) {
+export default function LinkedEntitiesPanel({ phone, telegramId, telegramUsername, maksId, email, displayName, channel, onClose }: Props) {
+  const router = useRouter();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"contacts" | "companies" | "leads" | "deals">("contacts");
+  const [creating, setCreating] = useState(false);
+  const [createMsg, setCreateMsg] = useState("");
+
+  async function handleCreateLead() {
+    setCreating(true);
+    setCreateMsg("");
+    try {
+      const res = await fetch("/api/inbox/create-lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone, telegram_id: telegramId, telegram_username: telegramUsername,
+          maks_id: maksId, email, full_name: displayName, channel,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setCreateMsg("Создано! Открываю…");
+        // refresh local state so the new lead/contact appears immediately
+        await loadAll();
+        if (data.leadId) router.push(`/leads/${data.leadId}`);
+      } else {
+        setCreateMsg("Ошибка: " + (data.error || "не удалось создать"));
+      }
+    } catch (e) {
+      setCreateMsg("Ошибка: " + String(e));
+    }
+    setCreating(false);
+  }
 
   useEffect(() => {
     loadAll();
@@ -100,10 +133,21 @@ export default function LinkedEntitiesPanel({ phone, telegramId, telegramUsernam
         <div className="text-center py-8 px-4">
           <p className="text-sm" style={{ color: "#888" }}>Нет связанных записей</p>
           <p className="text-xs mt-2" style={{ color: "#aaa" }}>
+            {displayName && <>👤 {displayName}<br/></>}
             {phone && <>📞 {phone}<br/></>}
             {telegramUsername && <>💬 @{telegramUsername}<br/></>}
+            {maksId && <>🅼 {maksId}<br/></>}
             {email && <>✉️ {email}</>}
           </p>
+          <button
+            onClick={handleCreateLead}
+            disabled={creating}
+            className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium disabled:opacity-50"
+            style={{ background: "#0067a5", color: "#fff" }}
+          >
+            <Plus size={12} /> {creating ? "Создание…" : "Создать лид"}
+          </button>
+          {createMsg && <p className="text-xs mt-2" style={{ color: createMsg.startsWith("Ошибка") ? "#c62828" : "#2e7d32" }}>{createMsg}</p>}
         </div>
       ) : (
         <>

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Mail, RefreshCw, ArrowLeft, Paperclip, Reply, Send, Download } from "lucide-react";
+import { Mail, RefreshCw, ArrowLeft, Paperclip, Reply, Send, Download, Link2 } from "lucide-react";
 import EmailCompose from "@/components/ui/EmailCompose";
+import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
 
 interface Email {
   uid: number;
@@ -68,6 +69,7 @@ export default function EmailInbox() {
   const [threadDetails, setThreadDetails] = useState<Map<string, EmailDetail>>(new Map());
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showReply, setShowReply] = useState(false);
+  const [linkedOpen, setLinkedOpen] = useState(false);
 
   const myEmail = (process.env.NEXT_PUBLIC_SMTP_USER ?? "").toLowerCase();
 
@@ -235,7 +237,8 @@ export default function EmailInbox() {
       </div>
 
       {/* Thread detail / conversation view */}
-      <div className="flex-1 flex flex-col min-w-0" style={{ background: "#f5f5f5" }}>
+      <div className="flex-1 flex min-w-0" style={{ background: "#f5f5f5" }}>
+      <div className="flex-1 flex flex-col min-w-0">
         {!selectedThread && !loadingDetails && (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <Mail size={48} style={{ color: "#ddd" }} />
@@ -252,7 +255,7 @@ export default function EmailInbox() {
             {/* Thread header */}
             <div className="px-6 py-3 flex items-center justify-between" style={{ background: "#fff", borderBottom: "1px solid #e4e4e4" }}>
               <div className="flex items-center gap-3">
-                <button onClick={() => { setSelectedThread(null); setThreadDetails(new Map()); }} className="flex items-center gap-1 text-xs hover:underline" style={{ color: "#0067a5" }}>
+                <button onClick={() => { setSelectedThread(null); setThreadDetails(new Map()); setLinkedOpen(false); }} className="flex items-center gap-1 text-xs hover:underline" style={{ color: "#0067a5" }}>
                   <ArrowLeft size={12} />
                 </button>
                 <h2 className="text-sm font-semibold" style={{ color: "#333" }}>
@@ -260,6 +263,14 @@ export default function EmailInbox() {
                 </h2>
                 <span className="text-xs" style={{ color: "#aaa" }}>{selectedThread.length} сообщ.</span>
               </div>
+              <button
+                onClick={() => setLinkedOpen(!linkedOpen)}
+                className="text-xs px-2 py-1 rounded hover:bg-blue-50 flex items-center gap-1"
+                style={{ color: "#0067a5", border: "1px solid #b3d4f0" }}
+                title="Связанные данные"
+              >
+                <Link2 size={11} /> Связи
+              </button>
             </div>
 
             {/* Messages */}
@@ -360,6 +371,23 @@ export default function EmailInbox() {
             </div>
           </>
         )}
+      </div>
+      {linkedOpen && selectedThread && (() => {
+        const partnerEmail = selectedThread[selectedThread.length - 1].folder === "INBOX"
+          ? selectedThread[selectedThread.length - 1].fromEmail
+          : (selectedThread[selectedThread.length - 1].to.match(/<(.+?)>/)?.[1] ?? selectedThread[selectedThread.length - 1].to);
+        const partnerName = selectedThread[selectedThread.length - 1].from.split("<")[0].trim();
+        return (
+          <div style={{ width: 320, borderLeft: "1px solid #e4e4e4" }}>
+            <LinkedEntitiesPanel
+              email={partnerEmail}
+              displayName={partnerName || partnerEmail}
+              channel="email"
+              onClose={() => setLinkedOpen(false)}
+            />
+          </div>
+        );
+      })()}
       </div>
     </div>
   );

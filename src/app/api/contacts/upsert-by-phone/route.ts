@@ -12,6 +12,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "phone or other identifier required" }, { status: 400 });
   }
 
+  // Sanitize: if name is just digits (i.e. MAX ID) or empty, treat as no name
+  const isJunkName = (n: string | null | undefined) => !n || /^\d+$/.test(String(n).trim()) || String(n).trim().length < 2;
+  const cleanName = isJunkName(full_name) ? null : String(full_name).trim();
+
   const admin = createAdminClient();
 
   // Search by phone first
@@ -47,7 +51,7 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updates: any = {};
     if (phone && !existing.phone) updates.phone = phone;
-    if (full_name && (!existing.full_name || /^\d+$/.test(existing.full_name) || existing.full_name.length < (full_name?.length ?? 0))) updates.full_name = full_name;
+    if (cleanName && (isJunkName(existing.full_name) || existing.full_name.length < cleanName.length)) updates.full_name = cleanName;
     if (telegram_id && !existing.telegram_id) updates.telegram_id = String(telegram_id);
     if (telegram_username && !existing.telegram_username) updates.telegram_username = telegram_username;
     if (maks_id && !existing.maks_id) updates.maks_id = String(maks_id);
@@ -59,9 +63,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, id: existing.id, updated: Object.keys(updates) });
   }
 
-  // Create new
+  // Create new — never use digits/MAX_id as name; prefer real name → username → phone → email
   const { data: newContact } = await admin.from("contacts").insert({
-    full_name: full_name || phone || telegram_username || maks_id || email,
+    full_name: cleanName || telegram_username || phone || email || "Контакт",
     phone: phone || null,
     telegram_id: telegram_id ? String(telegram_id) : null,
     telegram_username: telegram_username || null,

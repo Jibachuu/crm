@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Search, FlaskConical, Trash2, Edit2, Truck } from "lucide-react";
+import { Plus, Search, FlaskConical, Trash2, Edit2, Truck, List, Columns } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
@@ -27,6 +27,23 @@ export default function SamplesList({ initialSamples, companies, contacts, users
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [view, setView] = useState<"list" | "kanban">(() => {
+    if (typeof window === "undefined") return "list";
+    return (localStorage.getItem("samples_view") as "list" | "kanban") || "list";
+  });
+
+  function toggleView(v: "list" | "kanban") {
+    setView(v);
+    try { localStorage.setItem("samples_view", v); } catch { /* ignore */ }
+  }
+
+  async function moveSampleStatus(id: string, newStatus: string) {
+    const supabase = createClient();
+    await supabase.from("samples").update({ status: newStatus }).eq("id", id);
+    setSamples((prev: { id: string; status: string }[]) =>
+      prev.map((s) => (s.id === id ? { ...s, status: newStatus } : s))
+    );
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editing, setEditing] = useState<any>(null);
   const [saving, setSaving] = useState(false);
@@ -198,6 +215,16 @@ export default function SamplesList({ initialSamples, companies, contacts, users
           <option value="">Все МОПы</option>
           {users.map((u: { id: string; full_name: string }) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
         </select>
+        <div className="flex rounded overflow-hidden" style={{ border: "1px solid #d0d0d0" }}>
+          <button onClick={() => toggleView("list")} className="px-2 py-1.5 text-xs flex items-center gap-1"
+            style={{ background: view === "list" ? "#0067a5" : "#fff", color: view === "list" ? "#fff" : "#666" }}>
+            <List size={12} /> Список
+          </button>
+          <button onClick={() => toggleView("kanban")} className="px-2 py-1.5 text-xs flex items-center gap-1"
+            style={{ background: view === "kanban" ? "#0067a5" : "#fff", color: view === "kanban" ? "#fff" : "#666", borderLeft: "1px solid #d0d0d0" }}>
+            <Columns size={12} /> Канбан
+          </button>
+        </div>
         <ExportImportButtons entity="samples" onImported={() => window.location.reload()} />
         <Button onClick={openCreate} size="sm"><Plus size={13} /> Новый пробник</Button>
       </div>
@@ -215,6 +242,73 @@ export default function SamplesList({ initialSamples, companies, contacts, users
         <span>Пробников: <strong style={{ color: "#333" }}>{filtered.length}</strong></span>
       </div>
 
+      {view === "kanban" ? (
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {Object.entries(STATUS_LABELS).map(([statusKey, statusLabel]) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const colItems = filtered.filter((s: any) => s.status === statusKey);
+            const colTotal = colItems.length;
+            return (
+              <div
+                key={statusKey}
+                className="flex-shrink-0 rounded-lg"
+                style={{ width: 280, background: "#fafafa", border: "1px solid #e4e4e4" }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  const id = e.dataTransfer.getData("text/sample-id");
+                  if (id) moveSampleStatus(id, statusKey);
+                }}
+              >
+                <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: "1px solid #e4e4e4" }}>
+                  <span className="text-xs font-semibold" style={{ color: "#555" }}>{statusLabel}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: "#e8f4fd", color: "#0067a5" }}>{colTotal}</span>
+                </div>
+                <div className="p-2 space-y-2 min-h-[120px] max-h-[calc(100vh-260px)] overflow-y-auto">
+                  {colItems.length === 0 && <p className="text-xs text-center py-4" style={{ color: "#bbb" }}>Пусто</p>}
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {colItems.map((s: any) => (
+                    <div
+                      key={s.id}
+                      draggable
+                      onDragStart={(e) => e.dataTransfer.setData("text/sample-id", s.id)}
+                      onClick={() => openEdit(s)}
+                      className="bg-white p-3 rounded cursor-pointer hover:shadow-sm transition-shadow"
+                      style={{ border: "1px solid #e4e4e4" }}
+                    >
+                      <p className="text-xs font-medium mb-1" style={{ color: "#333" }}>
+                        {s.companies?.name || s.venue_name || "Без названия"}
+                      </p>
+                      {s.venue_name && s.companies?.name && (
+                        <p className="text-xs mb-1" style={{ color: "#888" }}>{s.venue_name}</p>
+                      )}
+                      {s.contacts?.full_name && (
+                        <p className="text-xs" style={{ color: "#0067a5" }}>{s.contacts.full_name}</p>
+                      )}
+                      {s.materials && (
+                        <p className="text-xs mt-1 line-clamp-2" style={{ color: "#666" }}>{s.materials}</p>
+                      )}
+                      <div className="flex items-center justify-between mt-2 text-xs" style={{ color: "#999" }}>
+                        {s.track_number ? (
+                          <span className="font-mono" style={{ color: "#0067a5" }}>{s.track_number}</span>
+                        ) : (
+                          <span>{DELIVERY_LABELS[s.delivery_type] ?? "—"}</span>
+                        )}
+                        {s.users?.full_name && <span className="truncate ml-1" style={{ maxWidth: 100 }}>{s.users.full_name}</span>}
+                      </div>
+                      {(s.sent_date || s.arrival_date) && (
+                        <div className="flex gap-2 mt-1 text-xs" style={{ color: "#aaa" }}>
+                          {s.sent_date && <span>Отпр: {formatDate(s.sent_date)}</span>}
+                          {s.arrival_date && <span>Приб: {formatDate(s.arrival_date)}</span>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
       <div className="bg-white overflow-hidden" style={{ border: "1px solid #e4e4e4", borderRadius: 6 }}>
         {filtered.length === 0 ? (
           <div className="text-center py-12" style={{ color: "#aaa" }}>
@@ -308,6 +402,7 @@ export default function SamplesList({ initialSamples, companies, contacts, users
           </div>
         )}
       </div>
+      )}
 
       {/* Create/Edit Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Редактировать пробник" : "Новый пробник"} size="lg">
