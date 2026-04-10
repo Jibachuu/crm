@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { pickAutoLeadAssignee } from "@/lib/auto-lead-assigner";
 
 // Create a contact + lead from inbox in one shot.
 // Used when LinkedEntitiesPanel finds nothing and user wants to convert chat → lead.
@@ -108,6 +109,9 @@ export async function POST(req: NextRequest) {
   const channelLabel = channel === "telegram" ? "Telegram" : channel === "maks" ? "МАКС" : channel === "email" ? "Email" : "Inbox";
   const leadTitle = title || `${channelLabel}: ${cleanName || telegram_username || phone || email || "новый чат"}`;
 
+  // Round-robin assignment to opted-in users (admin-configured in Settings)
+  const assignee = await pickAutoLeadAssignee(admin);
+
   const { data: lead, error: leadErr } = await admin.from("leads").insert({
     title: leadTitle,
     source,
@@ -115,6 +119,7 @@ export async function POST(req: NextRequest) {
     contact_id: contactId,
     funnel_id: funnel?.id ?? null,
     stage_id: firstStage?.id ?? null,
+    assigned_to: assignee ?? null,
     created_by: user.id,
   }).select("id").single();
 

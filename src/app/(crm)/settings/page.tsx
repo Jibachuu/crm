@@ -11,6 +11,8 @@ import SupplierSettings from "./SupplierSettings";
 import BulkTransferSettings from "./BulkTransferSettings";
 import MergeContactsSettings from "./MergeContactsSettings";
 import SyncMaxContactsSettings from "./SyncMaxContactsSettings";
+import BackfillMaxHistory from "./BackfillMaxHistory";
+import AutoLeadAssignmentSettings from "./AutoLeadAssignmentSettings";
 import FileTemplatesSettings from "./FileTemplatesSettings";
 import ImportCommunications from "./ImportCommunications";
 
@@ -36,9 +38,11 @@ export default async function SettingsPage() {
       <main className="p-6 max-w-5xl">
         <div className="space-y-8">
           <UsersSettings users={users ?? []} permissions={permissions ?? []} />
+          <AutoLeadAssignmentSettings users={users ?? []} />
           <BulkTransferSettings users={users ?? []} />
           <MergeContactsSettings />
           <SyncMaxContactsSettings />
+          <BackfillMaxHistory />
           <DirectoriesSettings />
           <CustomFieldsSettings customFields={customFields ?? []} />
           <SupplierSettings />

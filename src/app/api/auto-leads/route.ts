@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { pickAutoLeadAssignee } from "@/lib/auto-lead-assigner";
 
 // Dynamic imports for IMAP (may not work in all serverless environments)
 async function getImapModules() {
@@ -93,6 +94,7 @@ export async function POST(req: NextRequest) {
         const { data: existingLead } = await admin.from("leads").select("id").eq("source", "telegram").eq("contact_id", contactId).limit(1).single();
         if (existingLead) continue;
 
+        const tgAssignee = await pickAutoLeadAssignee(admin);
         await admin.from("leads").insert({
           title: `Telegram: ${tgName}`,
           source: "telegram",
@@ -100,9 +102,10 @@ export async function POST(req: NextRequest) {
           contact_id: contactId,
           funnel_id: funnel?.id ?? null,
           stage_id: firstStage?.id ?? null,
+          assigned_to: tgAssignee ?? null,
           created_by: adminId,
         });
-        results.push(`Lead created: Telegram ${tgName}`);
+        results.push(`Lead created: Telegram ${tgName}${tgAssignee ? " → " + tgAssignee.slice(0, 6) : ""}`);
       }
     } catch (e) {
       results.push(`Telegram error: ${e}`);
@@ -191,6 +194,7 @@ export async function POST(req: NextRequest) {
                 ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
                 : { data: null };
 
+              const maxAssignee = await pickAutoLeadAssignee(admin);
               await admin.from("leads").insert({
                 title: `МАКС: ${name}`,
                 source: "maks",
@@ -198,9 +202,10 @@ export async function POST(req: NextRequest) {
                 contact_id: contactId,
                 funnel_id: funnel?.id ?? null,
                 stage_id: firstStage?.id ?? null,
+                assigned_to: maxAssignee ?? null,
                 created_by: adminId,
               });
-              results.push(`Lead created: MAX ${name}`);
+              results.push(`Lead created: MAX ${name}${maxAssignee ? " → " + maxAssignee.slice(0, 6) : ""}`);
               maksIds.add(chatId);
             }
           }
@@ -278,6 +283,7 @@ export async function POST(req: NextRequest) {
                     ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
                     : { data: null };
 
+                  const emailAssignee = await pickAutoLeadAssignee(admin);
                   await admin.from("leads").insert({
                     title: `Email: ${fromName || fromEmail}`,
                     source: "email",
@@ -285,9 +291,10 @@ export async function POST(req: NextRequest) {
                     contact_id: contact.id,
                     funnel_id: funnel?.id ?? null,
                     stage_id: firstStage?.id ?? null,
+                    assigned_to: emailAssignee ?? null,
                     created_by: adminId,
                   });
-                  results.push(`Lead created: Email ${fromName} <${fromEmail}>`);
+                  results.push(`Lead created: Email ${fromName} <${fromEmail}>${emailAssignee ? " → " + emailAssignee.slice(0, 6) : ""}`);
                   emailSet.add(fromEmail);
                 }
               } catch { /* skip individual email */ }
@@ -366,7 +373,8 @@ export async function GET() {
           if (contact) {
             const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
             const { data: firstStage } = funnel ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single() : { data: null };
-            await admin.from("leads").insert({ title: `МАКС: ${name || chatId}`, source: "maks", status: "new", contact_id: contact.id, funnel_id: funnel?.id ?? null, stage_id: firstStage?.id ?? null, created_by: adminId });
+            const cronAssignee = await pickAutoLeadAssignee(admin);
+            await admin.from("leads").insert({ title: `МАКС: ${name || chatId}`, source: "maks", status: "new", contact_id: contact.id, funnel_id: funnel?.id ?? null, stage_id: firstStage?.id ?? null, assigned_to: cronAssignee ?? null, created_by: adminId });
             results.push(`Lead: MAX ${name || chatId}`);
             maksIds.add(chatId);
           }

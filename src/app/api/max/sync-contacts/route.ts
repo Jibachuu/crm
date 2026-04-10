@@ -158,9 +158,39 @@ export async function POST() {
     }
   }
 
+  // ── Backfill names from communications.sender_name ──
+  // For contacts that have a maks_id but a junk/empty name, look at incoming
+  // MAX/messenger communications and use the latest sender_name we've stored.
+  let backfilledFromComms = 0;
+  try {
+    const { data: junkContacts } = await admin
+      .from("contacts")
+      .select("id, full_name, maks_id")
+      .not("maks_id", "is", null);
+    const candidates = (junkContacts ?? []).filter((c) => isJunkName(c.full_name));
+    for (const c of candidates) {
+      const { data: lastComm } = await admin
+        .from("communications")
+        .select("sender_name")
+        .eq("contact_id", c.id)
+        .eq("direction", "incoming")
+        .not("sender_name", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastComm?.sender_name && !isJunkName(lastComm.sender_name)) {
+        await admin.from("contacts").update({ full_name: lastComm.sender_name }).eq("id", c.id);
+        backfilledFromComms++;
+      }
+    }
+  } catch (e) {
+    errors.push("comms backfill: " + String(e));
+  }
+
   return NextResponse.json({
     ok: true,
     chatsScanned: chats.length,
+    backfilledFromComms,
     createdContacts,
     updatedNames,
     updatedAvatars,

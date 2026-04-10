@@ -7,7 +7,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 
 export default function SyncMaxContactsSettings() {
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ chatsScanned: number; createdContacts: number; updatedNames: number; updatedAvatars: number; errors?: string[] } | null>(null);
+  const [result, setResult] = useState<{ chatsScanned: number; createdContacts: number; updatedNames: number; updatedAvatars: number; backfilledFromComms?: number; errors?: string[] } | null>(null);
 
   async function handleSync() {
     setLoading(true);
@@ -40,7 +40,7 @@ export default function SyncMaxContactsSettings() {
         </Button>
         {result && (
           <div className="mt-3 p-3 rounded-lg text-sm" style={{ background: "#e8f5e9", color: "#2e7d32" }}>
-            Чатов: <strong>{result.chatsScanned}</strong>, новых контактов: <strong>{result.createdContacts}</strong>, имён обновлено: <strong>{result.updatedNames}</strong>, аватарок загружено: <strong>{result.updatedAvatars}</strong>
+            Чатов: <strong>{result.chatsScanned}</strong>, новых контактов: <strong>{result.createdContacts}</strong>, имён обновлено: <strong>{result.updatedNames}</strong>, аватарок загружено: <strong>{result.updatedAvatars}</strong>{typeof result.backfilledFromComms === "number" && <>, имён из переписок: <strong>{result.backfilledFromComms}</strong></>}
             {result.errors && result.errors.length > 0 && (
               <div className="mt-2 text-xs" style={{ color: "#c62828" }}>
                 <strong>Ошибки ({result.errors.length}):</strong>
