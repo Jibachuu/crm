@@ -208,6 +208,46 @@ function parseAttaches(attaches) {
 // Store raw attaches per message id for debugging + for endpoints that need
 // access to original MAX payload fields (e.g. photoToken for PHOTO downloads).
 const rawAttaches = new Map(); // msg.id -> original attaches[]
+const rawMessages = new Map(); // msg.id -> full original message (for fwd/reactions)
+
+// Reactions parser — MAX puts them in reactionInfo: { counters: [{reaction: "❤", count: 2}], ... }
+function parseReactions(reactionInfo) {
+  if (!reactionInfo || typeof reactionInfo !== "object") return null;
+  const counters = reactionInfo.counters || reactionInfo.reactions || [];
+  if (!Array.isArray(counters) || counters.length === 0) return null;
+  return counters.map(c => ({
+    emoji: c.reaction || c.emoji || "👍",
+    count: Number(c.count || 1),
+  }));
+}
+
+// Forwarded-from parser — MAX puts forward chain in `link` (LinkedMessage) or `forwarded` field
+function parseForwardedFrom(msg) {
+  // Handle different MAX schemas: link.message, forwarded, or repliedTo
+  const fwd = msg.link || msg.forwarded || msg.forward;
+  if (!fwd) return null;
+  // link can be a LinkedMessage with type:"FORWARD" and message/sender inside
+  if (fwd.type && fwd.type !== "FORWARD" && fwd.type !== "QUOTE") return null;
+  const inner = fwd.message || fwd;
+  return {
+    senderName: inner.senderName || (fwd.chat?.title) || (typeof inner.sender === "number" ? getContactName(inner.sender) : null),
+    senderId: inner.sender || null,
+    text: inner.text || null,
+  };
+}
+
+// Reply parser — MAX puts replied message in `link` with type:"REPLY"
+function parseReplyTo(msg) {
+  const link = msg.link;
+  if (!link || link.type !== "REPLY") return null;
+  const inner = link.message;
+  if (!inner) return null;
+  return {
+    id: String(inner.id || ""),
+    senderName: typeof inner.sender === "number" ? getContactName(inner.sender) : null,
+    text: inner.text || null,
+  };
+}
 
 function addMessage(chatId, msg) {
   if (!msg || !msg.id) return;
@@ -215,9 +255,20 @@ function addMessage(chatId, msg) {
   const msgs = chatMessages.get(chatId);
   if (msgs.find(m => m.id === msg.id)) return;
   if (msg.attaches && msg.attaches.length) rawAttaches.set(String(msg.id), msg.attaches);
+  rawMessages.set(String(msg.id), msg);
   const att = parseAttaches(msg.attaches);
   for (const a of att) { if (a.fileId && fileIndex.has(String(a.fileId))) { const fi = fileIndex.get(String(a.fileId)); fi.chatId = chatId; fi.messageId = msg.id; } }
-  msgs.push({ id: msg.id, text: msg.text || "", sender: getContactName(msg.sender), senderId: msg.sender, time: msg.time, attaches: att });
+  msgs.push({
+    id: msg.id,
+    text: msg.text || "",
+    sender: getContactName(msg.sender),
+    senderId: msg.sender,
+    time: msg.time,
+    attaches: att,
+    reactions: parseReactions(msg.reactionInfo),
+    forwardedFrom: parseForwardedFrom(msg),
+    replyTo: parseReplyTo(msg),
+  });
   msgs.sort((a, b) => (a.time || 0) - (b.time || 0));
   if (msgs.length > 200) chatMessages.set(chatId, msgs.slice(-200));
 }
@@ -363,6 +414,21 @@ const srv = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ ok: true, count: contacts.length, contacts: contacts.map(c => ({ id: c.id||c.userId, name: c.names?.[0]?.name||c.names?.[0]?.firstName||"", phone: c.phone, avatar: c.baseUrl||null })) }));
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })); }
     }); return;
+  }
+
+  if (u.pathname === "/debug-raw") {
+    const chatId = Number(u.searchParams.get("chatId"));
+    if (!chatId) { res.writeHead(400); res.end('{"error":"chatId required"}'); return; }
+    const msgs = chatMessages.get(chatId) || [];
+    const samples = [];
+    for (const m of msgs.slice(-20)) {
+      const raw = rawMessages.get(String(m.id));
+      if (raw) samples.push(raw);
+      if (samples.length >= 10) break;
+    }
+    res.writeHead(200, {"Content-Type":"application/json"});
+    res.end(JSON.stringify({ chatId, samples }));
+    return;
   }
 
   if (u.pathname === "/debug-attach") {

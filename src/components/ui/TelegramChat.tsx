@@ -20,6 +20,9 @@ interface TgMessage {
     title?: string | null;
     description?: string | null;
   } | null;
+  reactions?: { emoji: string; count: number }[] | null;
+  forwardedFrom?: { senderName: string | null; senderId?: string | null; date?: number } | null;
+  replyTo?: { id: string } | null;
 }
 
 interface Props {
@@ -301,9 +304,27 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                   {!msg.out && msg.fromName && (
                     <p className="text-xs font-semibold mb-0.5" style={{ color: "#0067a5" }}>{msg.fromName}</p>
                   )}
+                  {msg.forwardedFrom && (
+                    <div className="mb-1 pl-2 text-xs" style={{ borderLeft: "2px solid #0067a5", opacity: 0.85 }}>
+                      <p className="text-xs italic" style={{ color: "#0067a5" }}>
+                        ↪ Переслано{msg.forwardedFrom.senderName ? ` от ${msg.forwardedFrom.senderName}` : ""}
+                      </p>
+                    </div>
+                  )}
                   {msg.media && <MediaBubble media={msg.media} peer={peer} msgId={msg.id} onLightbox={setLightbox} />}
                   {msg.text && (
                     <p className="text-sm whitespace-pre-wrap leading-snug" style={{ color: "#222" }}>{msg.text}</p>
+                  )}
+                  {msg.reactions && msg.reactions.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {msg.reactions.map((r, ri) => (
+                        <span key={ri} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs"
+                          style={{ background: "#f0f0f0", color: "#555" }}>
+                          <span style={{ fontSize: 12 }}>{r.emoji}</span>
+                          {r.count > 1 && <span style={{ fontSize: 10 }}>{r.count}</span>}
+                        </span>
+                      ))}
+                    </div>
                   )}
                   <div className={`flex items-center gap-1 mt-0.5 ${msg.out ? "justify-end" : "justify-start"}`}>
                     <span className="text-xs" style={{ color: "#aaa" }}>{formatMsgTime(msg.date)}</span>

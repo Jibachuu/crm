@@ -274,6 +274,38 @@ const routes = {
 
     const messages = [];
     for await (const m of client.iterMessages(entity, opts)) {
+      // Reactions: m.reactions.results = [{ reaction: { emoticon: "👍" }, count: 2 }]
+      let reactions = null;
+      if (m.reactions?.results?.length) {
+        reactions = m.reactions.results.map((r) => ({
+          emoji: r.reaction?.emoticon || r.reaction?.documentId || "👍",
+          count: Number(r.count || 1),
+        }));
+      }
+      // Forwarded-from: m.fwdFrom = MessageFwdHeader
+      let forwardedFrom = null;
+      if (m.fwdFrom) {
+        const fh = m.fwdFrom;
+        forwardedFrom = {
+          senderName: fh.fromName || null,
+          senderId: fh.fromId ? String(fh.fromId.userId || fh.fromId.channelId || "") : null,
+          date: fh.date || null,
+        };
+        // Try to resolve human-readable name from cached entity
+        if (!forwardedFrom.senderName && forwardedFrom.senderId) {
+          const cached = entityCache.get(forwardedFrom.senderId);
+          if (cached) {
+            forwardedFrom.senderName = [cached.firstName, cached.lastName].filter(Boolean).join(" ").trim() || cached.username || null;
+          }
+        }
+      }
+      // Reply: m.replyTo = MessageReplyHeader; m.replyToMsgId
+      let replyTo = null;
+      if (m.replyTo?.replyToMsgId || m.replyToMsgId) {
+        replyTo = {
+          id: String(m.replyTo?.replyToMsgId || m.replyToMsgId),
+        };
+      }
       messages.push({
         id: m.id,
         text: m.message ?? "",
@@ -281,6 +313,9 @@ const routes = {
         out: m.out ?? false,
         fromName: m.sender?.firstName ?? m.sender?.username ?? null,
         media: extractMediaInfo(m),
+        reactions,
+        forwardedFrom,
+        replyTo,
       });
     }
     return { messages };

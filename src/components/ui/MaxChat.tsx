@@ -8,7 +8,7 @@ import ImageLightbox from "./ImageLightbox";
 export default function MaxChat({ chatId, compact = false, entityType, entityId }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[]; chatId?: string }[]>([]);
+  const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[]; chatId?: string; reactions?: { emoji: string; count: number }[]; forwardedFrom?: { senderName?: string; text?: string } | null; replyTo?: { id: string; senderName?: string; text?: string } | null }[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -187,6 +187,21 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
             }}>
               {!msg.isMe && <p className="text-xs font-medium mb-0.5" style={{ color: "#0067a5" }}>{msg.sender}</p>}
 
+              {/* Forwarded badge */}
+              {msg.forwardedFrom && (
+                <div className="mb-1 pl-2 text-xs" style={{ borderLeft: `2px solid ${msg.isMe ? "rgba(255,255,255,0.5)" : "#0067a5"}`, opacity: 0.85 }}>
+                  <p className="text-xs italic">↪ Переслано{msg.forwardedFrom.senderName ? ` от ${msg.forwardedFrom.senderName}` : ""}</p>
+                </div>
+              )}
+
+              {/* Reply quote */}
+              {msg.replyTo && (
+                <div className="mb-1 pl-2 py-1 rounded text-xs" style={{ borderLeft: `2px solid ${msg.isMe ? "rgba(255,255,255,0.5)" : "#0067a5"}`, background: msg.isMe ? "rgba(255,255,255,0.1)" : "#f0f7ff" }}>
+                  {msg.replyTo.senderName && <p className="font-medium" style={{ color: msg.isMe ? "rgba(255,255,255,0.85)" : "#0067a5" }}>{msg.replyTo.senderName}</p>}
+                  {msg.replyTo.text && <p className="truncate" style={{ maxWidth: 200, opacity: 0.85 }}>{msg.replyTo.text}</p>}
+                </div>
+              )}
+
               {/* Attachments */}
               {msg.attaches?.map((a: { type: string; name?: string; size?: number; url?: string; preview?: string; duration?: number; fileId?: number }, ai: number) => {
                 const photoSrc = a.preview || a.url || null;
@@ -238,8 +253,21 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
               {/* Text */}
               {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
               {/* Empty message without attaches */}
-              {!msg.text && (!msg.attaches || msg.attaches.length === 0) && (
+              {!msg.text && (!msg.attaches || msg.attaches.length === 0) && !msg.forwardedFrom && !msg.replyTo && (
                 <p className="text-xs italic" style={{ color: msg.isMe ? "rgba(255,255,255,0.7)" : "#888" }}>📎 Вложение</p>
+              )}
+
+              {/* Reactions */}
+              {msg.reactions && msg.reactions.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {msg.reactions.map((r, ri) => (
+                    <span key={ri} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs"
+                      style={{ background: msg.isMe ? "rgba(255,255,255,0.18)" : "#f0f0f0", color: msg.isMe ? "#fff" : "#555" }}>
+                      <span style={{ fontSize: 12 }}>{r.emoji}</span>
+                      {r.count > 1 && <span style={{ fontSize: 10 }}>{r.count}</span>}
+                    </span>
+                  ))}
+                </div>
               )}
 
               <p className="text-xs mt-0.5" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#aaa", textAlign: "right", fontSize: 10 }}>{formatTime(msg.time)}</p>
