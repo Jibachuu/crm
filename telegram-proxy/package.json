@@ -1,0 +1,10 @@
+{
+  "name": "artevo-telegram-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "dependencies": {
+    "telegram": "^2.24.11",
+    "big-integer": "^1.6.52"
+  }
+}

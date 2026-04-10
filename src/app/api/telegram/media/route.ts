@@ -1,45 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTelegramClient } from "@/lib/telegram/client";
+
+const URL_BASE = process.env.TG_PROXY_URL || "http://72.56.243.123:3300";
+const KEY = process.env.TG_PROXY_KEY || "artevo-tg-proxy-2026";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const peer = searchParams.get("peer");
-  const msgId = Number(searchParams.get("msgId"));
+  const msgId = searchParams.get("msgId");
 
   if (!peer || !msgId) {
     return NextResponse.json({ error: "peer и msgId обязательны" }, { status: 400 });
   }
 
   try {
-    const client = await getTelegramClient();
-    const [message] = await client.getMessages(peer, { ids: [msgId] });
-
-    if (!message?.media) {
-      return NextResponse.json({ error: "Медиа не найдено" }, { status: 404 });
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const media = message.media as any;
-    const className = media.className ?? "";
-
-    let mimeType = "application/octet-stream";
-    if (className === "MessageMediaPhoto") {
-      mimeType = "image/jpeg";
-    } else if (className === "MessageMediaDocument") {
-      mimeType = media.document?.mimeType ?? "application/octet-stream";
-    }
-
-    const buffer = await client.downloadMedia(message, {}) as Buffer | null;
-    if (!buffer) {
-      return NextResponse.json({ error: "Не удалось загрузить медиа" }, { status: 500 });
-    }
-
-    return new NextResponse(new Uint8Array(buffer), {
-      headers: {
-        "Content-Type": mimeType,
-        "Cache-Control": "private, max-age=3600",
-      },
+    const upstream = await fetch(`${URL_BASE}/media?peer=${encodeURIComponent(peer)}&msgId=${msgId}`, {
+      headers: { Authorization: KEY },
     });
+    if (!upstream.ok) {
+      const errText = await upstream.text();
+      return NextResponse.json({ error: errText }, { status: upstream.status });
+    }
+    const headers: Record<string, string> = {
+      "Content-Type": upstream.headers.get("content-type") || "application/octet-stream",
+      "Cache-Control": "private, max-age=3600",
+    };
+    const len = upstream.headers.get("content-length");
+    if (len) headers["Content-Length"] = len;
+    return new NextResponse(upstream.body, { status: 200, headers });
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as { message?: string }).message }, { status: 500 });
   }

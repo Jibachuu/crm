@@ -1,26 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { TelegramClient } from "telegram";
-import { StringSession } from "telegram/sessions";
 import { createClient } from "@/lib/supabase/server";
-
-const apiId = Number(process.env.TELEGRAM_API_ID);
-const apiHash = process.env.TELEGRAM_API_HASH ?? "";
+import { tgProxy } from "@/lib/telegram/proxy";
 
 export async function POST(req: NextRequest) {
   const { to, message, entityType, entityId } = await req.json();
 
-  const sessionStr = process.env.TELEGRAM_SESSION;
-  if (!sessionStr || !apiId || !apiHash) {
-    return NextResponse.json({ error: "Telegram не настроен" }, { status: 503 });
-  }
+  if (!to || !message) return NextResponse.json({ error: "to and message required" }, { status: 400 });
 
   try {
-    const client = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, { connectionRetries: 3 });
-    await client.connect();
-    await client.sendMessage(to, { message });
-    await client.disconnect();
+    await tgProxy("/send", { method: "POST", body: { peer: to, message } });
 
-    // Log to communications
     if (entityType && entityId) {
       const supabase = await createClient();
       await supabase.from("communications").insert({

@@ -27,11 +27,11 @@ export async function POST(req: NextRequest) {
   const telegramIds = new Set((existingContacts ?? []).filter((c) => c.telegram_id).map((c) => c.telegram_id));
   const maksIds = new Set((existingContacts ?? []).filter((c) => c.maks_id).map((c) => c.maks_id));
 
-  // ── TELEGRAM: check for new dialogs not in contacts (uses gramJS client) ──
+  // ── TELEGRAM: check for new dialogs not in contacts (via VPS proxy) ──
   if (source === "all" || source === "telegram") {
     try {
-      const { getTelegramClient } = await import("@/lib/telegram/client");
-      const client = await getTelegramClient();
+      const { tgProxy } = await import("@/lib/telegram/proxy");
+      const dialogsData = await tgProxy<{ dialogs: Array<{ id: string; name: string; username: string | null; phone: string | null; isUser: boolean }> }>("/dialogs");
 
       const adminUser = (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data;
       const adminId = adminUser?.id;
@@ -40,16 +40,13 @@ export async function POST(req: NextRequest) {
         ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
         : { data: null };
 
-      for await (const dialog of client.iterDialogs({ limit: 100 })) {
+      for (const dialog of dialogsData.dialogs ?? []) {
         if (!dialog.isUser) continue;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const entity = dialog.entity as any;
-        if (!entity) continue;
 
-        const tgId = String(entity.id);
-        const tgUsername = entity.username || null;
-        const tgPhone = entity.phone ? String(entity.phone) : null;
-        const tgName = [entity.firstName, entity.lastName].filter(Boolean).join(" ").trim() || tgUsername || tgId;
+        const tgId = String(dialog.id);
+        const tgUsername = dialog.username || null;
+        const tgPhone = dialog.phone ? String(dialog.phone) : null;
+        const tgName = dialog.name || tgUsername || tgId;
 
         // Find existing contact by telegram_id, then by phone
         let dbContact = null;

@@ -1,0 +1,18 @@
+[Unit]
+Description=Artevo Telegram Proxy
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/telegram-proxy
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=10
+Environment=PORT=3300
+Environment=API_KEY=artevo-tg-proxy-2026
+Environment=TELEGRAM_API_ID=32773382
+Environment=TELEGRAM_API_HASH=2dff0353addc3397ba1ad8ec70f2daaa
+Environment=TELEGRAM_SESSION=PLACEHOLDER
+
+[Install]
+WantedBy=multi-user.target
