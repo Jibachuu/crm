@@ -10,16 +10,25 @@ export default function MergeContactsSettings() {
   const [result, setResult] = useState<{ merged: number; groups: number; errors: string[] } | null>(null);
 
   async function handleMerge() {
-    if (!confirm("Объединить все контакты с одинаковыми телефонами? Дубликаты будут удалены, а связанные лиды/сделки/задачи перепривязаны.")) return;
+    if (!confirm("Объединить все контакты с одинаковыми телефонами?")) return;
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch("/api/merge-contacts", { method: "POST" });
-      const data = await res.json();
-      if (data.ok) setResult(data);
-      else alert("Ошибка: " + (data.error ?? ""));
+      // Long operation, no JSON parsing — just check status
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 120000);
+      const res = await fetch("/api/merge-contacts", { method: "POST", signal: ctrl.signal });
+      clearTimeout(timeoutId);
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
+        if (data.ok) setResult(data);
+        else alert("Ошибка: " + (data.error ?? text.slice(0, 200)));
+      } catch {
+        alert("Операция запущена. Проверьте контакты через минуту.");
+      }
     } catch (e) {
-      alert("Ошибка: " + e);
+      alert("Запрос отправлен. Проверьте контакты через 1-2 минуты.");
     }
     setLoading(false);
   }
