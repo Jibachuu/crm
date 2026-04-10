@@ -177,19 +177,44 @@ async function preloadHistories(reason = "manual", perChat = 50) {
 function parseAttaches(attaches) {
   if (!attaches || !Array.isArray(attaches)) return [];
   return attaches.map(a => {
-    const fid = a.fileId || a.audioId || null;
-    const token = a.token || null;
-    const url = a.url || (fid && token ? "https://fu.oneme.ru/api/download.do?id=" + fid + "&token=" + token : null);
-    if (fid) fileIndex.set(String(fid), { token, name: a.name, size: a.size, type: a._type, url, preview: a.preview?.baseUrl });
-    return { type: a._type, name: a.name, size: a.size, fileId: fid, duration: a.duration, url, preview: a.preview?.baseUrl };
+    // File IDs can come in different fields depending on attach type
+    const fid = a.fileId || a.audioId || a.videoId || a.photoId || null;
+    const token = a.token || a.photoToken || null;
+    // Direct download URL for files/audio
+    let url = a.url || (fid && token && a._type !== "PHOTO" ? "https://fu.oneme.ru/api/download.do?id=" + fid + "&token=" + token : null);
+    // Photo preview (data URI) — inline thumbnail
+    const previewData = a.preview?.previewData || a.previewData || null;
+    // Photo full-res URL (image server)
+    const photoUrl = a.baseUrl || a.sizes?.L?.url || a.sizes?.XL?.url || a.sizes?.ORIG?.url || null;
+    // For photos, we want a usable href
+    if (a._type === "PHOTO" || a._type === "IMAGE" || a._type === "STICKER") {
+      url = url || photoUrl;
+    }
+    if (fid) fileIndex.set(String(fid), { token, name: a.name, size: a.size, type: a._type, url, preview: previewData || photoUrl });
+    return {
+      type: a._type,
+      name: a.name,
+      size: a.size,
+      fileId: fid,
+      duration: a.duration,
+      url,
+      preview: previewData || photoUrl,
+      photoToken: a.photoToken || null,
+      photoId: a.photoId || null,
+    };
   });
 }
+
+// Store raw attaches per message id for debugging + for endpoints that need
+// access to original MAX payload fields (e.g. photoToken for PHOTO downloads).
+const rawAttaches = new Map(); // msg.id -> original attaches[]
 
 function addMessage(chatId, msg) {
   if (!msg || !msg.id) return;
   if (!chatMessages.has(chatId)) chatMessages.set(chatId, []);
   const msgs = chatMessages.get(chatId);
   if (msgs.find(m => m.id === msg.id)) return;
+  if (msg.attaches && msg.attaches.length) rawAttaches.set(String(msg.id), msg.attaches);
   const att = parseAttaches(msg.attaches);
   for (const a of att) { if (a.fileId && fileIndex.has(String(a.fileId))) { const fi = fileIndex.get(String(a.fileId)); fi.chatId = chatId; fi.messageId = msg.id; } }
   msgs.push({ id: msg.id, text: msg.text || "", sender: getContactName(msg.sender), senderId: msg.sender, time: msg.time, attaches: att });
@@ -338,6 +363,21 @@ const srv = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ ok: true, count: contacts.length, contacts: contacts.map(c => ({ id: c.id||c.userId, name: c.names?.[0]?.name||c.names?.[0]?.firstName||"", phone: c.phone, avatar: c.baseUrl||null })) }));
       } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })); }
     }); return;
+  }
+
+  if (u.pathname === "/debug-attach") {
+    const chatId = Number(u.searchParams.get("chatId"));
+    if (!chatId) { res.writeHead(400); res.end('{"error":"chatId required"}'); return; }
+    const msgs = chatMessages.get(chatId) || [];
+    const samples = [];
+    for (const m of msgs.slice(-30)) {
+      const raw = rawAttaches.get(String(m.id));
+      if (raw && raw.length) samples.push({ msgId: m.id, senderId: m.senderId, raw });
+      if (samples.length >= 5) break;
+    }
+    res.writeHead(200, {"Content-Type":"application/json"});
+    res.end(JSON.stringify({ chatId, samples }));
+    return;
   }
 
   if (u.pathname === "/warmup") {
