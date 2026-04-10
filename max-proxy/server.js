@@ -64,6 +64,8 @@ function handleWsMessage(raw) {
       // Warmup missing contacts after login (fire-and-forget, with small delay
       // so WS is fully ready). Done in background — doesn't block handshake.
       setTimeout(() => warmupContacts("login").catch(() => {}), 2000);
+      // Preload chat histories in background (50 msgs each)
+      setTimeout(() => preloadHistories("login").catch(() => {}), 3500);
       for (const chat of cachedChats) { const cid = chat.chatId || chat.id; if (chat.lastMessage) addMessage(cid, chat.lastMessage); }
       console.log("[MAX] OK! chats:", cachedChats.length, "msgs:", Array.from(chatMessages.values()).reduce((s,m)=>s+m.length,0));
       cachedChats.forEach(c => send(75, { chatId: c.chatId || c.id, subscribe: true }));
@@ -123,6 +125,52 @@ async function warmupContacts(reason = "manual") {
     return { reason, requested: ids.length, loaded: totalLoaded, totalInCache: cachedContacts.length };
   } finally {
     warmupInFlight = false;
+  }
+}
+
+// ───────── History fetching ─────────
+// MAX opcode 49 = GET_HISTORY. Fetches N messages backwards from a timestamp.
+// We use it to populate chatMessages cache beyond just the one lastMessage
+// from handshake, and to let CRM lazy-load older history on demand.
+async function fetchHistory(chatId, before = Date.now(), count = 50) {
+  if (!connected || !ws || ws.readyState !== 1) return [];
+  try {
+    const r = await request(49, { chatId: Number(chatId), from: Number(before), forward: 0, backward: Number(count), getMessages: true }, 10000);
+    const msgs = r?.payload?.messages || [];
+    // Add to cache (addMessage dedups by id)
+    for (const m of msgs) addMessage(Number(chatId), m);
+    return msgs;
+  } catch (e) {
+    console.log("[HISTORY]", chatId, "err:", e.message);
+    return [];
+  }
+}
+
+// Preload last N messages of every chat so CRM shows actual conversation
+// instead of just the last message. Fire-and-forget, batched.
+let preloadInFlight = false;
+async function preloadHistories(reason = "manual", perChat = 50) {
+  if (preloadInFlight) return { skipped: "in-flight" };
+  if (!connected) return { skipped: "not-connected" };
+  preloadInFlight = true;
+  const start = Date.now();
+  let totalLoaded = 0, processed = 0;
+  try {
+    for (const chat of cachedChats) {
+      const cid = chat.chatId || chat.id;
+      if (!cid || cid < 0) continue;
+      const existing = chatMessages.get(cid) || [];
+      if (existing.length >= perChat) { processed++; continue; }
+      const msgs = await fetchHistory(cid, Date.now(), perChat);
+      totalLoaded += msgs.length;
+      processed++;
+      // tiny delay between chats to avoid hammering the server
+      await new Promise(r => setTimeout(r, 80));
+    }
+    console.log(`[PRELOAD:${reason}] ${processed} chats, loaded ${totalLoaded} msgs in ${Date.now() - start}ms`);
+    return { reason, chats: processed, loaded: totalLoaded };
+  } finally {
+    preloadInFlight = false;
   }
 }
 
@@ -337,7 +385,43 @@ const srv = http.createServer(async (req, res) => {
     }
     res.writeHead(200, {"Content-Type":"application/json"}); res.end(JSON.stringify({ chats: e })); return;
   }
-  if (u.pathname === "/messages") { if (!connected) { res.writeHead(503); res.end('{"error":"Not connected"}'); return; } const cid = Number(u.searchParams.get("chatId")); if (!cid) { res.writeHead(400); res.end('{"error":"chatId required"}'); return; } res.writeHead(200, {"Content-Type":"application/json"}); res.end(JSON.stringify({ messages: chatMessages.get(cid)||[] })); return; }
+  if (u.pathname === "/messages") {
+    if (!connected) { res.writeHead(503); res.end('{"error":"Not connected"}'); return; }
+    const cid = Number(u.searchParams.get("chatId"));
+    const count = Number(u.searchParams.get("count") || "50");
+    if (!cid) { res.writeHead(400); res.end('{"error":"chatId required"}'); return; }
+    // Lazy-load: if cache has fewer than requested, fetch more via opcode 49
+    const cached = chatMessages.get(cid) || [];
+    if (cached.length < count) {
+      await fetchHistory(cid, Date.now(), count);
+    }
+    const result = (chatMessages.get(cid) || []).slice(-count);
+    res.writeHead(200, {"Content-Type":"application/json"});
+    res.end(JSON.stringify({ messages: result }));
+    return;
+  }
+
+  // Explicit history fetch — load older messages before a timestamp
+  if (u.pathname === "/history") {
+    if (!connected) { res.writeHead(503); res.end('{"error":"Not connected"}'); return; }
+    const cid = Number(u.searchParams.get("chatId"));
+    const before = Number(u.searchParams.get("before") || Date.now());
+    const count = Number(u.searchParams.get("count") || "50");
+    if (!cid) { res.writeHead(400); res.end('{"error":"chatId required"}'); return; }
+    const msgs = await fetchHistory(cid, before, count);
+    res.writeHead(200, {"Content-Type":"application/json"});
+    res.end(JSON.stringify({ fetched: msgs.length, messages: (chatMessages.get(cid) || []) }));
+    return;
+  }
+
+  // Manual preload all histories (for UI button)
+  if (u.pathname === "/preload-histories") {
+    if (!connected) { res.writeHead(503); res.end('{"error":"Not connected"}'); return; }
+    const result = await preloadHistories("manual", 100);
+    res.writeHead(200, {"Content-Type":"application/json"});
+    res.end(JSON.stringify(result));
+    return;
+  }
 
   if (u.pathname === "/download-url") {
     const fid = u.searchParams.get("fileId"); let cid = u.searchParams.get("chatId")||"0"; let mid = u.searchParams.get("messageId")||"0";
