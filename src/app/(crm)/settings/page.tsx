@@ -9,6 +9,7 @@ import DirectoriesSettings from "./DirectoriesSettings";
 import EmailTemplatesSettings from "./EmailTemplatesSettings";
 import SupplierSettings from "./SupplierSettings";
 import BulkTransferSettings from "./BulkTransferSettings";
+import MergeContactsSettings from "./MergeContactsSettings";
 import FileTemplatesSettings from "./FileTemplatesSettings";
 import ImportCommunications from "./ImportCommunications";
 
@@ -35,6 +36,7 @@ export default async function SettingsPage() {
         <div className="space-y-8">
           <UsersSettings users={users ?? []} permissions={permissions ?? []} />
           <BulkTransferSettings users={users ?? []} />
+          <MergeContactsSettings />
           <DirectoriesSettings />
           <CustomFieldsSettings customFields={customFields ?? []} />
           <SupplierSettings />
