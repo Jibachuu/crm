@@ -35,7 +35,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
   async function loadMessages() {
     setError("");
     try {
-      const res = await fetch(`/api/max?action=messages&chat_id=${chatId}&count=50`);
+      const res = await fetch(`/api/max?action=messages&chat_id=${chatId}&count=50`, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Ошибка"); return; }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -186,12 +186,16 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
               {!msg.isMe && <p className="text-xs font-medium mb-0.5" style={{ color: "#0067a5" }}>{msg.sender}</p>}
 
               {/* Attachments */}
-              {msg.attaches?.map((a: { type: string; name?: string; size?: number; url?: string; preview?: string; duration?: number; fileId?: number }, ai: number) => (
+              {msg.attaches?.map((a: { type: string; name?: string; size?: number; url?: string; preview?: string; duration?: number; fileId?: number }, ai: number) => {
+                const photoSrc = a.preview || a.url || null;
+                const photoFull = a.url || a.preview || null;
+                return (
                 <div key={ai} className="mb-1">
-                  {a.type === "PHOTO" || a.type === "IMAGE" ? (
-                    a.preview ? (
-                      <a href={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.preview} target="_blank" rel="noopener noreferrer" download={a.name || "photo"}>
-                        <img src={a.preview} alt="" className="rounded max-w-full cursor-pointer hover:opacity-90" style={{ maxHeight: 200 }} />
+                  {a.type === "PHOTO" || a.type === "IMAGE" || a.type === "STICKER" ? (
+                    photoSrc ? (
+                      <a href={photoFull || "#"} target="_blank" rel="noopener noreferrer" download={a.name || "photo"}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={photoSrc} alt="" className="rounded max-w-full cursor-pointer hover:opacity-90" style={{ maxHeight: 200 }} />
                       </a>
                     ) : <span className="text-xs">🖼 Фото</span>
                   ) : a.type === "AUDIO" ? (
