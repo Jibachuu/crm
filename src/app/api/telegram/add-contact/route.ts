@@ -41,8 +41,10 @@ export async function POST(req: NextRequest) {
 
     // Phone path: ImportContacts to add contact and resolve user
     const cleanPhone = String(phone).replace(/[^\d+]/g, "");
+    // gramJS uses big-integer, not native bigint — import dynamically
+    const bigInt = (await import("big-integer")).default;
     const contact = new Api.InputPhoneContact({
-      clientId: BigInt(Date.now()) as unknown as bigint,
+      clientId: bigInt(Date.now()),
       phone: cleanPhone,
       firstName: String(firstName || cleanPhone),
       lastName: String(lastName || ""),
