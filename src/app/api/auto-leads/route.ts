@@ -26,62 +26,83 @@ export async function POST(req: NextRequest) {
   const telegramIds = new Set((existingContacts ?? []).filter((c) => c.telegram_id).map((c) => c.telegram_id));
   const maksIds = new Set((existingContacts ?? []).filter((c) => c.maks_id).map((c) => c.maks_id));
 
-  // ── TELEGRAM: check for new dialogs not in contacts ──
+  // ── TELEGRAM: check for new dialogs not in contacts (uses gramJS client) ──
   if (source === "all" || source === "telegram") {
     try {
-      const telegramProxy = process.env.TELEGRAM_PROXY_URL;
-      if (telegramProxy) {
-        const res = await fetch(`${telegramProxy}/dialogs`).catch(() => null);
-        if (res?.ok) {
-          const data = await res.json();
-          const dialogs = data.dialogs ?? [];
+      const { getTelegramClient } = await import("@/lib/telegram/client");
+      const client = await getTelegramClient();
 
-          for (const dialog of dialogs) {
-            const peerId = String(dialog.id ?? dialog.peerId ?? "");
-            const name = dialog.name ?? dialog.title ?? peerId;
-            if (!peerId || telegramIds.has(peerId)) continue;
+      const adminUser = (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data;
+      const adminId = adminUser?.id;
+      const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
+      const { data: firstStage } = funnel
+        ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
+        : { data: null };
 
-            // Check if lead already exists for this telegram contact
-            const { data: existingLead } = await admin.from("leads")
-              .select("id")
-              .eq("source", "telegram")
-              .ilike("title", `%${peerId}%`)
-              .limit(1)
-              .single();
-            if (existingLead) continue;
+      for await (const dialog of client.iterDialogs({ limit: 100 })) {
+        if (!dialog.isUser) continue;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const entity = dialog.entity as any;
+        if (!entity) continue;
 
-            // Create contact
-            const { data: contact } = await admin.from("contacts")
-              .insert({
-                full_name: name,
-                telegram_id: peerId,
-                created_by: (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id,
-              })
-              .select("id")
-              .single();
+        const tgId = String(entity.id);
+        const tgUsername = entity.username || null;
+        const tgPhone = entity.phone ? String(entity.phone) : null;
+        const tgName = [entity.firstName, entity.lastName].filter(Boolean).join(" ").trim() || tgUsername || tgId;
 
-            if (contact) {
-              // Get default funnel
-              const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
-              const { data: firstStage } = funnel
-                ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
-                : { data: null };
+        // Find existing contact by telegram_id, then by phone
+        let dbContact = null;
+        const { data: byTgId } = await admin.from("contacts").select("id, full_name, phone, telegram_id").eq("telegram_id", tgId).limit(1).single();
+        if (byTgId) dbContact = byTgId;
 
-              // Create lead
-              await admin.from("leads").insert({
-                title: `Telegram: ${name}`,
-                source: "telegram",
-                status: "new",
-                contact_id: contact.id,
-                funnel_id: funnel?.id ?? null,
-                stage_id: firstStage?.id ?? null,
-                created_by: (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id,
-              });
-              results.push(`Lead created: Telegram ${name}`);
-              telegramIds.add(peerId);
-            }
-          }
+        if (!dbContact && tgPhone) {
+          const cleanPhone = tgPhone.replace(/\D/g, "").slice(-10);
+          const { data: byPhone } = await admin.from("contacts").select("id, full_name, phone, telegram_id").ilike("phone", `%${cleanPhone}%`).limit(1).single();
+          if (byPhone) dbContact = byPhone;
         }
+
+        let contactId;
+        if (dbContact) {
+          // Update missing fields
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const updates: any = {};
+          if (tgName && (!dbContact.full_name || dbContact.full_name === tgId || /^\d+$/.test(dbContact.full_name))) updates.full_name = tgName;
+          if (tgPhone && !dbContact.phone) updates.phone = tgPhone;
+          if (tgId && !dbContact.telegram_id) updates.telegram_id = tgId;
+          if (tgUsername) updates.telegram_username = tgUsername;
+          if (Object.keys(updates).length > 0) {
+            await admin.from("contacts").update(updates).eq("id", dbContact.id);
+          }
+          contactId = dbContact.id;
+        } else {
+          const { data: newContact } = await admin.from("contacts")
+            .insert({
+              full_name: tgName,
+              phone: tgPhone,
+              telegram_id: tgId,
+              telegram_username: tgUsername,
+              created_by: adminId,
+            })
+            .select("id")
+            .single();
+          contactId = newContact?.id;
+          if (!contactId) continue;
+        }
+
+        // Check if lead already exists
+        const { data: existingLead } = await admin.from("leads").select("id").eq("source", "telegram").eq("contact_id", contactId).limit(1).single();
+        if (existingLead) continue;
+
+        await admin.from("leads").insert({
+          title: `Telegram: ${tgName}`,
+          source: "telegram",
+          status: "new",
+          contact_id: contactId,
+          funnel_id: funnel?.id ?? null,
+          stage_id: firstStage?.id ?? null,
+          created_by: adminId,
+        });
+        results.push(`Lead created: Telegram ${tgName}`);
       }
     } catch (e) {
       results.push(`Telegram error: ${e}`);
