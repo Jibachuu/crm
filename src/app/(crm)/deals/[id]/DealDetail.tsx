@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, Package, Plus, CheckSquare, MessageSquare, Send } from "lucide-react";
+import TaskItem from "@/components/ui/TaskItem";
 import TelegramChat from "@/components/ui/TelegramChat";
 import MaxChat from "@/components/ui/MaxChat";
 import EmailThread from "@/components/ui/EmailThread";
@@ -364,24 +365,13 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 {tasks.length === 0 ? (
                   <p className="text-sm text-center py-8" style={{ color: "#aaa" }}>Задачи отсутствуют</p>
                 ) : (
-                  tasks.map((task: { id: string; title: string; priority: string; due_date?: string; users?: { full_name: string } }) => (
-                    <Card key={task.id}>
-                      <CardBody className="py-3">
-                        <div className="flex items-center gap-3">
-                          <CheckSquare size={15} style={{ color: "#aaa", flexShrink: 0 }} />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium" style={{ color: "#333" }}>{task.title}</p>
-                            <div className="flex gap-2 mt-0.5">
-                              {task.due_date && <span className="text-xs" style={{ color: "#999" }}>до {formatDate(task.due_date)}</span>}
-                              {task.users && <span className="text-xs" style={{ color: "#999" }}>• {task.users.full_name}</span>}
-                            </div>
-                          </div>
-                          <Badge variant={task.priority === "high" ? "danger" : task.priority === "medium" ? "warning" : "default"}>
-                            {PRIORITY_LABELS[task.priority]}
-                          </Badge>
-                        </div>
-                      </CardBody>
-                    </Card>
+                  tasks.map((task: { id: string; title: string; status: string; priority: string; due_date?: string; users?: { full_name: string } }) => (
+                    <TaskItem
+                      key={task.id}
+                      task={task}
+                      onUpdated={(t) => setTasks((prev: { id: string }[]) => prev.map((p) => p.id === t.id ? t : p))}
+                      onDeleted={(id) => setTasks((prev: { id: string }[]) => prev.filter((p) => p.id !== id))}
+                    />
                   ))
                 )}
               </div>
