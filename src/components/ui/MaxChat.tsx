@@ -306,11 +306,21 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
           className="p-1.5 rounded-full hover:bg-slate-100 transition-colors disabled:opacity-40">
           <Paperclip size={16} style={{ color: "#888" }} />
         </button>
-        <input ref={fileRef} type="file" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) sendFile(f); e.target.value = ""; }} />
+        <input ref={fileRef} type="file" className="hidden" multiple
+          onChange={async (e) => { const files = e.target.files; if (files) { for (let i = 0; i < files.length; i++) await sendFile(files[i]); } e.target.value = ""; }} />
 
         <input value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
+          onPaste={(e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (let i = 0; i < items.length; i++) {
+              if (items[i].type.startsWith("image/")) {
+                const file = items[i].getAsFile();
+                if (file) { e.preventDefault(); sendFile(file); return; }
+              }
+            }
+          }}
           placeholder={uploading ? "Загрузка..." : "Сообщение в МАКС..."}
           disabled={recording || uploading}
           className="flex-1 text-sm px-3 py-1.5 rounded-full focus:outline-none"

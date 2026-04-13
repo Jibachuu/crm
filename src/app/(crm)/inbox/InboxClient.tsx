@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, RefreshCw, MessageSquare } from "lucide-react";
+import { Search, RefreshCw, MessageSquare, Link2 } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
+import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
 
 interface Dialog {
   id: string;
   name: string;
   username: string | null;
   phone: string | null;
+  photoUrl?: string | null;
   unreadCount: number;
   lastMessage: string;
   lastDate: number | null;
@@ -46,6 +48,7 @@ export default function InboxClient() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Dialog | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [linkedOpen, setLinkedOpen] = useState(false);
 
   async function loadDialogs(silent = false) {
     if (!silent) setLoading(true);
@@ -125,10 +128,15 @@ export default function InboxClient() {
                 style={{ background: isSel ? "#e8f4fd" : "transparent", borderLeft: isSel ? "3px solid #0067a5" : "3px solid transparent" }}
               >
                 {/* Avatar */}
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                  style={{ background: avatarColor(dialog.name) }}>
-                  {getInitials(dialog.name)}
-                </div>
+                {dialog.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={dialog.photoUrl} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                ) : (
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                    style={{ background: avatarColor(dialog.name) }}>
+                    {getInitials(dialog.name)}
+                  </div>
+                )}
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
@@ -161,7 +169,8 @@ export default function InboxClient() {
       </div>
 
       {/* Right panel — chat */}
-      <div className="flex flex-col flex-1 min-w-0" style={{ background: "#f5f5f5" }}>
+      <div className="flex-1 flex min-w-0" style={{ background: "#f5f5f5" }}>
+        <div className="flex flex-col flex-1 min-w-0">
         {!selectedPeer ? (
           <div className="flex flex-col items-center justify-center h-full gap-3">
             <MessageSquare size={48} style={{ color: "#ddd" }} />
@@ -170,20 +179,41 @@ export default function InboxClient() {
         ) : (
           <>
             {/* Chat header */}
-            <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: "1px solid #e4e4e4", background: "#fff" }}>
-              <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                style={{ background: avatarColor(selected!.name) }}>
-                {getInitials(selected!.name)}
-              </div>
-              <div>
-                <p className="text-sm font-semibold" style={{ color: "#222" }}>
-                {selected!.name}
-                {selected!.isChannel && <span className="ml-2 text-xs px-1.5 py-0.5 rounded" style={{ background: "#fff3e0", color: "#e65c00" }}>Канал</span>}
-              </p>
+            <div className="flex items-center gap-3 px-4 py-2" style={{ borderBottom: "1px solid #e4e4e4", background: "#fff" }}>
+              {selected!.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={selected!.photoUrl} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
+                  style={{ background: avatarColor(selected!.name) }}>
+                  {getInitials(selected!.name)}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate" style={{ color: "#222" }}>
+                  {selected!.name}
+                  {selected!.isChannel && <span className="ml-2 text-xs px-1.5 py-0.5 rounded" style={{ background: "#fff3e0", color: "#e65c00" }}>Канал</span>}
+                </p>
                 {selected!.username && <p className="text-xs" style={{ color: "#0067a5" }}>@{selected!.username}</p>}
                 {!selected!.username && selected!.phone && <p className="text-xs" style={{ color: "#888" }}>{selected!.phone}</p>}
-                {selected!.isChannel && <p className="text-xs" style={{ color: "#e65c00" }}>В каналы нельзя отправлять сообщения</p>}
               </div>
+              <button
+                onClick={() => setLinkedOpen(!linkedOpen)}
+                className="text-xs px-2 py-1 rounded hover:bg-blue-50 flex items-center gap-1"
+                style={{ color: "#0088cc", border: "1px solid #b3e0f5" }}
+              >
+                <Link2 size={11} /> Связи
+              </button>
+              <button
+                onClick={async () => {
+                  await fetch("/api/telegram/mark-unread", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ peer: selectedPeer }) });
+                  loadDialogs(true);
+                }}
+                className="text-xs px-2 py-1 rounded hover:bg-blue-50"
+                style={{ color: "#0088cc", border: "1px solid #b3e0f5" }}
+              >
+                Не прочитано
+              </button>
             </div>
 
             {/* Chat component */}
@@ -191,6 +221,19 @@ export default function InboxClient() {
               <TelegramChat peer={selectedPeer} compact={false} readOnly={selected!.isChannel} />
             </div>
           </>
+        )}
+        </div>
+        {linkedOpen && selected && (
+          <div style={{ width: 320, borderLeft: "1px solid #e4e4e4" }}>
+            <LinkedEntitiesPanel
+              telegramId={selected.id}
+              telegramUsername={selected.username || undefined}
+              phone={selected.phone || undefined}
+              displayName={selected.name}
+              channel="telegram"
+              onClose={() => setLinkedOpen(false)}
+            />
+          </div>
         )}
       </div>
     </div>
