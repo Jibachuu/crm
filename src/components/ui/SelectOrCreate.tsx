@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Plus, X, Search } from "lucide-react";
 import Button from "./Button";
 import Input from "./Input";
@@ -25,11 +25,34 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
   const [searchQuery, setSearchQuery] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  const filtered = useMemo(() => {
-    if (!searchQuery.trim()) return options;
-    const q = searchQuery.toLowerCase();
-    return options.filter((o) => o.label.toLowerCase().includes(q));
-  }, [options, searchQuery]);
+  const [searchResults, setSearchResults] = useState<{ value: string; label: string }[] | null>(null);
+  const [searching, setSearching] = useState(false);
+
+  // Server-side search when query is typed (handles 1000+ records)
+  useEffect(() => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+      setSearchResults(null);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const table = entityType === "contact" ? "contacts" : "companies";
+        const field = entityType === "contact" ? "full_name" : "name";
+        const res = await fetch(`/api/search?table=${table}&field=${field}&q=${encodeURIComponent(searchQuery.trim())}&limit=30`);
+        if (res.ok) {
+          const data = await res.json();
+          setSearchResults(data.results ?? []);
+        }
+      } catch { /* */ }
+      setSearching(false);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [searchQuery, entityType]);
+
+  const filtered = searchResults ?? (searchQuery.trim()
+    ? options.filter((o) => o.label.toLowerCase().includes(searchQuery.toLowerCase()))
+    : options.slice(0, 100));
 
   const selectedLabel = options.find((o) => o.value === selectedValue)?.label ?? "";
 
@@ -164,7 +187,10 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
                 {opt.label}
               </button>
             ))}
-            {filtered.length === 0 && (
+            {searching && (
+              <p className="text-xs text-center py-3" style={{ color: "#aaa" }}>Поиск...</p>
+            )}
+            {!searching && filtered.length === 0 && searchQuery.trim().length >= 2 && (
               <p className="text-xs text-center py-3" style={{ color: "#aaa" }}>Не найдено</p>
             )}
           </div>
