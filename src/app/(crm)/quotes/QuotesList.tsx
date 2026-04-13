@@ -41,7 +41,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const uploadProductIdRef = useRef("");
+  const uploadItemIdxRef = useRef(-1);
 
   function openCreate() {
     setEditing(null);
@@ -155,15 +155,21 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   }
 
-  async function uploadProductImage(file: File, productId: string) {
-    setUploadingImage(productId);
+  async function uploadItemImage(file: File, itemIndex: number) {
+    setUploadingImage(String(itemIndex));
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("product_id", productId);
+    // If item has a product_id, upload to product; otherwise upload to general quote-images
+    const item = items[itemIndex];
+    if (item?.product_id) {
+      fd.append("product_id", item.product_id);
+    } else {
+      fd.append("product_id", `quote-manual-${Date.now()}`);
+    }
     const res = await fetch("/api/products/upload-image", { method: "POST", body: fd });
     if (res.ok) {
       const { url } = await res.json();
-      setItems(items.map((it) => it.product_id === productId ? { ...it, image_url: url } : it));
+      setItems(items.map((it, i) => i === itemIndex ? { ...it, image_url: url } : it));
     }
     setUploadingImage(null);
   }
@@ -327,20 +333,19 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                     <div className="flex-shrink-0">
                       {item.image_url ? (
                         <div className="relative group">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={item.image_url} alt="" className="w-20 h-20 rounded object-cover" style={{ border: "1px solid #e0e0e0" }} />
-                          {item.product_id && (
-                            <button onClick={() => { uploadProductIdRef.current = item.product_id; fileRef.current?.click(); }}
-                              className="absolute inset-0 bg-black/40 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                              <ImagePlus size={16} style={{ color: "#fff" }} />
-                            </button>
-                          )}
+                          <button onClick={() => { uploadItemIdxRef.current = idx; fileRef.current?.click(); }}
+                            className="absolute inset-0 bg-black/40 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <ImagePlus size={16} style={{ color: "#fff" }} />
+                          </button>
                         </div>
                       ) : (
-                        <button onClick={() => { if (item.product_id) { uploadProductIdRef.current = item.product_id; fileRef.current?.click(); } }}
+                        <button onClick={() => { uploadItemIdxRef.current = idx; fileRef.current?.click(); }}
                           className="w-20 h-20 rounded flex flex-col items-center justify-center gap-1 transition-colors hover:bg-gray-100"
                           style={{ background: "#f0f0f0", border: "1px dashed #ccc" }}
-                          disabled={!item.product_id || uploadingImage === item.product_id}>
-                          {uploadingImage === item.product_id ? (
+                          disabled={uploadingImage === String(idx)}>
+                          {uploadingImage === String(idx) ? (
                             <span className="text-xs" style={{ color: "#888" }}>...</span>
                           ) : (
                             <>
@@ -454,10 +459,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       {/* Hidden file input for product images */}
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
         const f = e.target.files?.[0];
-        if (f && uploadProductIdRef.current) {
-          if (confirm("Фото сохранится для всех КП с этим товаром. Продолжить?")) {
-            uploadProductImage(f, uploadProductIdRef.current);
-          }
+        if (f && uploadItemIdxRef.current >= 0) {
+          uploadItemImage(f, uploadItemIdxRef.current);
         }
         e.target.value = "";
       }} />
