@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       direction: msg.isMe || msg.direction === "outbound" ? "outbound" : "inbound",
       body: msg.text || msg.body || msg.preview || "",
       from_address: msg.sender || msg.from || msg.fromEmail || "",
+      sender_name: msg.sender || msg.fromName || msg.from || null,
       subject: msg.subject || null,
       external_id: externalId,
       created_by: msg.isMe ? user.id : null,

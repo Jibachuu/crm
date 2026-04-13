@@ -264,7 +264,8 @@ function DetailPanel({ order, users, userRole, onClose, onUpdated, onDeleted }: 
   const [arrivalEdit, setArrivalEdit] = useState(order.estimated_arrival ?? "");
   const [notesEdit, setNotesEdit] = useState(order.notes ?? "");
 
-  const isAdmin = userRole === "admin";
+  const isAdmin = userRole === "admin" || userRole === "supervisor";
+  const canEdit = true; // All authenticated users can edit production orders
   const STAGE_LABELS: Record<string, string> = { new: "Передан", in_progress: "В работе", discussion: "Обсуждение", packing: "Упаковка", shipped: "Отправлен", delivered: "Доставлен", review_requested: "Отзыв" };
 
   // Load comments/log
@@ -298,7 +299,7 @@ function DetailPanel({ order, users, userRole, onClose, onUpdated, onDeleted }: 
       <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid #e4e4e4" }}>
         <h3 className="text-sm font-semibold">{order.companies?.name ?? "Заказ"}</h3>
         <div className="flex items-center gap-1">
-          {isAdmin && <button onClick={deleteOrder} className="p-1 rounded hover:bg-red-50" title="Удалить"><Trash2 size={14} style={{ color: "#c62828" }} /></button>}
+          {canEdit && <button onClick={deleteOrder} className="p-1 rounded hover:bg-red-50" title="Удалить"><Trash2 size={14} style={{ color: "#c62828" }} /></button>}
           <button onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={16} /></button>
         </div>
       </div>
