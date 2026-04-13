@@ -428,7 +428,7 @@ export default function SamplesList({ initialSamples, companies, contacts, users
                 setForm({ ...form, contact_id: e.target.value, contact_phone: contact?.phone ?? form.contact_phone });
               }} style={inputStyle}>
                 <option value="">Выберите...</option>
-                {contacts.map((c: { id: string; full_name: string }) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                {contacts.map((c: { id: string; full_name: string; companies?: { name: string } | null }) => <option key={c.id} value={c.id}>{c.full_name}{(c as { companies?: { name: string } | null }).companies?.name ? ` · ${(c as { companies?: { name: string } | null }).companies!.name}` : ""}</option>)}
               </select>
             </div>
             <div>

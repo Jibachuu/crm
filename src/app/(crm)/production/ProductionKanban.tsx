@@ -140,7 +140,7 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
               <div className="flex-1 space-y-2 p-2 rounded-b-lg overflow-y-auto" style={{ background: "#fafafa", minHeight: 200 }}>
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {stageOrders.map((order: any) => {
-                  const products = (order.deals?.deal_products ?? []).map((dp: { quantity: number; products: { name: string } | { name: string }[] }) => {
+                  const products = (order.deals?.deal_products ?? []).filter((dp: { product_block?: string }) => dp.product_block === "order").map((dp: { quantity: number; products: { name: string } | { name: string }[] }) => {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const p = Array.isArray(dp.products) ? dp.products[0] : dp.products as any;
                     return `${p?.name ?? "?"} × ${dp.quantity}`;
@@ -327,7 +327,7 @@ function DetailPanel({ order, users, userRole, onClose, onUpdated, onDeleted }: 
         {/* Products */}
         <div>
           <h4 className="font-semibold mb-1" style={{ color: "#888" }}>Товары</h4>
-          {(order.deals?.deal_products ?? []).map((dp: { quantity: number; products: any }, i: number) => {
+          {(order.deals?.deal_products ?? []).filter((dp: { product_block?: string }) => dp.product_block === "order").map((dp: { quantity: number; products: any }, i: number) => {
             const p = Array.isArray(dp.products) ? dp.products[0] : dp.products;
             return <p key={i} style={{ color: "#333" }}>{p?.name} (арт. {p?.sku}) × {dp.quantity}</p>;
           })}

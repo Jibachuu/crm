@@ -31,7 +31,8 @@ const SOURCE_OPTIONS = [
 export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: boolean; onClose: () => void; lead: any; onSaved: (lead: any) => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [contacts, setContacts] = useState<{ id: string; full_name: string }[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [contacts, setContacts] = useState<any[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
 
@@ -39,7 +40,7 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
     if (!open) return;
     const supabase = createClient();
     Promise.all([
-      supabase.from("contacts").select("id, full_name").order("full_name"),
+      supabase.from("contacts").select("id, full_name, companies(name)").order("full_name"),
       supabase.from("companies").select("id, name").order("name"),
       supabase.from("users").select("id, full_name").eq("is_active", true),
     ]).then(([c, co, u]) => {
@@ -91,7 +92,10 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
             label="Контакт"
             name="contact_id"
             entityType="contact"
-            options={contacts.map((c) => ({ value: c.id, label: c.full_name }))}
+            options={contacts.map((c: { id: string; full_name: string; companies?: { name: string } | { name: string }[] | null }) => {
+              const coName = Array.isArray(c.companies) ? c.companies[0]?.name : c.companies?.name;
+              return { value: c.id, label: c.full_name + (coName ? ` · ${coName}` : "") };
+            })}
             placeholder="Выберите контакт"
             defaultValue={lead?.contact_id ?? ""}
             onCreated={(item) => setContacts((prev) => [...prev, { id: item.id, full_name: item.label }])}

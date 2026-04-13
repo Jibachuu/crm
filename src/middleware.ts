@@ -2,6 +2,13 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Skip auth entirely for webhooks and external-access APIs (saves ~100ms per request)
+  if (pathname.startsWith("/api/webhooks") || pathname.startsWith("/api/auto-leads")) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -28,13 +35,6 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const { pathname } = request.nextUrl;
-
-  // Skip auth for webhooks and API endpoints that need external access
-  if (pathname.startsWith("/api/webhooks") || pathname.startsWith("/api/auto-leads")) {
-    return supabaseResponse;
-  }
 
   // Public routes
   const publicRoutes = ["/login", "/register", "/forgot-password", "/reset-password", "/q/", "/api/image-proxy"];

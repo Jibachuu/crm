@@ -32,33 +32,33 @@ export default function EditContactModal({ open, onClose, contact, onSaved }: { 
     setLoading(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const supabase = createClient();
-
-    const { data, error: err } = await supabase
-      .from("contacts")
-      .update({
-        full_name: fd.get("full_name") as string,
-        last_name: (fd.get("last_name") as string) || null,
-        middle_name: (fd.get("middle_name") as string) || null,
-        position: (fd.get("position") as string) || null,
-        phone: (fd.get("phone") as string) || null,
-        phone_mobile: (fd.get("phone_mobile") as string) || null,
-        phone_other: (fd.get("phone_other") as string) || null,
-        email: (fd.get("email") as string) || null,
-        email_other: (fd.get("email_other") as string) || null,
-        telegram_username: (fd.get("telegram_username") as string) || null,
-        telegram_id: (fd.get("telegram_id") as string) || null,
-        maks_id: (fd.get("maks_id") as string) || null,
-        company_id: (fd.get("company_id") as string) || null,
-        assigned_to: (fd.get("assigned_to") as string) || null,
-        description: (fd.get("description") as string) || null,
-      })
-      .eq("id", contact.id)
-      .select("*, companies(id, name), users!contacts_assigned_to_fkey(id, full_name)")
-      .single();
-
-    if (err) setError(err.message);
-    else { onSaved(data); onClose(); }
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: contact.id,
+          full_name: fd.get("full_name"),
+          last_name: fd.get("last_name"),
+          middle_name: fd.get("middle_name"),
+          position: fd.get("position"),
+          phone: fd.get("phone"),
+          phone_mobile: fd.get("phone_mobile"),
+          phone_other: fd.get("phone_other"),
+          email: fd.get("email"),
+          email_other: fd.get("email_other"),
+          telegram_username: fd.get("telegram_username"),
+          telegram_id: fd.get("telegram_id"),
+          maks_id: fd.get("maks_id"),
+          company_id: fd.get("company_id"),
+          assigned_to: fd.get("assigned_to"),
+          description: fd.get("description"),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) setError(data.error || "Ошибка");
+      else { onSaved(data); onClose(); }
+    } catch (e) { setError(String(e)); }
     setLoading(false);
   }
 

@@ -14,7 +14,7 @@ export default async function ProductionPage() {
 
   const [{ data: orders }, { data: users }, { data: wonDeals }] = await Promise.all([
     admin.from("order_production")
-      .select("*, companies(id, name), contacts(full_name), deals(id, title, deal_products(quantity, products(name, sku))), manager:users!order_production_manager_id_fkey(id, full_name), worker:users!order_production_worker_id_fkey(id, full_name)")
+      .select("*, companies(id, name), contacts(full_name), deals(id, title, deal_products(quantity, product_block, products(name, sku))), manager:users!order_production_manager_id_fkey(id, full_name), worker:users!order_production_worker_id_fkey(id, full_name)")
       .order("created_at", { ascending: false }),
     admin.from("users").select("id, full_name").eq("is_active", true).order("full_name"),
     admin.from("deals").select("id, title, companies(name)").eq("stage", "won").order("created_at", { ascending: false }).limit(50),

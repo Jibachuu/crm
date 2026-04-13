@@ -18,29 +18,26 @@ export default function CreateContactModal({ open, onClose, companies, users, on
     setLoading(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data, error: err } = await supabase
-      .from("contacts")
-      .insert({
-        full_name: fd.get("full_name") as string,
-        position: (fd.get("position") as string) || null,
-        phone: (fd.get("phone") as string) || null,
-        email: (fd.get("email") as string) || null,
-        telegram_id: (fd.get("telegram_id") as string) || null,
-        maks_id: (fd.get("maks_id") as string) || null,
-        company_id: (fd.get("company_id") as string) || null,
-        description: (fd.get("description") as string) || null,
-        assigned_to: (fd.get("assigned_to") as string) || null,
-        created_by: user.id,
-      })
-      .select("*, companies(id, name), users!contacts_assigned_to_fkey(id, full_name)")
-      .single();
-
-    if (err) setError(err.message);
-    else onCreated(data);
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: fd.get("full_name"),
+          position: fd.get("position"),
+          phone: fd.get("phone"),
+          email: fd.get("email"),
+          telegram_id: fd.get("telegram_id"),
+          maks_id: fd.get("maks_id"),
+          company_id: fd.get("company_id"),
+          description: fd.get("description"),
+          assigned_to: fd.get("assigned_to"),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) setError(data.error || "Ошибка");
+      else onCreated(data);
+    } catch (e) { setError(String(e)); }
     setLoading(false);
   }
 
