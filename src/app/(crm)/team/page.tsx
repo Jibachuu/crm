@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import Header from "@/components/layout/Header";
-import TeamClient from "./TeamClient";
+import TeamPageTabs from "./TeamPageTabs";
 
 export default async function TeamPage() {
   const supabase = await createClient();
   const { data: { user: authUser } } = await supabase.auth.getUser();
+
+  const { data: currentUser } = await supabase.from("users").select("role").eq("id", authUser?.id ?? "").single();
 
   const { data: users } = await supabase
     .from("users")
@@ -14,12 +16,11 @@ export default async function TeamPage() {
   return (
     <>
       <Header title="Команда" />
-      <main className="flex-1 flex min-h-0">
-        <TeamClient
-          currentUserId={authUser?.id ?? ""}
-          users={users?.filter((u) => u.id !== authUser?.id) ?? []}
-        />
-      </main>
+      <TeamPageTabs
+        currentUserId={authUser?.id ?? ""}
+        users={users ?? []}
+        userRole={currentUser?.role ?? "manager"}
+      />
     </>
   );
 }
