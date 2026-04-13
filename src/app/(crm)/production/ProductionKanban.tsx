@@ -39,7 +39,7 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
   const [detailOrder, setDetailOrder] = useState<any>(null);
   const [detailComment, setDetailComment] = useState("");
 
-  const isWorkerOrAdmin = userRole !== "manager";
+  const isWorkerOrAdmin = true; // All users can move production stages
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const filtered = orders.filter((o: any) => {
@@ -86,8 +86,10 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
   }
 
   async function confirmPrompt() {
-    if (!promptModal || !promptValue.trim()) return;
-    const extra: Record<string, string> = promptModal.type === "tracking" ? { tracking_number: promptValue } : { estimated_arrival: promptValue };
+    if (!promptModal) return;
+    const extra: Record<string, string> = {};
+    if (promptModal.type === "tracking" && promptValue.trim()) extra.tracking_number = promptValue;
+    if (promptModal.type === "arrival" && promptValue.trim()) extra.estimated_arrival = promptValue;
     await doMove(promptModal.orderId, promptModal.stage, extra);
     setPromptModal(null);
   }
@@ -174,7 +176,7 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
                       {/* Move buttons for workers/admins */}
                       {isWorkerOrAdmin && (
                         <div className="flex gap-1 mt-2 flex-wrap">
-                          {STAGES.filter((s) => s.key !== order.stage).slice(0, 3).map((s) => (
+                          {STAGES.filter((s) => s.key !== order.stage).map((s) => (
                             <button key={s.key} onClick={(e) => { e.stopPropagation(); moveStage(order.id, s.key); }}
                               className="text-xs px-1.5 py-0.5 rounded transition-colors hover:opacity-80"
                               style={{ background: s.color + "15", color: s.color, fontSize: 9 }}>
@@ -223,7 +225,7 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
         <Modal open onClose={() => {}} title={promptModal.type === "tracking" ? "Введите трек-номер" : "Введите дату прибытия"} size="sm">
           <div className="p-5 space-y-3">
             <p className="text-xs" style={{ color: "#888" }}>
-              {promptModal.type === "tracking" ? "Без трек-номера нельзя перевести в 'Отправлен'" : "Укажите ожидаемую дату прибытия"}
+              {promptModal.type === "tracking" ? "Трек-номер (можно пропустить)" : "Ожидаемая дата прибытия (можно пропустить)"}
             </p>
             {promptModal.type === "tracking" ? (
               <input value={promptValue} onChange={(e) => setPromptValue(e.target.value)} style={inputStyle} placeholder="ABC123456789" autoFocus />
@@ -231,7 +233,8 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
               <input type="date" value={promptValue} onChange={(e) => setPromptValue(e.target.value)} style={inputStyle} autoFocus />
             )}
             <div className="flex gap-2">
-              <Button onClick={confirmPrompt} disabled={!promptValue.trim()}><Check size={13} /> Подтвердить</Button>
+              <Button onClick={confirmPrompt}><Check size={13} /> Подтвердить</Button>
+              <Button variant="secondary" onClick={() => { setPromptModal(null); doMove(promptModal.orderId, promptModal.stage); }}>Пропустить</Button>
               <Button variant="secondary" onClick={() => setPromptModal(null)}>Отмена</Button>
             </div>
           </div>
