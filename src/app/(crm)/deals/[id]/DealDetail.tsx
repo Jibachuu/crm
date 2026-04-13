@@ -423,6 +423,8 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   items={requestProducts}
                   total={totalRequest}
                   onAdd={() => setAddProductBlock("request")}
+                  onRemove={(id) => setDealProducts((p: { id: string }[]) => p.filter((x) => x.id !== id))}
+                  onUpdate={(id, fields) => setDealProducts((p: { id: string }[]) => p.map((x) => x.id === id ? { ...x, ...fields } : x))}
                 />
                 <DealProductBlock
                   title="Заказ"
@@ -431,6 +433,8 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   total={totalOrder}
                   onAdd={() => setAddProductBlock("order")}
                   block="order"
+                  onRemove={(id) => setDealProducts((p: { id: string }[]) => p.filter((x) => x.id !== id))}
+                  onUpdate={(id, fields) => setDealProducts((p: { id: string }[]) => p.map((x) => x.id === id ? { ...x, ...fields } : x))}
                 />
               </div>
             )}
@@ -507,7 +511,28 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function DealProductBlock({ title, description, items, total, onAdd, block = "request" }: { title: string; description: string; items: any[]; total: number; onAdd: () => void; block?: string }) {
+function DealProductBlock({ title, description, items, total, onAdd, block = "request", onRemove, onUpdate }: { title: string; description: string; items: any[]; total: number; onAdd: () => void; block?: string; onRemove?: (id: string) => void; onUpdate?: (id: string, fields: Record<string, unknown>) => void }) {
+
+  async function handleDelete(id: string) {
+    if (!confirm("Удалить товар из заказа?")) return;
+    const { error } = await createClient().from("deal_products").delete().eq("id", id);
+    if (!error) onRemove?.(id);
+    else alert("Ошибка: " + error.message);
+  }
+
+  async function handleFieldUpdate(id: string, field: string, value: number) {
+    const updates: Record<string, unknown> = { [field]: value };
+    // Recalculate total_price if quantity or unit_price changed
+    const item = items.find((i: { id: string }) => i.id === id);
+    if (item) {
+      const qty = field === "quantity" ? value : item.quantity;
+      const price = field === "unit_price" ? value : item.unit_price;
+      updates.total_price = qty * price;
+    }
+    const { error } = await createClient().from("deal_products").update(updates).eq("id", id);
+    if (!error) onUpdate?.(id, updates);
+    else alert("Ошибка: " + error.message);
+  }
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -538,6 +563,7 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Цена продажи</th>
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Скидка</th>
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Сумма</th>
+                  <th className="px-2 py-2 text-xs font-medium" style={{ color: "#888", width: 40 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -567,13 +593,26 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-right" style={{ color: "#555" }}>{item.quantity} шт.</td>
+                    <td className="px-4 py-2 text-right">
+                      <input type="number" min="1" defaultValue={item.quantity}
+                        className="w-14 text-sm text-right px-1 py-0.5 rounded focus:outline-none" style={{ border: "1px solid #e0e0e0", color: "#555" }}
+                        onBlur={(e) => handleFieldUpdate(item.id, "quantity", Number(e.target.value) || 1)} />
+                    </td>
                     <td className="px-4 py-2 text-right" style={{ color: "#aaa" }}>{item.base_price ? formatCurrency(item.base_price) : "—"}</td>
-                    <td className="px-4 py-2 text-right" style={{ color: "#555" }}>{formatCurrency(item.unit_price)}</td>
+                    <td className="px-4 py-2 text-right">
+                      <input type="number" min="0" step="0.01" defaultValue={item.unit_price}
+                        className="w-20 text-sm text-right px-1 py-0.5 rounded focus:outline-none" style={{ border: "1px solid #e0e0e0", color: "#555" }}
+                        onBlur={(e) => handleFieldUpdate(item.id, "unit_price", Number(e.target.value) || 0)} />
+                    </td>
                     <td className="px-4 py-2 text-right" style={{ color: item.discount_percent > 0 ? "#d32f2f" : "#aaa" }}>
                       {item.discount_percent > 0 ? `-${item.discount_percent}%` : "—"}
                     </td>
                     <td className="px-4 py-2 text-right font-semibold" style={{ color: "#333" }}>{formatCurrency(item.total_price)}</td>
+                    <td className="px-2 py-2 text-center">
+                      <button onClick={() => handleDelete(item.id)} className="p-1 rounded hover:bg-red-50" title="Удалить">
+                        <Trash2 size={13} style={{ color: "#c62828" }} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

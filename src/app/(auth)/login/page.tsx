@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { login } from "@/app/actions/auth";
+import { createClient } from "@/lib/supabase/client";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 
@@ -14,10 +14,17 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const result = await login(new FormData(e.currentTarget));
-    if (result?.error) {
-      setError(result.error);
+    const fd = new FormData(e.currentTarget);
+    const supabase = createClient();
+    const { error: err } = await supabase.auth.signInWithPassword({
+      email: fd.get("email") as string,
+      password: fd.get("password") as string,
+    });
+    if (err) {
+      setError(err.message);
       setLoading(false);
+    } else {
+      window.location.href = "/dashboard";
     }
   }
 

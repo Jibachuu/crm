@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MessageSquare, Mail, Phone, ArrowLeft, ArrowRight, ChevronDown, Search } from "lucide-react";
+import { MessageSquare, Mail, Phone, ArrowLeft, ArrowRight, ChevronDown, Search, Edit2, Trash2, Check, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import DateRangeFilter from "./DateRangeFilter";
 import { usePagination } from "@/hooks/usePagination";
@@ -41,6 +41,8 @@ export default function CommunicationsTimeline({ entityType, entityId }: Props) 
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
 
   useEffect(() => {
     loadComms();
@@ -145,13 +147,43 @@ export default function CommunicationsTimeline({ entityType, entityId }: Props) 
                     {isInbound ? <ArrowLeft size={11} style={{ color: "#888" }} /> : <ArrowRight size={11} style={{ color: "#0067a5" }} />}
                     {senderName && <span className="text-xs font-semibold" style={{ color: "#333" }}>{senderName}</span>}
                     <span className="text-xs" style={{ color: "#aaa" }}>{formatDate(c.created_at)}</span>
+                    <div className="flex-1" />
+                    {c.channel === "note" && editingId !== c.id && (
+                      <button onClick={() => { setEditingId(c.id); setEditText(c.body ?? ""); }} className="p-0.5 rounded hover:bg-blue-50" title="Редактировать">
+                        <Edit2 size={11} style={{ color: "#0067a5" }} />
+                      </button>
+                    )}
+                    <button onClick={async () => {
+                      if (!confirm("Удалить запись?")) return;
+                      await createClient().from("communications").delete().eq("id", c.id);
+                      setComms((prev) => prev.filter((x) => x.id !== c.id));
+                    }} className="p-0.5 rounded hover:bg-red-50" title="Удалить">
+                      <Trash2 size={11} style={{ color: "#c62828" }} />
+                    </button>
                   </div>
                   {c.subject && <p className="text-xs font-medium mb-0.5" style={{ color: "#555" }}>{c.subject}</p>}
-                  {displayText && <p className="text-sm whitespace-pre-wrap" style={{ color: "#444" }}>{displayText}</p>}
-                  {isLong && (
-                    <button onClick={() => toggleExpand(c.id)} className="text-xs mt-1 hover:underline" style={{ color: "#0067a5" }}>
-                      {isExpanded ? "Свернуть" : "Показать полностью"}
-                    </button>
+                  {editingId === c.id ? (
+                    <div className="space-y-1">
+                      <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={3}
+                        className="w-full text-sm px-2 py-1 rounded focus:outline-none" style={{ border: "1px solid #d0d0d0" }} />
+                      <div className="flex gap-1 justify-end">
+                        <button onClick={() => setEditingId(null)} className="p-1 rounded hover:bg-gray-100"><X size={13} style={{ color: "#888" }} /></button>
+                        <button onClick={async () => {
+                          await createClient().from("communications").update({ body: editText }).eq("id", c.id);
+                          setComms((prev) => prev.map((x) => x.id === c.id ? { ...x, body: editText } : x));
+                          setEditingId(null);
+                        }} className="p-1 rounded hover:bg-blue-50"><Check size={13} style={{ color: "#0067a5" }} /></button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {displayText && <p className="text-sm whitespace-pre-wrap" style={{ color: "#444" }}>{displayText}</p>}
+                      {isLong && (
+                        <button onClick={() => toggleExpand(c.id)} className="text-xs mt-1 hover:underline" style={{ color: "#0067a5" }}>
+                          {isExpanded ? "Свернуть" : "Показать полностью"}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
