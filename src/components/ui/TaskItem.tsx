@@ -15,7 +15,7 @@ interface Task {
 }
 
 const PRIORITY_LABELS: Record<string, string> = { low: "Низкий", medium: "Средний", high: "Высокий" };
-const STATUS_LABELS: Record<string, string> = { pending: "Ожидает", in_progress: "В работе", completed: "Выполнена" };
+const STATUS_LABELS: Record<string, string> = { pending: "Ожидает", in_progress: "В работе", done: "Выполнена" };
 
 function formatDate(d?: string) {
   if (!d) return "";
@@ -64,7 +64,7 @@ export default function TaskItem({ task, onUpdated, onDeleted }: { task: Task; o
   }
 
   async function toggleComplete() {
-    const newStatus = task.status === "completed" ? "pending" : "completed";
+    const newStatus = task.status === "done" ? "pending" : "done";
     const res = await fetch("/api/tasks", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -94,7 +94,7 @@ export default function TaskItem({ task, onUpdated, onDeleted }: { task: Task; o
               className="text-xs px-2 py-1 rounded" style={{ border: "1px solid #d0d0d0" }}>
               <option value="pending">Ожидает</option>
               <option value="in_progress">В работе</option>
-              <option value="completed">Выполнена</option>
+              <option value="done">Выполнена</option>
             </select>
             <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
               className="text-xs px-2 py-1 rounded" style={{ border: "1px solid #d0d0d0" }} />
@@ -112,11 +112,11 @@ export default function TaskItem({ task, onUpdated, onDeleted }: { task: Task; o
     <Card>
       <CardBody className="py-3">
         <div className="flex items-center gap-3">
-          <button onClick={toggleComplete} title={task.status === "completed" ? "Вернуть в работу" : "Завершить"}>
-            <CheckSquare size={15} style={{ color: task.status === "completed" ? "#2e7d32" : "#aaa", flexShrink: 0 }} />
+          <button onClick={toggleComplete} title={task.status === "done" ? "Вернуть в работу" : "Завершить"}>
+            <CheckSquare size={15} style={{ color: task.status === "done" ? "#2e7d32" : "#aaa", flexShrink: 0 }} />
           </button>
           <div className="flex-1">
-            <p className="text-sm font-medium" style={{ color: task.status === "completed" ? "#aaa" : "#333", textDecoration: task.status === "completed" ? "line-through" : "none" }}>{task.title}</p>
+            <p className="text-sm font-medium" style={{ color: task.status === "done" ? "#aaa" : "#333", textDecoration: task.status === "done" ? "line-through" : "none" }}>{task.title}</p>
             <div className="flex items-center gap-2 mt-0.5">
               {task.due_date && <span className="text-xs" style={{ color: "#999" }}>до {formatDate(task.due_date)}</span>}
               {task.users && <span className="text-xs" style={{ color: "#999" }}>• {task.users.full_name}</span>}
