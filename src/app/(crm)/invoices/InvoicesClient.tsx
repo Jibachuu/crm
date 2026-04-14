@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Search, Receipt, FileDown, Eye, Trash2 } from "lucide-react";
+import { Plus, Search, Receipt, FileDown, Eye, Trash2, Edit2, Save } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
@@ -12,7 +12,8 @@ import { amountToWords } from "@/lib/numToWords";
 const STATUS_LABELS: Record<string, string> = { issued: "Выставлен", paid: "Оплачен", overdue: "Просрочен" };
 const STATUS_VARIANTS: Record<string, "default" | "warning" | "success" | "danger"> = { issued: "warning", paid: "success", overdue: "danger" };
 
-interface InvoiceItem { product_id: string; name: string; quantity: number; unit: string; price: number; total: number }
+interface PriceTier { from_qty: number; to_qty: number | null; price: number }
+interface InvoiceItem { product_id: string; name: string; quantity: number; unit: string; price: number; total: number; price_tiers?: PriceTier[] }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function InvoicesClient({ initialInvoices, companies, products, deals, supplier }: any) {
@@ -24,6 +25,8 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [previewItems, setPreviewItems] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(false);
+  const [editItems, setEditItems] = useState<InvoiceItem[]>([]);
 
   // Create form state
   const [form, setForm] = useState({
@@ -98,6 +101,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       deal_id: form.deal_id || null,
       comment: form.comment || null,
       vat_included: form.vat_included,
+      hide_total: (form as { hide_total?: boolean }).hide_total ?? false,
       total_amount: totalAmount,
       created_by: user?.id,
     }).select("*").single();
@@ -123,6 +127,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
         unit: i.unit,
         price: i.price,
         total: i.total,
+        price_tiers: i.price_tiers?.length ? i.price_tiers : null,
       }))
     );
 
@@ -150,6 +155,50 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     const supabase = createClient();
     await supabase.from("invoices").delete().eq("id", id);
     setInvoices(invoices.filter((inv: { id: string }) => inv.id !== id));
+  }
+
+  function startEditInvoice() {
+    setEditingInvoice(true);
+    setEditItems(previewItems.map((i: InvoiceItem) => ({ ...i })));
+  }
+
+  function updateEditItem(i: number, field: string, val: string | number) {
+    setEditItems(editItems.map((item, idx) => {
+      if (idx !== i) return item;
+      const updated = { ...item, [field]: val };
+      updated.total = updated.quantity * updated.price;
+      return updated;
+    }));
+  }
+
+  async function saveEditInvoice() {
+    if (!previewInvoice) return;
+    setSaving(true);
+    const supabase = createClient();
+    const newTotal = editItems.reduce((s, i) => s + i.total, 0);
+
+    // Update invoice total
+    await supabase.from("invoices").update({ total_amount: newTotal }).eq("id", previewInvoice.id);
+
+    // Delete old items and insert new
+    await supabase.from("invoice_items").delete().eq("invoice_id", previewInvoice.id);
+    await supabase.from("invoice_items").insert(
+      editItems.filter((i) => i.name).map((i) => ({
+        invoice_id: previewInvoice.id,
+        product_id: i.product_id || null,
+        name: i.name,
+        quantity: i.quantity,
+        unit: i.unit,
+        price: i.price,
+        total: i.total,
+      }))
+    );
+
+    setPreviewItems(editItems);
+    setPreviewInvoice({ ...previewInvoice, total_amount: newTotal });
+    setInvoices(invoices.map((inv: { id: string }) => inv.id === previewInvoice.id ? { ...inv, total_amount: newTotal } : inv));
+    setEditingInvoice(false);
+    setSaving(false);
   }
 
   function proxyUrl(url: string) {
@@ -274,17 +323,20 @@ ${sigSrc ? `<img class="signature" src="${sigSrc}" />` : ""}
 
 <script>
 document.title='Счёт ${inv.invoice_number}';
-function tryPrint(){
+function doPrint(){
+  var btn=document.getElementById('printBtn');if(btn)btn.style.display='none';
   var imgs=document.images,loaded=0,total=imgs.length;
-  if(!total){window.print();return}
-  function check(){loaded++;if(loaded>=total)setTimeout(()=>window.print(),100)}
-  for(var i=0;i<total;i++){
-    if(imgs[i].complete)check();
-    else{imgs[i].onload=check;imgs[i].onerror=check}
-  }
+  if(!total){window.print();if(btn)btn.style.display='';return}
+  function check(){loaded++;if(loaded>=total)setTimeout(function(){window.print();if(btn)btn.style.display=''},200)}
+  for(var i=0;i<total;i++){if(imgs[i].complete)check();else{imgs[i].onload=check;imgs[i].onerror=check}}
 }
-window.onload=tryPrint;
 </script>
+<div style="text-align:center;margin:15px 0" id="printBtn">
+<button onclick="doPrint()" style="padding:10px 30px;font-size:14px;background:#0067a5;color:#fff;border:none;border-radius:6px;cursor:pointer">
+Напечатать / Сохранить PDF
+</button>
+<p style="font-size:11px;color:#888;margin-top:6px">Нажмите кнопку выше, затем выберите «Сохранить как PDF» в диалоге печати</p>
+</div>
 </body></html>`;
     printWindow.document.write(html);
     printWindow.document.close();
@@ -401,21 +453,23 @@ window.onload=tryPrint;
             </div>
             <div className="space-y-2">
               {items.map((item, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-4">
-                    <select value={item.product_id} onChange={(e) => updateItem(i, "product_id", e.target.value)} style={{ ...inputStyle, fontSize: 12 }}>
-                      <option value="">Товар из каталога...</option>
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                      {products.map((p: any) => <option key={p.id} value={p.id}>{[p.category, p.name, p.sku].filter(Boolean).join(" / ")}</option>)}
-                    </select>
-                    {!item.product_id && <input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Или введите название" style={{ ...inputStyle, fontSize: 11, marginTop: 2 }} />}
-                  </div>
-                  <div className="col-span-2"><input type="number" min="0.01" step="0.01" value={item.quantity} onChange={(e) => updateItem(i, "quantity", Number(e.target.value))} style={{ ...inputStyle, fontSize: 12 }} placeholder="Кол-во" /></div>
-                  <div className="col-span-1"><input value={item.unit} onChange={(e) => updateItem(i, "unit", e.target.value)} style={{ ...inputStyle, fontSize: 12 }} /></div>
-                  <div className="col-span-2"><input type="number" min="0" step="0.01" value={item.price} onChange={(e) => updateItem(i, "price", Number(e.target.value))} style={{ ...inputStyle, fontSize: 12 }} placeholder="Цена" /></div>
-                  <div className="col-span-2 text-sm font-medium" style={{ color: "#2e7d32", paddingTop: 6 }}>{formatCurrency(item.total)}</div>
-                  <div className="col-span-1">
-                    {items.length > 1 && <button onClick={() => removeItem(i)} className="text-xs text-red-500 hover:underline">✕</button>}
+                <div key={i} className="rounded p-2" style={{ border: "1px solid #f0f0f0" }}>
+                  <div className="grid grid-cols-12 gap-2 items-end">
+                    <div className="col-span-4">
+                      <select value={item.product_id} onChange={(e) => updateItem(i, "product_id", e.target.value)} style={{ ...inputStyle, fontSize: 12 }}>
+                        <option value="">Товар из каталога...</option>
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        {products.map((p: any) => <option key={p.id} value={p.id}>{[p.category, p.name, p.sku].filter(Boolean).join(" / ")}</option>)}
+                      </select>
+                      {!item.product_id && <input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Или введите название" style={{ ...inputStyle, fontSize: 11, marginTop: 2 }} />}
+                    </div>
+                    <div className="col-span-2"><input type="number" min="0.01" step="0.01" value={item.quantity} onChange={(e) => updateItem(i, "quantity", Number(e.target.value))} style={{ ...inputStyle, fontSize: 12 }} placeholder="Кол-во" /></div>
+                    <div className="col-span-1"><input value={item.unit} onChange={(e) => updateItem(i, "unit", e.target.value)} style={{ ...inputStyle, fontSize: 12 }} /></div>
+                    <div className="col-span-2"><input type="number" min="0" step="0.01" value={item.price} onChange={(e) => updateItem(i, "price", Number(e.target.value))} style={{ ...inputStyle, fontSize: 12 }} placeholder="Цена" /></div>
+                    <div className="col-span-2 text-sm font-medium" style={{ color: "#2e7d32", paddingTop: 6 }}>{formatCurrency(item.total)}</div>
+                    <div className="col-span-1">
+                      {items.length > 1 && <button onClick={() => removeItem(i)} className="text-xs text-red-500 hover:underline">✕</button>}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -454,36 +508,76 @@ window.onload=tryPrint;
               <p><strong>Основание:</strong> {previewInvoice.basis}</p>
               <p><strong>Дата:</strong> {formatDate(previewInvoice.invoice_date)} &nbsp; <strong>Оплатить до:</strong> {previewInvoice.payment_due ? formatDate(previewInvoice.payment_due) : "—"}</p>
             </div>
-            <table className="w-full text-xs mb-4" style={{ border: "1px solid #e4e4e4" }}>
-              <thead>
-                <tr style={{ background: "#fafafa" }}>
-                  <th className="px-2 py-1.5 text-left" style={{ borderBottom: "1px solid #e4e4e4" }}>№</th>
-                  <th className="px-2 py-1.5 text-left" style={{ borderBottom: "1px solid #e4e4e4" }}>Наименование</th>
-                  <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Кол-во</th>
-                  <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Цена</th>
-                  <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Сумма</th>
-                </tr>
-              </thead>
-              <tbody>
-                {previewItems.map((item: { name: string; quantity: number; unit: string; price: number; total: number }, i: number) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                    <td className="px-2 py-1.5">{i + 1}</td>
-                    <td className="px-2 py-1.5">{item.name}</td>
-                    <td className="px-2 py-1.5 text-right">{item.quantity} {item.unit}</td>
-                    <td className="px-2 py-1.5 text-right">{formatCurrency(item.price)}</td>
-                    <td className="px-2 py-1.5 text-right font-medium">{formatCurrency(item.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="text-sm mb-2">
-              <p><strong>Итого: {formatCurrency(previewInvoice.total_amount)}</strong></p>
-              <p className="text-xs italic" style={{ color: "#666" }}>{amountToWords(previewInvoice.total_amount)}</p>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <Button size="sm" onClick={printInvoice}><FileDown size={13} /> Скачать PDF</Button>
-              <Button size="sm" variant="secondary" onClick={() => setPreviewInvoice(null)}>Закрыть</Button>
-            </div>
+            {!editingInvoice ? (
+              <>
+                <table className="w-full text-xs mb-4" style={{ border: "1px solid #e4e4e4" }}>
+                  <thead>
+                    <tr style={{ background: "#fafafa" }}>
+                      <th className="px-2 py-1.5 text-left" style={{ borderBottom: "1px solid #e4e4e4" }}>№</th>
+                      <th className="px-2 py-1.5 text-left" style={{ borderBottom: "1px solid #e4e4e4" }}>Наименование</th>
+                      <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Кол-во</th>
+                      <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Цена</th>
+                      <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Сумма</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewItems.map((item: { name: string; quantity: number; unit: string; price: number; total: number }, i: number) => (
+                      <tr key={i} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                        <td className="px-2 py-1.5">{i + 1}</td>
+                        <td className="px-2 py-1.5">{item.name}</td>
+                        <td className="px-2 py-1.5 text-right">{item.quantity} {item.unit}</td>
+                        <td className="px-2 py-1.5 text-right">{formatCurrency(item.price)}</td>
+                        <td className="px-2 py-1.5 text-right font-medium">{formatCurrency(item.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="text-sm mb-2">
+                  <p><strong>Итого: {formatCurrency(previewInvoice.total_amount)}</strong></p>
+                  <p className="text-xs italic" style={{ color: "#666" }}>{amountToWords(previewInvoice.total_amount)}</p>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <Button size="sm" onClick={printInvoice}><FileDown size={13} /> Скачать PDF</Button>
+                  <Button size="sm" variant="secondary" onClick={startEditInvoice}><Edit2 size={13} /> Редактировать</Button>
+                  <Button size="sm" variant="secondary" onClick={() => { setPreviewInvoice(null); setEditingInvoice(false); }}>Закрыть</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <table className="w-full text-xs mb-4" style={{ border: "1px solid #e4e4e4" }}>
+                  <thead>
+                    <tr style={{ background: "#fafafa" }}>
+                      <th className="px-2 py-1.5 text-left" style={{ borderBottom: "1px solid #e4e4e4" }}>№</th>
+                      <th className="px-2 py-1.5 text-left" style={{ borderBottom: "1px solid #e4e4e4" }}>Наименование</th>
+                      <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Кол-во</th>
+                      <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Цена</th>
+                      <th className="px-2 py-1.5 text-right" style={{ borderBottom: "1px solid #e4e4e4" }}>Сумма</th>
+                      <th style={{ borderBottom: "1px solid #e4e4e4", width: 30 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {editItems.map((item, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                        <td className="px-2 py-1.5">{i + 1}</td>
+                        <td className="px-2 py-1.5"><input value={item.name} onChange={(e) => updateEditItem(i, "name", e.target.value)} className="w-full text-xs px-1 py-0.5 rounded focus:outline-none" style={{ border: "1px solid #d0d0d0" }} /></td>
+                        <td className="px-2 py-1.5"><input type="number" value={item.quantity} onChange={(e) => updateEditItem(i, "quantity", Number(e.target.value))} className="w-16 text-xs px-1 py-0.5 rounded text-right focus:outline-none" style={{ border: "1px solid #d0d0d0" }} /></td>
+                        <td className="px-2 py-1.5"><input type="number" value={item.price} onChange={(e) => updateEditItem(i, "price", Number(e.target.value))} className="w-20 text-xs px-1 py-0.5 rounded text-right focus:outline-none" style={{ border: "1px solid #d0d0d0" }} /></td>
+                        <td className="px-2 py-1.5 text-right font-medium">{formatCurrency(item.total)}</td>
+                        <td><button onClick={() => setEditItems(editItems.filter((_, idx) => idx !== i))} className="p-0.5 hover:bg-red-50 rounded"><Trash2 size={11} className="text-red-400" /></button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <button onClick={() => setEditItems([...editItems, { product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }])} className="text-xs mb-3" style={{ color: "#0067a5" }}>+ Добавить строку</button>
+                <div className="text-sm mb-2">
+                  <p><strong>Итого: {formatCurrency(editItems.reduce((s, i) => s + i.total, 0))}</strong></p>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <Button size="sm" onClick={saveEditInvoice} loading={saving}><Save size={13} /> Сохранить</Button>
+                  <Button size="sm" variant="secondary" onClick={() => setEditingInvoice(false)}>Отмена</Button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </Modal>

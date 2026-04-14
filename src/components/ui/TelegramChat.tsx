@@ -134,7 +134,7 @@ function MediaBubble({ media, peer, msgId, onLightbox }: { media: NonNullable<Tg
   return null;
 }
 
-export default function TelegramChat({ peer, compact = false, pollInterval = 8000, readOnly = false, entityType, entityId }: Props & { entityType?: string; entityId?: string }) {
+export default function TelegramChat({ peer, compact = false, pollInterval = 8000, readOnly = false, entityType, entityId, phone }: Props & { entityType?: string; entityId?: string; phone?: string }) {
   const [messages, setMessages] = useState<TgMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -144,6 +144,30 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   const [recordingTime, setRecordingTime] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+
+  // Auto-resolve entity for sync when not provided (inbox context)
+  const resolvedEntityRef = useRef<{ type: string; id: string } | null>(null);
+  const resolvedRef = useRef(false);
+  useEffect(() => {
+    if (entityType && entityId) { resolvedEntityRef.current = { type: entityType, id: entityId }; resolvedRef.current = true; return; }
+    if (resolvedRef.current) return;
+    resolvedRef.current = true;
+    // Try to find contact by telegram_id, username, or phone
+    import("@/lib/supabase/client").then(({ createClient }) => {
+      const supabase = createClient();
+      const orFilters = [`telegram_id.eq.${peer}`, `telegram_username.eq.${peer}`];
+      if (phone) {
+        const cleanPhone = phone.replace(/\D/g, "");
+        if (cleanPhone.length >= 7) {
+          const suffix = cleanPhone.slice(-10);
+          orFilters.push(`phone.ilike.%${suffix}`, `phone_mobile.ilike.%${suffix}`);
+        }
+      }
+      supabase.from("contacts").select("id").or(orFilters.join(",")).limit(1).then(({ data }) => {
+        if (data?.[0]) resolvedEntityRef.current = { type: "contact", id: data[0].id };
+      });
+    }).catch(() => {});
+  }, [peer, phone, entityType, entityId]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -162,12 +186,13 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
       const msgs = (data.messages as TgMessage[]).reverse();
       setMessages(msgs);
       setError(null);
-      // Sync to communications timeline
-      if (entityType && entityId && msgs.length > 0) {
+      // Sync to communications timeline (from entity card or auto-resolved from inbox)
+      const syncEntity = resolvedEntityRef.current;
+      if (syncEntity && msgs.length > 0) {
         fetch("/api/sync-messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: msgs.map((m) => ({ id: m.id, text: m.text, isMe: m.out, sender: m.fromName, time: m.date })), channel: "telegram", entity_type: entityType, entity_id: entityId }),
+          body: JSON.stringify({ messages: msgs.map((m) => ({ id: m.id, text: m.text, isMe: m.out, sender: m.fromName, time: m.date })), channel: "telegram", entity_type: syncEntity.type, entity_id: syncEntity.id }),
         }).catch(() => {});
       }
     } catch {
@@ -254,7 +279,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
     };
   }
 
-  const height = compact ? 360 : "100%";
+  const height = compact ? 500 : "100%";
 
   if (loading) {
     return (
@@ -394,9 +419,9 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
         />
 
         {/* Text input */}
-        <input
+        <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"; }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
           onPaste={(e) => {
             const items = e.clipboardData?.items;
@@ -410,8 +435,9 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
           }}
           placeholder="Введите сообщение..."
           disabled={recording || uploading}
-          className="flex-1 text-sm px-3 py-2 focus:outline-none rounded-full"
-          style={{ border: "1px solid #e0e0e0", background: "#f5f5f5" }}
+          rows={1}
+          className="flex-1 text-sm px-3 py-2 focus:outline-none rounded-2xl resize-none"
+          style={{ border: "1px solid #e0e0e0", background: "#f5f5f5", maxHeight: 120 }}
         />
 
         {/* Send or mic */}

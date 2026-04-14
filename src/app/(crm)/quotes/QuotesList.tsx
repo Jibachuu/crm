@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Plus, Search, FileSpreadsheet, Trash2, Eye, Download, Copy, Check, Send, X, ImagePlus } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -11,6 +11,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 const STATUS_LABELS: Record<string, string> = { draft: "Черновик", sent: "Отправлено", accepted: "Принято", rejected: "Отклонено" };
 const STATUS_VARIANTS: Record<string, "default" | "warning" | "success" | "danger"> = { draft: "default", sent: "warning", accepted: "success", rejected: "danger" };
 
+interface PriceTier { from_qty: number; to_qty: number | null; price: number }
 interface QuoteItem {
   product_id: string;
   name: string;
@@ -22,6 +23,7 @@ interface QuoteItem {
   sum: number;
   image_url: string;
   description: string;
+  price_tiers?: PriceTier[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,13 +37,11 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   const [copied, setCopied] = useState(false);
 
   // Editor state
-  const [form, setForm] = useState({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
+  const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const uploadItemIdxRef = useRef(-1);
 
   function openCreate() {
     setEditing(null);
@@ -54,7 +54,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setEditing({ id: quoteId });
     const q = quotes.find((qq: { id: string }) => qq.id === quoteId);
     if (q) {
-      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "" });
+      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "", hide_total: q.hide_total ?? false });
     }
     // Load items from DB
     const supabase = (await import("@/lib/supabase/client")).createClient();
@@ -335,16 +335,15 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                         <div className="relative group">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={item.image_url} alt="" className="w-20 h-20 rounded object-cover" style={{ border: "1px solid #e0e0e0" }} />
-                          <button onClick={() => { uploadItemIdxRef.current = idx; fileRef.current?.click(); }}
-                            className="absolute inset-0 bg-black/40 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <label className="absolute inset-0 bg-black/40 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer">
                             <ImagePlus size={16} style={{ color: "#fff" }} />
-                          </button>
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadItemImage(f, idx); e.target.value = ""; }} />
+                          </label>
                         </div>
                       ) : (
-                        <button onClick={() => { uploadItemIdxRef.current = idx; fileRef.current?.click(); }}
-                          className="w-20 h-20 rounded flex flex-col items-center justify-center gap-1 transition-colors hover:bg-gray-100"
-                          style={{ background: "#f0f0f0", border: "1px dashed #ccc" }}
-                          disabled={uploadingImage === String(idx)}>
+                        <label
+                          className="w-20 h-20 rounded flex flex-col items-center justify-center gap-1 transition-colors hover:bg-gray-100 cursor-pointer"
+                          style={{ background: "#f0f0f0", border: "1px dashed #ccc" }}>
                           {uploadingImage === String(idx) ? (
                             <span className="text-xs" style={{ color: "#888" }}>...</span>
                           ) : (
@@ -353,7 +352,9 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                               <span style={{ fontSize: 9, color: "#aaa" }}>Фото</span>
                             </>
                           )}
-                        </button>
+                          <input type="file" accept="image/*" className="hidden" disabled={uploadingImage === String(idx)}
+                            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadItemImage(f, idx); e.target.value = ""; }} />
+                        </label>
                       )}
                     </div>
 
@@ -402,6 +403,68 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                         </div>
                         <div className="ml-auto font-medium" style={{ color: "#2e7d32" }}>= {formatCurrency(item.sum)}</div>
                       </div>
+
+                      {/* Tiered pricing (price ladder) */}
+                      <div className="mt-1">
+                        <button type="button" onClick={() => {
+                          const newItems = [...items];
+                          if (item.price_tiers?.length) {
+                            newItems[idx] = { ...item, price_tiers: undefined };
+                          } else {
+                            newItems[idx] = { ...item, price_tiers: [
+                              { from_qty: 1, to_qty: 99, price: item.client_price },
+                              { from_qty: 100, to_qty: 499, price: Math.round(item.client_price * 0.93) },
+                              { from_qty: 500, to_qty: null, price: Math.round(item.client_price * 0.85) },
+                            ] };
+                          }
+                          setItems(newItems);
+                        }} className="text-xs" style={{ color: item.price_tiers?.length ? "#c62828" : "#0067a5" }}>
+                          {item.price_tiers?.length ? "✕ Убрать лесенку цен" : "+ Лесенка цен"}
+                        </button>
+                        {item.price_tiers?.map((tier: { from_qty: number; to_qty: number | null; price: number }, ti: number) => (
+                          <div key={ti} className="flex items-center gap-2 mt-1 text-xs">
+                            <span style={{ color: "#888" }}>от</span>
+                            <input type="number" value={tier.from_qty} onChange={(e) => {
+                              const newItems = [...items];
+                              const tiers = [...(item.price_tiers ?? [])];
+                              tiers[ti] = { ...tiers[ti], from_qty: Number(e.target.value) };
+                              newItems[idx] = { ...item, price_tiers: tiers };
+                              setItems(newItems);
+                            }} className="w-16 px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #d0d0d0", fontSize: 11 }} />
+                            <span style={{ color: "#888" }}>до</span>
+                            <input type="number" value={tier.to_qty ?? ""} placeholder="∞" onChange={(e) => {
+                              const newItems = [...items];
+                              const tiers = [...(item.price_tiers ?? [])];
+                              tiers[ti] = { ...tiers[ti], to_qty: e.target.value ? Number(e.target.value) : null };
+                              newItems[idx] = { ...item, price_tiers: tiers };
+                              setItems(newItems);
+                            }} className="w-16 px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #d0d0d0", fontSize: 11 }} />
+                            <span style={{ color: "#888" }}>шт →</span>
+                            <input type="number" value={tier.price} onChange={(e) => {
+                              const newItems = [...items];
+                              const tiers = [...(item.price_tiers ?? [])];
+                              tiers[ti] = { ...tiers[ti], price: Number(e.target.value) };
+                              newItems[idx] = { ...item, price_tiers: tiers };
+                              setItems(newItems);
+                            }} className="w-20 px-1 py-0.5 rounded outline-none text-right font-medium" style={{ border: "1px solid #d0d0d0", fontSize: 11, color: "#2e7d32" }} />
+                            <span style={{ color: "#888" }}>₽</span>
+                            <button type="button" onClick={() => {
+                              const newItems = [...items];
+                              const tiers = (item.price_tiers ?? []).filter((_: unknown, i: number) => i !== ti);
+                              newItems[idx] = { ...item, price_tiers: tiers.length ? tiers : undefined };
+                              setItems(newItems);
+                            }} className="text-red-400 hover:text-red-600">✕</button>
+                          </div>
+                        ))}
+                        {item.price_tiers?.length ? (
+                          <button type="button" onClick={() => {
+                            const newItems = [...items];
+                            const tiers = [...(item.price_tiers ?? []), { from_qty: 0, to_qty: null, price: 0 }];
+                            newItems[idx] = { ...item, price_tiers: tiers };
+                            setItems(newItems);
+                          }} className="text-xs mt-1" style={{ color: "#0067a5" }}>+ Уровень</button>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -412,8 +475,18 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
           {/* Totals */}
           {items.length > 0 && (
             <div className="flex items-center justify-between p-3 rounded" style={{ background: "#f5f5f5", border: "1px solid #e4e4e4" }}>
-              <div className="text-xs" style={{ color: "#888" }}>
-                Средняя скидка: <strong style={{ color: "#e65c00" }}>{avgDiscount}%</strong>
+              <div className="flex flex-col gap-1">
+                <div className="text-xs" style={{ color: "#888" }}>
+                  Средняя скидка: <strong style={{ color: "#e65c00" }}>{avgDiscount}%</strong>
+                </div>
+                {items.some((i) => i.price_tiers?.length) && (
+                  <label className="flex items-center gap-2 text-xs" style={{ color: "#888" }}>
+                    <input type="checkbox" checked={form.hide_total ?? false}
+                      onChange={(e) => setForm({ ...form, hide_total: e.target.checked })}
+                      style={{ accentColor: "#e65c00" }} />
+                    Скрыть общую сумму в КП (лесенка цен)
+                  </label>
+                )}
               </div>
               <div className="text-right">
                 <p className="text-xs" style={{ color: "#888" }}>Итого:</p>
@@ -453,17 +526,9 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
             <div className="flex-1" />
             <Button size="sm" variant="secondary" onClick={() => { setEditorOpen(false); window.location.reload(); }}>Закрыть</Button>
           </div>
+
         </div>
       </Modal>
-
-      {/* Hidden file input for product images */}
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
-        const f = e.target.files?.[0];
-        if (f && uploadItemIdxRef.current >= 0) {
-          uploadItemImage(f, uploadItemIdxRef.current);
-        }
-        e.target.value = "";
-      }} />
     </div>
   );
 }

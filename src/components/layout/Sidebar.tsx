@@ -24,6 +24,7 @@ import {
   UserCircle,
   Factory,
   HelpCircle,
+  PhoneCall,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 
@@ -44,6 +45,7 @@ const navItems: NavItem[] = [
   { href: "/invoices", label: "Счета", icon: Receipt },
   { href: "/quotes", label: "КП", icon: FileSpreadsheet },
   { href: "/production", label: "Производство", icon: Factory },
+  { href: "/cold-calls", label: "Прозвон", icon: PhoneCall },
   { href: "/my-clients", label: "Мои клиенты", icon: UserCircle },
   { href: "/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/tasks", label: "Задачи", icon: CheckSquare },

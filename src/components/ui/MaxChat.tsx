@@ -5,7 +5,7 @@ import { Send, RefreshCw, Paperclip, Mic, MicOff } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import ImageLightbox from "./ImageLightbox";
 
-export default function MaxChat({ chatId, compact = false, entityType, entityId }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string }) {
+export default function MaxChat({ chatId, compact = false, entityType, entityId, phone }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string; phone?: string }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[]; chatId?: string; reactions?: { emoji: string; count: number }[]; forwardedFrom?: { senderName?: string; text?: string } | null; replyTo?: { id: string; senderName?: string; text?: string } | null; read?: boolean | null }[]>([]);
@@ -22,6 +22,29 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Auto-resolve entity for sync when not provided (inbox context)
+  const resolvedEntityRef = useRef<{ type: string; id: string } | null>(null);
+  const resolvedRef = useRef(false);
+  useEffect(() => {
+    if (entityType && entityId) { resolvedEntityRef.current = { type: entityType, id: entityId }; resolvedRef.current = true; return; }
+    if (resolvedRef.current) return;
+    resolvedRef.current = true;
+    import("@/lib/supabase/client").then(({ createClient }) => {
+      const supabase = createClient();
+      const orFilters = [`maks_id.eq.${chatId}`];
+      if (phone) {
+        const cleanPhone = phone.replace(/\D/g, "");
+        if (cleanPhone.length >= 7) {
+          const suffix = cleanPhone.slice(-10);
+          orFilters.push(`phone.ilike.%${suffix}`, `phone_mobile.ilike.%${suffix}`);
+        }
+      }
+      supabase.from("contacts").select("id").or(orFilters.join(",")).limit(1).then(({ data }) => {
+        if (data?.[0]) resolvedEntityRef.current = { type: "contact", id: data[0].id };
+      });
+    }).catch(() => {});
+  }, [chatId, phone, entityType, entityId]);
 
   useEffect(() => {
     fetch("/api/max?action=status").then(r => r.json()).then(d => setMyId(d.userId)).catch(() => {});
@@ -50,12 +73,13 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
       const oldIds = messages.map((m) => m.id).join(",");
       if (newIds !== oldIds) {
         setMessages(msgs);
-        // Sync to communications timeline
-        if (entityType && entityId && msgs.length > 0) {
+        // Sync to communications timeline (from entity card or auto-resolved from inbox)
+        const syncEntity = resolvedEntityRef.current;
+        if (syncEntity && msgs.length > 0) {
           fetch("/api/sync-messages", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages: msgs, channel: "maks", entity_type: entityType, entity_id: entityId }),
+            body: JSON.stringify({ messages: msgs, channel: "maks", entity_type: syncEntity.type, entity_id: syncEntity.id }),
           }).catch(() => {});
         }
       }
@@ -167,7 +191,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
   if (error) return <div className="text-xs p-3 rounded" style={{ background: "#fdecea", color: "#c62828" }}>{error}</div>;
 
   return (
-    <div className="flex flex-col" style={{ height: compact ? 400 : "100%" }}>
+    <div className="flex flex-col" style={{ height: compact ? 500 : "100%" }}>
       <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid #f0f0f0" }}>
         <span className="text-xs font-semibold" style={{ color: "#888" }}>МАКС</span>
         <button onClick={refreshAndLoad} className="p-1 rounded hover:bg-gray-100" title="Обновить"><RefreshCw size={12} style={{ color: "#888" }} /></button>
@@ -309,8 +333,8 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
         <input ref={fileRef} type="file" className="hidden" multiple
           onChange={async (e) => { const files = e.target.files; if (files) { for (let i = 0; i < files.length; i++) await sendFile(files[i]); } e.target.value = ""; }} />
 
-        <input value={text} onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
+        <textarea value={text} onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"; }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
           onPaste={(e) => {
             const items = e.clipboardData?.items;
             if (!items) return;
@@ -323,8 +347,9 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId 
           }}
           placeholder={uploading ? "Загрузка..." : "Сообщение в МАКС..."}
           disabled={recording || uploading}
-          className="flex-1 text-sm px-3 py-1.5 rounded-full focus:outline-none"
-          style={{ border: "1px solid #e0e0e0", background: "#f5f5f5" }} />
+          rows={1}
+          className="flex-1 text-sm px-3 py-1.5 rounded-2xl focus:outline-none resize-none"
+          style={{ border: "1px solid #e0e0e0", background: "#f5f5f5", maxHeight: 120 }} />
 
         {text.trim() ? (
           <button onClick={sendMessage} disabled={sending}

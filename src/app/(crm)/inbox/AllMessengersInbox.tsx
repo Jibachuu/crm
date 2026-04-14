@@ -223,26 +223,99 @@ export default function AllMessengersInbox() {
       }
     } catch { /* skip */ }
 
-    // Enrich missing avatars/names from CRM contacts (fallback when VPS lost cache)
+    // Enrich names/avatars from CRM contacts + company names
     try {
       const supabase = createClient();
       const maksIds = all.filter((d) => d.channel === "maks" && d.chatId).map((d) => d.chatId!);
-      if (maksIds.length > 0) {
-        const { data: cs } = await supabase
+      const tgIds = all.filter((d) => d.channel === "telegram").map((d) => d.id.replace("tg_", ""));
+      const tgUsernames = all.filter((d) => d.channel === "telegram" && d.username).map((d) => d.username!);
+
+      // Also collect phone numbers for fallback matching
+      const phones = all.filter((d) => d.phone).map((d) => d.phone!.replace(/\D/g, "").slice(-10)).filter((p) => p.length >= 7);
+
+      // Fetch contacts matching any messenger identifier or phone
+      const orFilters: string[] = [];
+      if (maksIds.length) orFilters.push(`maks_id.in.(${maksIds.join(",")})`);
+      if (tgIds.length) orFilters.push(`telegram_id.in.(${tgIds.join(",")})`);
+      if (tgUsernames.length) orFilters.push(`telegram_username.in.(${tgUsernames.join(",")})`);
+      // Add phone-based lookup for dialogs that have phone numbers
+      for (const p of [...new Set(phones)].slice(0, 50)) {
+        orFilters.push(`phone.ilike.%${p}`);
+      }
+
+      if (orFilters.length > 0) {
+        const { data: contacts } = await supabase
           .from("contacts")
-          .select("maks_id, full_name, avatar_url, phone")
-          .in("maks_id", maksIds);
-        const byMaksId = new Map((cs ?? []).map((c) => [c.maks_id, c]));
+          .select("id, maks_id, telegram_id, telegram_username, full_name, avatar_url, phone, company_id")
+          .or(orFilters.join(","));
+
+        // Fetch company names for linked contacts
+        const companyIds = [...new Set((contacts ?? []).map((c) => c.company_id).filter(Boolean))];
+        const companyMap = new Map<string, string>();
+        if (companyIds.length > 0) {
+          const { data: companies } = await supabase
+            .from("companies")
+            .select("id, name")
+            .in("id", companyIds);
+          for (const co of companies ?? []) companyMap.set(co.id, co.name);
+        }
+
+        // Build lookup maps
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        type ContactRow = any;
+        const byMaksId = new Map<string, ContactRow>();
+        const byTgId = new Map<string, ContactRow>();
+        const byTgUsername = new Map<string, ContactRow>();
+        const byPhone = new Map<string, ContactRow>();
+        for (const c of contacts ?? []) {
+          if (c.maks_id) byMaksId.set(c.maks_id, c);
+          if (c.telegram_id) byTgId.set(String(c.telegram_id), c);
+          if (c.telegram_username) byTgUsername.set(c.telegram_username.toLowerCase(), c);
+          if (c.phone) byPhone.set(c.phone.replace(/\D/g, "").slice(-10), c);
+        }
+
+        // Cache TG avatars → CRM contacts (background, fire-and-forget)
+        const avatarUpdates: { id: string; avatar_url: string }[] = [];
+
         for (const d of all) {
-          if (d.channel !== "maks" || !d.chatId) continue;
-          const c = byMaksId.get(d.chatId);
-          if (!c) continue;
-          if (!d.avatar && c.avatar_url) d.avatar = c.avatar_url;
-          if (c.full_name && (!d.name || /^\d+$/.test(d.name)) && !/^\d+$/.test(c.full_name)) d.name = c.full_name;
-          if (!d.phone && c.phone) d.phone = c.phone;
+          const phoneSuffix = d.phone ? d.phone.replace(/\D/g, "").slice(-10) : "";
+          const contact = d.channel === "maks"
+            ? (byMaksId.get(d.chatId!) || (phoneSuffix ? byPhone.get(phoneSuffix) : undefined))
+            : (byTgId.get(d.id.replace("tg_", "")) || (d.username ? byTgUsername.get(d.username.toLowerCase()) : undefined) || (phoneSuffix ? byPhone.get(phoneSuffix) : undefined));
+          if (!contact) continue;
+
+          // Use CRM entity name + company
+          if (contact.full_name && !/^\d+$/.test(contact.full_name)) {
+            const companyName = contact.company_id ? companyMap.get(contact.company_id) : undefined;
+            d.name = companyName ? `${contact.full_name} · ${companyName}` : contact.full_name;
+          }
+          // For MAX: prefer CRM avatar over MAX avatar (MAX can return wrong avatars)
+          if (d.channel === "maks" && contact.avatar_url) {
+            d.avatar = contact.avatar_url;
+          } else if (!d.avatar && contact.avatar_url) {
+            d.avatar = contact.avatar_url;
+          }
+          if (!d.phone && contact.phone) d.phone = contact.phone;
+
+          // If TG dialog has avatar but CRM contact doesn't, queue for caching
+          if (d.channel === "telegram" && d.avatar && !contact.avatar_url) {
+            avatarUpdates.push({ id: contact.id, avatar_url: d.avatar });
+          }
+        }
+
+        // Fire-and-forget: cache TG avatars to CRM contacts
+        if (avatarUpdates.length > 0) {
+          for (const upd of avatarUpdates) {
+            supabase.from("contacts").update({ avatar_url: upd.avatar_url }).eq("id", upd.id).then(() => {});
+          }
         }
       }
     } catch { /* skip */ }
+
+    // Normalize all timestamps to seconds so TG (seconds) and MAX (possibly ms) sort correctly
+    for (const d of all) {
+      if (d.lastTime > 9999999999) d.lastTime = Math.floor(d.lastTime / 1000);
+    }
 
     // Sort by last message time, newest first
     all.sort((a, b) => (b.lastTime || 0) - (a.lastTime || 0));
@@ -403,7 +476,7 @@ export default function AllMessengersInbox() {
               </button>
             </div>
             <div className="flex-1 min-h-0">
-              <TelegramChat peer={selected.peer} compact />
+              <TelegramChat peer={selected.peer} compact phone={selected.phone} />
             </div>
           </div>
         ) : selected.channel === "maks" && selected.chatId ? (
@@ -434,7 +507,7 @@ export default function AllMessengersInbox() {
               </button>
             </div>
             <div className="flex-1 min-h-0">
-              <MaxChat chatId={selected.chatId} compact />
+              <MaxChat chatId={selected.chatId} compact phone={selected.phone} />
             </div>
           </div>
         ) : null}

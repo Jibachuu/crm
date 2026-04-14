@@ -130,9 +130,12 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
     setLoading(false);
   }
 
-  const filtered = products.filter((p) =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = products.filter((p) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) ||
+      p.category?.toLowerCase().includes(q) || p.subcategory?.toLowerCase().includes(q);
+  });
 
   return (
     <Modal open={open} onClose={onClose} title="Добавить товар" size="lg">
@@ -141,7 +144,7 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
           <>
             <input
               className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Поиск по названию или артикулу..."
+              placeholder="Поиск по названию, артикулу или категории..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />

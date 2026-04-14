@@ -18,6 +18,9 @@ interface HeaderProps {
 }
 
 export default function Header({ title }: HeaderProps) {
+  // Dynamic browser tab title
+  useEffect(() => { document.title = title ? `${title} — CRM` : "CRM"; }, [title]);
+
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
@@ -29,12 +32,16 @@ export default function Header({ title }: HeaderProps) {
   const [checkLoading, setCheckLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Load read IDs from localStorage
+  // Load read IDs from localStorage & request notification permission
   useEffect(() => {
     try {
       const stored = localStorage.getItem("read_notifications");
       if (stored) setReadIds(new Set(JSON.parse(stored)));
     } catch { /* ignore */ }
+    // Request browser notification permission
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
   }, []);
 
   // Close on outside click
@@ -82,6 +89,28 @@ export default function Header({ title }: HeaderProps) {
           try {
             localStorage.setItem("beeped_notifications", JSON.stringify({ date: today, ids: Array.from(beepedSet) }));
           } catch { /* ignore */ }
+
+          // Show browser notifications for new messages
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            const freshNotifs = newNotifs.filter((n) => freshIds.includes(n.id) && n.type === "message");
+            for (const n of freshNotifs.slice(0, 5)) {
+              try {
+                const notif = new Notification(n.title, {
+                  body: n.subtitle || "Новое сообщение",
+                  icon: "/icon-192.png",
+                  tag: n.id,
+                  data: { url: n.link || "/inbox" },
+                });
+                notif.onclick = () => {
+                  window.focus();
+                  window.location.href = n.link || "/inbox";
+                  notif.close();
+                };
+                // Auto-close after 8 seconds
+                setTimeout(() => notif.close(), 8000);
+              } catch { /* ignore */ }
+            }
+          }
         }
 
         prevCountRef.current = unread;

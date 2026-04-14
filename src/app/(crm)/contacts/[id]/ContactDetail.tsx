@@ -38,6 +38,7 @@ export default function ContactDetail({ contact: initialContact, communications:
   const [taskOpen, setTaskOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [calling, setCalling] = useState(false);
+  const [linking, setLinking] = useState(false);
 
   async function callPhone(phone: string) {
     setCalling(true);
@@ -85,6 +86,31 @@ export default function ContactDetail({ contact: initialContact, communications:
     }
     router.push("/contacts");
   }
+
+  async function linkMessengers() {
+    setLinking(true);
+    try {
+      const res = await fetch("/api/contacts/link-messengers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact_id: contact.id }),
+      });
+      const data = await res.json();
+      if (data.ok && data.updates) {
+        setContact((prev: Record<string, unknown>) => ({ ...prev, ...data.updates }));
+        const parts: string[] = [];
+        if (data.linked.telegram) parts.push("Telegram");
+        if (data.linked.maks) parts.push("МАКС");
+        alert(parts.length ? `Привязано: ${parts.join(", ")}` : "Мессенджеры не найдены по номеру телефона");
+      } else {
+        alert(data.error || "Не удалось найти контакт в мессенджерах");
+      }
+    } catch { alert("Ошибка при поиске"); }
+    setLinking(false);
+  }
+
+  const hasPhone = contact.phone || contact.phone_mobile || contact.phone_other;
+  const missingMessenger = !contact.telegram_id || !contact.maks_id;
 
   const tabs = [
     { id: "info", label: "Информация" },
@@ -159,6 +185,13 @@ export default function ContactDetail({ contact: initialContact, communications:
                 {contact.telegram_username && <span className="text-sm text-slate-600">💬 @{contact.telegram_username}</span>}
                 {contact.telegram_id && <span className="text-sm text-slate-600">💬 ID: {contact.telegram_id}</span>}
                 {contact.maks_id && <span className="text-sm text-slate-600">🔵 МАКС: {contact.maks_id}</span>}
+                {hasPhone && missingMessenger && (
+                  <button onClick={linkMessengers} disabled={linking}
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-full transition-colors hover:bg-blue-50 disabled:opacity-50"
+                    style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}>
+                    {linking ? "Поиск..." : "Привязать мессенджеры"}
+                  </button>
+                )}
               </div>
               {(contact.last_name || contact.middle_name) && (
                 <p className="mt-2 text-xs text-slate-400">

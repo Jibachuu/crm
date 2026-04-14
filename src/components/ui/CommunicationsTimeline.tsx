@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MessageSquare, Mail, Phone, ArrowLeft, ArrowRight, ChevronDown, Search, Edit2, Trash2, Check, X } from "lucide-react";
+import { MessageSquare, Mail, Phone, ArrowLeft, ArrowRight, ChevronDown, Search, Edit2, Trash2, Check, X, Pin } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import DateRangeFilter from "./DateRangeFilter";
 import { usePagination } from "@/hooks/usePagination";
@@ -15,6 +15,7 @@ interface Communication {
   sender_name?: string;
   from_address?: string;
   created_at: string;
+  is_pinned?: boolean;
   users?: { full_name: string };
 }
 
@@ -76,7 +77,13 @@ export default function CommunicationsTimeline({ entityType, entityId }: Props) 
     return true;
   });
 
-  const { visible, hasMore, remaining, showMore } = usePagination(filtered, 30);
+  // Pinned notes first, then by date
+  const sorted = [...filtered].sort((a, b) => {
+    if (a.is_pinned && !b.is_pinned) return -1;
+    if (!a.is_pinned && b.is_pinned) return 1;
+    return 0;
+  });
+  const { visible, hasMore, remaining, showMore } = usePagination(sorted, 30);
 
   function toggleChannel(ch: string) {
     setChannelFilter((prev) => { const s = new Set(prev); s.has(ch) ? s.delete(ch) : s.add(ch); return s; });
@@ -136,7 +143,7 @@ export default function CommunicationsTimeline({ entityType, entityId }: Props) 
 
             return (
               <div key={c.id} className="flex gap-3 rounded-lg px-4 py-3"
-                style={{ background: isInbound ? "#f8f9fa" : "#e8f4fd", border: "1px solid #e4e4e4" }}>
+                style={{ background: c.is_pinned ? "#fffbeb" : isInbound ? "#f8f9fa" : "#e8f4fd", border: c.is_pinned ? "1px solid #fbbf24" : "1px solid #e4e4e4" }}>
                 <div className="flex-shrink-0 mt-0.5">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: cfg.color + "15" }}>
                     <Icon size={14} style={{ color: cfg.color }} />
@@ -148,6 +155,13 @@ export default function CommunicationsTimeline({ entityType, entityId }: Props) 
                     {senderName && <span className="text-xs font-semibold" style={{ color: "#333" }}>{senderName}</span>}
                     <span className="text-xs" style={{ color: "#aaa" }}>{formatDate(c.created_at)}</span>
                     <div className="flex-1" />
+                    <button onClick={async () => {
+                      const newPinned = !c.is_pinned;
+                      await createClient().from("communications").update({ is_pinned: newPinned }).eq("id", c.id);
+                      setComms((prev) => prev.map((x) => x.id === c.id ? { ...x, is_pinned: newPinned } : x));
+                    }} className="p-0.5 rounded hover:bg-yellow-50" title={c.is_pinned ? "Открепить" : "Закрепить"}>
+                      <Pin size={11} style={{ color: c.is_pinned ? "#e65c00" : "#ccc" }} />
+                    </button>
                     {c.channel === "note" && editingId !== c.id && (
                       <button onClick={() => { setEditingId(c.id); setEditText(c.body ?? ""); }} className="p-0.5 rounded hover:bg-blue-50" title="Редактировать">
                         <Edit2 size={11} style={{ color: "#0067a5" }} />
@@ -177,7 +191,11 @@ export default function CommunicationsTimeline({ entityType, entityId }: Props) 
                     </div>
                   ) : (
                     <>
-                      {displayText && <p className="text-sm whitespace-pre-wrap" style={{ color: "#444" }}>{displayText}</p>}
+                      {(displayText || (c.channel === "phone" && c.from_address)) && (
+                        <p className="text-sm whitespace-pre-wrap" style={{ color: "#444" }}>
+                          {displayText || (c.channel === "phone" ? `${c.direction === "inbound" ? "Входящий звонок" : "Исходящий звонок"} ${c.from_address || ""}` : "")}
+                        </p>
+                      )}
                       {isLong && (
                         <button onClick={() => toggleExpand(c.id)} className="text-xs mt-1 hover:underline" style={{ color: "#0067a5" }}>
                           {isExpanded ? "Свернуть" : "Показать полностью"}

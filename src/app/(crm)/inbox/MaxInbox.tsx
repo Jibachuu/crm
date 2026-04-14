@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { CircleDot, RefreshCw, Link2 } from "lucide-react";
 import MaxChat from "@/components/ui/MaxChat";
 import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
+import { createClient } from "@/lib/supabase/client";
 
 interface MaxChatItem {
   id?: string;
@@ -32,8 +33,47 @@ export default function MaxInbox() {
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Ошибка"); setLoading(false); return; }
       // Extract chats array from response
-      const chatList = data.chats ?? data ?? [];
-      setChats(Array.isArray(chatList) ? chatList : []);
+      const chatList: MaxChatItem[] = Array.isArray(data.chats ?? data ?? []) ? (data.chats ?? data ?? []) : [];
+      // Enrich with CRM contact names + company
+      try {
+        const supabase = createClient();
+        const maksIds = chatList.map((c) => String(c.chatId ?? c.id ?? "")).filter(Boolean);
+        const chatPhones = chatList.filter((c) => c.phone).map((c) => String(c.phone!).replace(/\D/g, "").slice(-10)).filter((p) => p.length >= 7);
+        const orFilters: string[] = [];
+        if (maksIds.length) orFilters.push(`maks_id.in.(${maksIds.join(",")})`);
+        for (const p of [...new Set(chatPhones)].slice(0, 50)) orFilters.push(`phone.ilike.%${p}`);
+        if (orFilters.length) {
+          const { data: contacts } = await supabase
+            .from("contacts")
+            .select("maks_id, full_name, avatar_url, phone, company_id")
+            .or(orFilters.join(","));
+          const companyIds = [...new Set((contacts ?? []).map((c: { company_id?: string }) => c.company_id).filter(Boolean))];
+          const companyMap = new Map<string, string>();
+          if (companyIds.length) {
+            const { data: companies } = await supabase.from("companies").select("id, name").in("id", companyIds);
+            for (const co of companies ?? []) companyMap.set(co.id, co.name);
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const byMaksId = new Map<string, any>();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const byPhone = new Map<string, any>();
+          for (const c of contacts ?? []) {
+            if (c.maks_id) byMaksId.set(c.maks_id, c);
+            if (c.phone) byPhone.set(c.phone.replace(/\D/g, "").slice(-10), c);
+          }
+          for (const chat of chatList) {
+            const chatId = String(chat.chatId ?? chat.id ?? "");
+            const phoneSuffix = chat.phone ? String(chat.phone).replace(/\D/g, "").slice(-10) : "";
+            const contact = byMaksId.get(chatId) || (phoneSuffix ? byPhone.get(phoneSuffix) : undefined);
+            if (contact?.full_name && !/^\d+$/.test(contact.full_name)) {
+              const companyName = contact.company_id ? companyMap.get(contact.company_id) : undefined;
+              chat.title = companyName ? `${contact.full_name} · ${companyName}` : contact.full_name;
+            }
+            if (!chat.avatar && contact?.avatar_url) chat.avatar = contact.avatar_url;
+          }
+        }
+      } catch { /* skip enrichment */ }
+      setChats(chatList);
     } catch (e) { setError(String(e)); }
     setLoading(false);
   }
@@ -157,7 +197,7 @@ export default function MaxInbox() {
               );
             })()}
             <div className="flex-1 min-h-0">
-              <MaxChat chatId={selectedChat} compact />
+              <MaxChat chatId={selectedChat} compact phone={chats.find((c) => String(c.chatId ?? c.id) === selectedChat)?.phone ? String(chats.find((c) => String(c.chatId ?? c.id) === selectedChat)!.phone) : undefined} />
             </div>
           </>
         )}

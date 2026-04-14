@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Search, RefreshCw, MessageSquare, Link2 } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
 import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
+import { createClient } from "@/lib/supabase/client";
 
 interface Dialog {
   id: string;
@@ -57,6 +58,49 @@ export default function InboxClient() {
       const res = await fetch("/api/telegram/dialogs");
       const data = await res.json();
       if (data.error) { setError(data.error); return; }
+      // Enrich with CRM contact names + company (by telegram_id, username, or phone)
+      try {
+        const supabase = createClient();
+        const dialogs = data.dialogs as Dialog[];
+        const tgIds = dialogs.map((d) => String(d.id));
+        const tgUsernames = dialogs.filter((d) => d.username).map((d) => d.username!);
+        const phoneNumbers = dialogs.filter((d) => d.phone).map((d) => d.phone!.replace(/\D/g, "").slice(-10)).filter((p) => p.length >= 7);
+        const orFilters: string[] = [];
+        if (tgIds.length) orFilters.push(`telegram_id.in.(${tgIds.join(",")})`);
+        if (tgUsernames.length) orFilters.push(`telegram_username.in.(${tgUsernames.join(",")})`);
+        for (const p of [...new Set(phoneNumbers)].slice(0, 50)) orFilters.push(`phone.ilike.%${p}`);
+        if (orFilters.length) {
+          const { data: contacts } = await supabase
+            .from("contacts")
+            .select("telegram_id, telegram_username, full_name, phone, company_id")
+            .or(orFilters.join(","));
+          const companyIds = [...new Set((contacts ?? []).map((c: { company_id?: string }) => c.company_id).filter(Boolean))];
+          const companyMap = new Map<string, string>();
+          if (companyIds.length) {
+            const { data: companies } = await supabase.from("companies").select("id, name").in("id", companyIds);
+            for (const co of companies ?? []) companyMap.set(co.id, co.name);
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const byTgId = new Map<string, any>();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const byTgUser = new Map<string, any>();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const byPhone = new Map<string, any>();
+          for (const c of contacts ?? []) {
+            if (c.telegram_id) byTgId.set(String(c.telegram_id), c);
+            if (c.telegram_username) byTgUser.set(c.telegram_username.toLowerCase(), c);
+            if (c.phone) byPhone.set(c.phone.replace(/\D/g, "").slice(-10), c);
+          }
+          for (const d of dialogs) {
+            const phoneSuffix = d.phone ? d.phone.replace(/\D/g, "").slice(-10) : "";
+            const contact = byTgId.get(String(d.id)) || (d.username ? byTgUser.get(d.username.toLowerCase()) : undefined) || (phoneSuffix ? byPhone.get(phoneSuffix) : undefined);
+            if (contact?.full_name && !/^\d+$/.test(contact.full_name)) {
+              const companyName = contact.company_id ? companyMap.get(contact.company_id) : undefined;
+              d.name = companyName ? `${contact.full_name} · ${companyName}` : contact.full_name;
+            }
+          }
+        }
+      } catch { /* skip enrichment */ }
       setDialogs(data.dialogs);
       setError(null);
     } catch {
@@ -218,7 +262,7 @@ export default function InboxClient() {
 
             {/* Chat component */}
             <div className="flex-1 min-h-0">
-              <TelegramChat peer={selectedPeer} compact={false} readOnly={selected!.isChannel} />
+              <TelegramChat peer={selectedPeer} compact={false} readOnly={selected!.isChannel} phone={selected!.phone || undefined} />
             </div>
           </>
         )}

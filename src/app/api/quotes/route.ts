@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
 
   if (action === "create" || action === "update") {
-    const { id, company_id, contact_id, deal_id, manager_id, payment_terms, delivery_terms, comment, status, items } = body;
+    const { id, company_id, contact_id, deal_id, manager_id, payment_terms, delivery_terms, comment, status, items, hide_total } = body;
 
     const totalAmount = (items ?? []).reduce((s: number, i: { sum: number }) => s + (i.sum ?? 0), 0);
 
@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
       comment: comment || null,
       status: status || "draft",
       total_amount: totalAmount,
+      hide_total: hide_total ?? false,
       updated_at: new Date().toISOString(),
     };
 
@@ -42,7 +43,8 @@ export async function POST(req: NextRequest) {
     // Replace items
     await admin.from("quote_items").delete().eq("quote_id", quoteId);
     if (items?.length) {
-      const itemRows = items.map((i: { product_id?: string; name: string; article?: string; base_price: number; client_price: number; discount_pct: number; qty: number; sum: number; image_url?: string; description?: string }, idx: number) => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const itemRows = items.map((i: any, idx: number) => ({
         quote_id: quoteId,
         product_id: i.product_id || null,
         name: i.name,
@@ -54,6 +56,7 @@ export async function POST(req: NextRequest) {
         sum: i.sum ?? 0,
         image_url: i.image_url || null,
         description: i.description || null,
+        price_tiers: i.price_tiers?.length ? i.price_tiers : null,
         sort_order: idx,
       }));
       await admin.from("quote_items").insert(itemRows);

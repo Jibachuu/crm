@@ -41,6 +41,28 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [linkingContact, setLinkingContact] = useState<string | null>(null);
+
+  async function linkContactMessengers(contactId: string) {
+    setLinkingContact(contactId);
+    try {
+      const res = await fetch("/api/contacts/link-messengers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact_id: contactId }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const parts: string[] = [];
+        if (data.linked.telegram) parts.push("Telegram");
+        if (data.linked.maks) parts.push("МАКС");
+        alert(parts.length ? `Привязано: ${parts.join(", ")}. Обновите страницу чтобы увидеть вкладки.` : "Мессенджеры не найдены по номеру");
+      } else {
+        alert(data.error || "Не удалось привязать");
+      }
+    } catch { alert("Ошибка"); }
+    setLinkingContact(null);
+  }
 
   // Contract state
   const [contractStatus, setContractStatus] = useState(company.contract_status ?? "none");
@@ -175,7 +197,50 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                   <MapPin size={14} className="mt-0.5 flex-shrink-0 text-slate-400" /> {company.legal_address}
                 </p>
               )}
+              {company.delivery_address && (
+                <p className="mt-2 text-sm text-slate-600 flex items-start gap-2">
+                  <MapPin size={14} className="mt-0.5 flex-shrink-0 text-green-500" /> <span><span className="text-xs text-slate-400">Доставка:</span> {company.delivery_address}</span>
+                </p>
+              )}
               {company.description && <p className="mt-3 text-sm text-slate-600">{company.description}</p>}
+            </CardBody>
+          </Card>
+
+          {/* Contacts — always visible */}
+          <Card>
+            <div className="px-6 py-3 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-semibold text-slate-900">Контакты ({contacts?.length ?? 0})</h3>
+              <Link href={`/contacts?company=${company.id}`} className="text-xs text-blue-600 hover:underline">Все</Link>
+            </div>
+            <CardBody className="p-0">
+              {contacts?.length > 0 ? (
+                <ul className="divide-y divide-slate-100">
+                  {contacts.map((c: { id: string; full_name: string; position?: string; phone?: string; email?: string; telegram_id?: string; maks_id?: string }) => (
+                    <li key={c.id} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50">
+                      <Link href={`/contacts/${c.id}`} className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-blue-600 hover:underline">{c.full_name}</p>
+                        {c.position && <p className="text-xs text-slate-400">{c.position}</p>}
+                      </Link>
+                      <div className="flex items-center gap-2 text-xs text-slate-500 flex-shrink-0">
+                        {c.phone && <span className="flex items-center gap-1"><Phone size={11} /> {c.phone}</span>}
+                        {c.telegram_id && <span style={{ color: "#0088cc" }}>TG</span>}
+                        {c.maks_id && <span style={{ color: "#0067a5" }}>M</span>}
+                        {c.phone && (!c.telegram_id || !c.maks_id) && (
+                          <button
+                            onClick={(e) => { e.preventDefault(); linkContactMessengers(c.id); }}
+                            disabled={linkingContact === c.id}
+                            className="px-1.5 py-0.5 rounded hover:bg-blue-50 disabled:opacity-50"
+                            style={{ color: "#0067a5", border: "1px solid #d0e8f5", fontSize: 10 }}>
+                            {linkingContact === c.id ? "..." : "Привязать"}
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="px-6 py-4 text-sm text-slate-400">Нет привязанных контактов</p>
+              )}
             </CardBody>
           </Card>
 
@@ -196,32 +261,6 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
 
             {activeTab === "info" && (
               <div className="space-y-4">
-                {contacts?.length > 0 && (
-                  <Card>
-                    <div className="px-6 py-3 border-b border-slate-100">
-                      <h3 className="font-semibold text-slate-900">Контакты ({contacts.length})</h3>
-                    </div>
-                    <CardBody className="p-0">
-                      <ul className="divide-y divide-slate-100">
-                        {contacts.map((c: { id: string; full_name: string; position?: string; phone?: string; email?: string; telegram_id?: string }) => (
-                          <li key={c.id}>
-                            <Link href={`/contacts/${c.id}`} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50">
-                              <div>
-                                <p className="text-sm font-medium text-blue-600 hover:underline">{c.full_name}</p>
-                                {c.position && <p className="text-xs text-slate-400">{c.position}</p>}
-                              </div>
-                              <div className="flex items-center gap-3 text-xs text-slate-500">
-                                {c.phone && <span className="flex items-center gap-1"><Phone size={11} /> {c.phone}</span>}
-                                {c.email && <span className="flex items-center gap-1"><Mail size={11} /> {c.email}</span>}
-                                {c.telegram_id && <span style={{ color: "#0088cc" }}>TG</span>}
-                              </div>
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    </CardBody>
-                  </Card>
-                )}
 
                 {deals?.length > 0 && (
                   <Card>

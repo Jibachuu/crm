@@ -16,14 +16,16 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
   const [error, setError] = useState<string | null>(null);
   const [innLoading, setInnLoading] = useState(false);
   const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
+  const [dataReady, setDataReady] = useState(false);
   const [venueTypeId, setVenueTypeId] = useState<string | null>(company?.venue_type_id ?? null);
   const [supplierId, setSupplierId] = useState<string | null>(company?.supplier_id ?? null);
   const [venueTypeName, setVenueTypeName] = useState<string>("");
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setDataReady(false); return; }
     createClient().from("users").select("id, full_name").eq("is_active", true).then(({ data }) => {
       setUsers(data ?? []);
+      setDataReady(true);
     });
     setVenueTypeId(company?.venue_type_id ?? null);
     setSupplierId(company?.supplier_id ?? null);
@@ -84,6 +86,7 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
         region: (fd.get("region") as string) || null,
         legal_address: (fd.get("legal_address") as string) || null,
         actual_address: (fd.get("actual_address") as string) || null,
+        delivery_address: (fd.get("delivery_address") as string) || null,
         activity: (fd.get("activity") as string) || null,
         need: (fd.get("need") as string) || null,
         company_type: (fd.get("company_type") as string) || null,
@@ -131,6 +134,9 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
 
   return (
     <Modal open={open} onClose={onClose} title="Редактировать компанию" size="lg">
+      {!dataReady ? (
+        <div className="p-6 text-center text-sm text-slate-400">Загрузка...</div>
+      ) : (
       <form data-edit-company onSubmit={handleSubmit} className="p-5 space-y-3 overflow-y-auto max-h-[80vh]">
         {error && <div className="p-3 text-sm text-red-700" style={{ background: "#fff0f0", border: "1px solid #fcc", borderRadius: 4 }}>{error}</div>}
 
@@ -174,6 +180,7 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
 
         <Input label="Юридический адрес" name="legal_address" defaultValue={company?.legal_address ?? ""} />
         <Input label="Фактический адрес" name="actual_address" defaultValue={company?.actual_address ?? ""} />
+        <Input label="Адрес доставки" name="delivery_address" defaultValue={company?.delivery_address ?? ""} />
 
         <div className="grid grid-cols-2 gap-3">
           <Input label="Город" name="city" defaultValue={company?.city ?? ""} />
@@ -222,6 +229,7 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
           <Button type="submit" loading={loading}>Сохранить</Button>
         </div>
       </form>
+      )}
     </Modal>
   );
 }

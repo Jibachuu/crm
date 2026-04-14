@@ -96,17 +96,29 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                         <p style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginBottom: 2 }}>{item.name.split(" / ").pop()}</p>
                         {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
                         {item.description && <p style={{ fontSize: 11, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
-                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
-                          {item.discount_pct > 0 && (
-                            <span style={{ fontSize: 12, color: "#b3a894", textDecoration: "line-through" }}>{formatCurrency(item.base_price)}</span>
-                          )}
-                          <span style={{ fontSize: 16, fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(item.client_price)}</span>
-                          {item.discount_pct > 0 && (
-                            <span style={{ fontSize: 11, color: "#c17f3e", fontWeight: 600 }}>-{item.discount_pct}%</span>
-                          )}
-                          <span style={{ fontSize: 12, color: "#8c7e6a" }}>× {item.qty} шт.</span>
-                          <span style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginLeft: "auto" }}>{formatCurrency(item.sum)}</span>
-                        </div>
+                        {item.price_tiers?.length ? (
+                          <div style={{ marginTop: 8 }}>
+                            <p style={{ fontSize: 11, color: "#8c7e6a", marginBottom: 4 }}>Цены при разном объёме:</p>
+                            {item.price_tiers.map((tier: { from_qty: number; to_qty: number | null; price: number }, ti: number) => (
+                              <div key={ti} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 13 }}>
+                                <span style={{ color: "#8c7e6a" }}>{tier.from_qty}{tier.to_qty ? `–${tier.to_qty}` : "+"} шт.</span>
+                                <span style={{ fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(tier.price)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
+                            {item.discount_pct > 0 && (
+                              <span style={{ fontSize: 12, color: "#b3a894", textDecoration: "line-through" }}>{formatCurrency(item.base_price)}</span>
+                            )}
+                            <span style={{ fontSize: 16, fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(item.client_price)}</span>
+                            {item.discount_pct > 0 && (
+                              <span style={{ fontSize: 11, color: "#c17f3e", fontWeight: 600 }}>-{item.discount_pct}%</span>
+                            )}
+                            <span style={{ fontSize: 12, color: "#8c7e6a" }}>× {item.qty} шт.</span>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginLeft: "auto" }}>{formatCurrency(item.sum)}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -117,12 +129,14 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
         </div>
 
         {/* Total */}
-        <div style={{ padding: "24px 40px", background: "#f5f0e8", borderTop: "2px solid #e8e0d4" }}>
-          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12 }}>
-            <span style={{ fontSize: 14, color: "#8c7e6a" }}>Итого:</span>
-            <span style={{ fontSize: 28, fontWeight: 700, color: "#3d3325", fontFamily: "Georgia, serif" }}>{formatCurrency(totalAmount)}</span>
+        {!quote.hide_total && (
+          <div style={{ padding: "24px 40px", background: "#f5f0e8", borderTop: "2px solid #e8e0d4" }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12 }}>
+              <span style={{ fontSize: 14, color: "#8c7e6a" }}>Итого:</span>
+              <span style={{ fontSize: 28, fontWeight: 700, color: "#3d3325", fontFamily: "Georgia, serif" }}>{formatCurrency(totalAmount)}</span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Terms */}
         {(quote.payment_terms || quote.delivery_terms || quote.comment) && (

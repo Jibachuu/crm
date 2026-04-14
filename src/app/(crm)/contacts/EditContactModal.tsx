@@ -14,9 +14,10 @@ export default function EditContactModal({ open, onClose, contact, onSaved }: { 
   const [error, setError] = useState<string | null>(null);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
+  const [dataReady, setDataReady] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setDataReady(false); return; }
     const supabase = createClient();
     Promise.all([
       supabase.from("companies").select("id, name").order("name"),
@@ -24,6 +25,7 @@ export default function EditContactModal({ open, onClose, contact, onSaved }: { 
     ]).then(([co, u]) => {
       setCompanies(co.data ?? []);
       setUsers(u.data ?? []);
+      setDataReady(true);
     });
   }, [open]);
 
@@ -64,6 +66,9 @@ export default function EditContactModal({ open, onClose, contact, onSaved }: { 
 
   return (
     <Modal open={open} onClose={onClose} title="Редактировать контакт" size="md">
+      {!dataReady ? (
+        <div className="p-6 text-center text-sm text-slate-400">Загрузка...</div>
+      ) : (
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>}
         <div className="grid grid-cols-3 gap-3">
@@ -110,6 +115,7 @@ export default function EditContactModal({ open, onClose, contact, onSaved }: { 
           <Button type="submit" loading={loading}>Сохранить</Button>
         </div>
       </form>
+      )}
     </Modal>
   );
 }

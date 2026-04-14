@@ -21,6 +21,7 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [newInn, setNewInn] = useState("");
   const [selectedValue, setSelectedValue] = useState(defaultValue ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -77,7 +78,7 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
         const res = await fetch("/api/companies", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: newName.trim() }),
+          body: JSON.stringify({ name: newName.trim(), inn: newInn.trim() || null }),
         });
         const data = await res.json();
         if (res.ok && data.id) {
@@ -111,6 +112,9 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
               <Input label="Телефон" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+7..." />
               <Input label="Email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@..." />
             </div>
+          )}
+          {entityType === "company" && (
+            <Input label="ИНН" value={newInn} onChange={(e) => setNewInn(e.target.value)} placeholder="1234567890" maxLength={12} />
           )}
           <Button type="button" size="sm" onClick={handleCreate} loading={creating} disabled={!newName.trim()}>
             Создать {entityType === "contact" ? "контакт" : "компанию"}

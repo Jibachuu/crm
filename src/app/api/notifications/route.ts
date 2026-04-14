@@ -95,14 +95,42 @@ export async function GET() {
       );
     }
 
+    // Fetch contact names for sender enrichment
+    const contactIdsForName = [...new Set(allowedComms.map((c: { contact_id?: string }) => c.contact_id).filter(Boolean))];
+    const contactNameMap = new Map<string, { full_name: string; company_id?: string }>();
+    const compNameMap = new Map<string, string>();
+    if (contactIdsForName.length > 0) {
+      const { data: contactRows } = await admin.from("contacts").select("id, full_name, company_id").in("id", contactIdsForName);
+      for (const ct of contactRows ?? []) contactNameMap.set(ct.id, ct);
+      const compIds = [...new Set((contactRows ?? []).map((c) => c.company_id).filter(Boolean))];
+      if (compIds.length > 0) {
+        const { data: compRows } = await admin.from("companies").select("id, name").in("id", compIds);
+        for (const co of compRows ?? []) compNameMap.set(co.id, co.name);
+      }
+    }
+
     const channelLabels: Record<string, string> = { email: "Почта", telegram: "Telegram", maks: "МАКС", whatsapp: "WhatsApp", phone: "Звонок" };
+    const channelTabs: Record<string, string> = { telegram: "all", maks: "all", email: "email" };
     for (const c of allowedComms) {
       const channelLabel = channelLabels[String(c.channel)] || String(c.channel || "Сообщение");
-      const target = c.lead_id ? `/leads/${c.lead_id}` : c.deal_id ? `/deals/${c.deal_id}` : c.contact_id ? `/contacts/${c.contact_id}` : c.company_id ? `/companies/${c.company_id}` : "/inbox";
+      // For messenger messages, link to inbox; for others, link to entity
+      const isMessenger = ["telegram", "maks", "email"].includes(String(c.channel));
+      const target = isMessenger
+        ? `/inbox?tab=${channelTabs[String(c.channel)] || "all"}`
+        : c.lead_id ? `/leads/${c.lead_id}` : c.deal_id ? `/deals/${c.deal_id}` : c.contact_id ? `/contacts/${c.contact_id}` : c.company_id ? `/companies/${c.company_id}` : "/inbox";
+
+      // Build rich title with CRM contact name + company
+      const contact = c.contact_id ? contactNameMap.get(c.contact_id) : undefined;
+      const contactName = contact?.full_name;
+      const companyName = contact?.company_id ? compNameMap.get(contact.company_id) : undefined;
+      const senderDisplay = contactName
+        ? (companyName ? `${contactName} · ${companyName}` : contactName)
+        : (c.sender_name || "новое сообщение");
+
       notifications.push({
         id: `comm-${c.id}`,
         type: "message",
-        title: `${channelLabel}: ${c.sender_name || "новое сообщение"}`,
+        title: `${channelLabel}: ${senderDisplay}`,
         subtitle: c.content ? String(c.content).slice(0, 80) : undefined,
         link: target,
         date: c.created_at,

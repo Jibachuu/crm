@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { MessageSquare, Mail, Send, CircleDot, MessagesSquare } from "lucide-react";
 import InboxClient from "./InboxClient";
 import EmailInbox from "./EmailInbox";
@@ -16,8 +17,18 @@ const TABS = [
   { id: "campaigns", label: "Рассылки", icon: Send },
 ] as const;
 
+type TabId = typeof TABS[number]["id"];
+
 export default function InboxTabsClient() {
-  const [tab, setTab] = useState<"all" | "telegram" | "maks" | "email" | "campaigns">("all");
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const initialTab = TABS.some((t) => t.id === tabParam) ? (tabParam as TabId) : "all";
+  const [tab, setTab] = useState<TabId>(initialTab);
+
+  // Sync tab with URL param changes
+  useEffect(() => {
+    if (tabParam && TABS.some((t) => t.id === tabParam)) setTab(tabParam as TabId);
+  }, [tabParam]);
 
   return (
     <div className="flex flex-col h-full">

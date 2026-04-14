@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, Package, Plus, CheckSquare, MessageSquare, Send } from "lucide-react";
+import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, Package, Plus, CheckSquare, MessageSquare, Send, Paperclip, FileDown, Receipt } from "lucide-react";
 import TaskItem from "@/components/ui/TaskItem";
 import TelegramChat from "@/components/ui/TelegramChat";
 import MaxChat from "@/components/ui/MaxChat";
@@ -46,13 +46,43 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
   const [dealProducts, setDealProducts] = useState(initialDealProducts ?? []);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram" | "maks" | "quotes" | "production">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram" | "maks" | "quotes" | "production" | "files" | "invoices">("info");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [dealFiles, setDealFiles] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [dealInvoices, setDealInvoices] = useState<any[]>([]);
+  const [fileUploading, setFileUploading] = useState(false);
+
+  useEffect(() => {
+    // Load files and invoices
+    fetch(`/api/deals/files?deal_id=${deal.id}`).then((r) => r.json()).then((d) => setDealFiles(d.files ?? [])).catch(() => {});
+    createClient().from("invoices").select("id, invoice_number, invoice_date, total_amount, status, buyer_name").eq("deal_id", deal.id).order("created_at", { ascending: false }).then(({ data }) => setDealInvoices(data ?? []));
+  }, [deal.id]);
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [addProductBlock, setAddProductBlock] = useState<"request" | "order" | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [extraContacts, setExtraContacts] = useState<any[]>([]);
+  const [addContactOpen, setAddContactOpen] = useState(false);
+  const [contactSearch, setContactSearch] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [contactResults, setContactResults] = useState<any[]>([]);
+
+  // Load additional contacts from junction table
+  useEffect(() => {
+    createClient().from("deal_contacts")
+      .select("id, contact_id, is_primary, contacts(id, full_name, phone, email, telegram_id, maks_id)")
+      .eq("deal_id", deal.id)
+      .order("is_primary", { ascending: false })
+      .then(({ data }) => {
+        // Filter out the primary contact (already shown)
+        const extra = (data ?? []).filter((dc: { contact_id: string }) => dc.contact_id !== deal.contact_id);
+        setExtraContacts(extra);
+      });
+  }, [deal.id, deal.contact_id]);
   const funnelStages: FunnelStage[] = initialFunnelStages ?? [];
   const hasFunnelStages = funnelStages.length > 0;
   const regularStages = funnelStages.filter((s) => !s.is_final);
@@ -300,6 +330,8 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 { id: "communications", label: `Коммуникации (${communications.length})` },
                 { id: "tasks", label: `Задачи (${tasks.length})` },
                 { id: "products", label: `Товары (${dealProducts.length})` },
+                { id: "files", label: `📎 Файлы (${dealFiles.length})` },
+                { id: "invoices", label: `🧾 Счета (${dealInvoices.length})` },
                 { id: "quotes", label: "📋 КП" },
                 { id: "production", label: "🏭 Производство" },
                 { id: "email", label: "📧 Почта" },
@@ -415,6 +447,79 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
               <DealQuotes dealId={deal.id} />
             )}
 
+            {activeTab === "files" && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 px-3 py-1.5 text-sm rounded cursor-pointer hover:bg-blue-50" style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}>
+                    <Paperclip size={14} /> {fileUploading ? "Загрузка..." : "Загрузить файл"}
+                    <input type="file" multiple className="hidden" disabled={fileUploading} onChange={async (e) => {
+                      const files = e.target.files;
+                      if (!files) return;
+                      setFileUploading(true);
+                      for (let i = 0; i < files.length; i++) {
+                        const fd = new FormData();
+                        fd.append("file", files[i]);
+                        fd.append("deal_id", deal.id);
+                        const res = await fetch("/api/deals/files", { method: "POST", body: fd });
+                        if (res.ok) {
+                          const f = await res.json();
+                          setDealFiles((prev) => [f, ...prev]);
+                        }
+                      }
+                      setFileUploading(false);
+                      e.target.value = "";
+                    }} />
+                  </label>
+                </div>
+                {dealFiles.length === 0 ? (
+                  <p className="text-sm text-center py-8" style={{ color: "#aaa" }}>Нет файлов</p>
+                ) : (
+                  <div className="space-y-1">
+                    {dealFiles.map((f: { id: string; file_name: string; file_url: string; file_type?: string; file_size?: number; created_at: string }) => (
+                      <div key={f.id} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-slate-50" style={{ border: "1px solid #f0f0f0" }}>
+                        <Paperclip size={14} className="flex-shrink-0 text-slate-400" />
+                        <a href={f.file_url} target="_blank" rel="noopener noreferrer" className="flex-1 text-sm text-blue-600 hover:underline truncate">{f.file_name}</a>
+                        <span className="text-xs text-slate-400">{f.file_size ? `${(f.file_size / 1024).toFixed(0)} KB` : ""}</span>
+                        <span className="text-xs text-slate-400">{new Date(f.created_at).toLocaleDateString("ru-RU")}</span>
+                        <button onClick={async () => {
+                          if (!confirm("Удалить файл?")) return;
+                          await fetch("/api/deals/files", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id }) });
+                          setDealFiles((prev) => prev.filter((x: { id: string }) => x.id !== f.id));
+                        }} className="p-1 rounded hover:bg-red-50"><Trash2 size={12} className="text-red-400" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "invoices" && (
+              <div className="space-y-2">
+                {dealInvoices.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Receipt size={32} className="mx-auto mb-2 text-slate-300" />
+                    <p className="text-sm" style={{ color: "#aaa" }}>Нет счетов для этой сделки</p>
+                    <Link href="/invoices" className="text-xs text-blue-600 hover:underline mt-1 inline-block">Создать счёт</Link>
+                  </div>
+                ) : (
+                  dealInvoices.map((inv: { id: string; invoice_number: string; invoice_date: string; total_amount: number; status: string; buyer_name: string }) => (
+                    <div key={inv.id} className="flex items-center justify-between px-4 py-3 rounded" style={{ border: "1px solid #e4e4e4", background: "#fafafa" }}>
+                      <div>
+                        <p className="text-sm font-medium">Счёт №{inv.invoice_number}</p>
+                        <p className="text-xs text-slate-500">{inv.buyer_name} · {new Date(inv.invoice_date).toLocaleDateString("ru-RU")}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-semibold" style={{ color: "#2e7d32" }}>{formatCurrency(inv.total_amount)}</span>
+                        <Link href="/invoices" className="text-xs px-2 py-1 rounded hover:bg-blue-50" style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}>
+                          <FileDown size={12} className="inline mr-1" />Открыть
+                        </Link>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
             {activeTab === "products" && (
               <div className="space-y-5">
                 <DealProductBlock
@@ -443,11 +548,16 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
 
         {/* Sidebar */}
         <div className="space-y-3">
-          {deal.contacts && (
-            <Card>
-              <CardBody>
-                <h3 className="text-xs font-semibold uppercase mb-3" style={{ color: "#888", letterSpacing: "0.05em" }}>Контакт</h3>
-                <Link href={`/contacts/${deal.contacts.id}`} className="flex items-center gap-3 hover:opacity-80">
+          <Card>
+            <CardBody>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold uppercase" style={{ color: "#888", letterSpacing: "0.05em" }}>Контакты</h3>
+                <button onClick={() => setAddContactOpen(!addContactOpen)} className="text-xs flex items-center gap-0.5" style={{ color: "#0067a5" }}>
+                  <Plus size={12} /> Добавить
+                </button>
+              </div>
+              {deal.contacts && (
+                <Link href={`/contacts/${deal.contacts.id}`} className="flex items-center gap-3 hover:opacity-80 mb-2">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: "#e8f4fd", color: "#0067a5" }}>
                     {getInitials(deal.contacts.full_name)}
                   </div>
@@ -457,9 +567,50 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                     {deal.contacts.email && <p className="text-xs flex items-center gap-1" style={{ color: "#888" }}><Mail size={10} />{deal.contacts.email}</p>}
                   </div>
                 </Link>
-              </CardBody>
-            </Card>
-          )}
+              )}
+              {extraContacts.map((dc: { id: string; contacts: { id: string; full_name: string; phone?: string; email?: string } }) => (
+                <div key={dc.id} className="flex items-center gap-3 mb-2">
+                  <Link href={`/contacts/${dc.contacts.id}`} className="flex items-center gap-3 hover:opacity-80 flex-1">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: "#f0f0f0", color: "#666" }}>
+                      {getInitials(dc.contacts.full_name)}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: "#333" }}>{dc.contacts.full_name}</p>
+                      {dc.contacts.phone && <p className="text-xs" style={{ color: "#888" }}>{dc.contacts.phone}</p>}
+                    </div>
+                  </Link>
+                  <button onClick={async () => {
+                    await createClient().from("deal_contacts").delete().eq("id", dc.id);
+                    setExtraContacts((prev) => prev.filter((x: { id: string }) => x.id !== dc.id));
+                  }} className="p-1 rounded hover:bg-red-50 flex-shrink-0"><Trash2 size={11} className="text-red-400" /></button>
+                </div>
+              ))}
+              {addContactOpen && (
+                <div className="mt-2 p-2 rounded" style={{ background: "#f8f9fa", border: "1px solid #e0e0e0" }}>
+                  <input value={contactSearch} onChange={async (e) => {
+                    setContactSearch(e.target.value);
+                    if (e.target.value.length >= 2) {
+                      const { data } = await createClient().from("contacts").select("id, full_name, phone").ilike("full_name", `%${e.target.value}%`).limit(10);
+                      setContactResults(data ?? []);
+                    } else setContactResults([]);
+                  }} placeholder="Поиск контакта..." className="w-full text-xs px-2 py-1.5 rounded mb-1 focus:outline-none" style={{ border: "1px solid #d0d0d0" }} />
+                  {contactResults.map((c: { id: string; full_name: string; phone?: string }) => (
+                    <button key={c.id} onClick={async () => {
+                      await createClient().from("deal_contacts").insert({ deal_id: deal.id, contact_id: c.id, is_primary: false });
+                      const { data } = await createClient().from("deal_contacts").select("id, contact_id, is_primary, contacts(id, full_name, phone, email)").eq("deal_id", deal.id).eq("contact_id", c.id).single();
+                      if (data) setExtraContacts((prev) => [...prev, data]);
+                      setAddContactOpen(false); setContactSearch(""); setContactResults([]);
+                    }} className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-blue-50">
+                      {c.full_name} {c.phone ? `· ${c.phone}` : ""}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!deal.contacts && extraContacts.length === 0 && !addContactOpen && (
+                <p className="text-xs" style={{ color: "#aaa" }}>Нет контактов</p>
+              )}
+            </CardBody>
+          </Card>
 
           {deal.companies && (
             <Card>

@@ -28,9 +28,23 @@ export async function POST(req: NextRequest) {
 
     if (existing) continue;
 
+    // Set FK columns based on entity_type
+    const fkFields: Record<string, string | null> = { contact_id: null, company_id: null, deal_id: null, lead_id: null };
+    if (entity_type === "contact") {
+      fkFields.contact_id = entity_id;
+      // Also resolve company_id from contact
+      try {
+        const { data: ct } = await supabase.from("contacts").select("company_id").eq("id", entity_id).single();
+        if (ct?.company_id) fkFields.company_id = ct.company_id;
+      } catch { /* skip */ }
+    } else if (entity_type === "company") fkFields.company_id = entity_id;
+    else if (entity_type === "deal") fkFields.deal_id = entity_id;
+    else if (entity_type === "lead") fkFields.lead_id = entity_id;
+
     await supabase.from("communications").insert({
       entity_type,
       entity_id,
+      ...fkFields,
       channel,
       direction: msg.isMe || msg.direction === "outbound" ? "outbound" : "inbound",
       body: msg.text || msg.body || msg.preview || "",

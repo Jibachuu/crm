@@ -17,11 +17,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
+    const fileName = file.name || "file";
+    const mimeType = file.type || "application/octet-stream";
+    // Determine kind: images → photo (inline), everything else → file (as document with filename)
+    const isImage = mimeType.startsWith("image/") && !mimeType.includes("svg");
+    const kind = isImage ? "photo" : "file";
     const upstream = await fetch(
-      `${URL_BASE}/upload?peer=${encodeURIComponent(peer)}&kind=file&caption=${encodeURIComponent(caption)}`,
+      `${URL_BASE}/upload?peer=${encodeURIComponent(peer)}&kind=${kind}&caption=${encodeURIComponent(caption)}&filename=${encodeURIComponent(fileName)}`,
       {
         method: "POST",
-        headers: { Authorization: KEY, "Content-Type": "application/octet-stream" },
+        headers: { Authorization: KEY, "Content-Type": mimeType, "X-Filename": fileName },
         body: bytes,
       }
     );

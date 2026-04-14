@@ -31,10 +31,32 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
 
   if (event === "NOTIFY_END") {
+    // Try to match caller/destination phone to a CRM contact
+    const phoneToMatch = callerNum || destination || "";
+    const cleanPhone = phoneToMatch.replace(/\D/g, "");
+    let contactId: string | null = null;
+    let companyId: string | null = null;
+
+    if (cleanPhone.length >= 7) {
+      // Search by phone, phone_mobile, phone_other (fuzzy match last 10 digits)
+      const phoneSuffix = cleanPhone.slice(-10);
+      const { data: contacts } = await supabase
+        .from("contacts")
+        .select("id, company_id")
+        .or(`phone.ilike.%${phoneSuffix},phone_mobile.ilike.%${phoneSuffix},phone_other.ilike.%${phoneSuffix}`)
+        .limit(1);
+      if (contacts?.[0]) {
+        contactId = contacts[0].id;
+        companyId = contacts[0].company_id || null;
+      }
+    }
+
     // Call ended — log to communications
     await supabase.from("communications").insert({
-      entity_type: "contact",
-      entity_id: "00000000-0000-0000-0000-000000000000", // placeholder — match by phone
+      entity_type: contactId ? "contact" : "contact",
+      entity_id: contactId || "00000000-0000-0000-0000-000000000000",
+      contact_id: contactId,
+      company_id: companyId,
       channel: "phone",
       direction: callerNum ? "inbound" : "outbound",
       subject: `Звонок ${callerNum ?? destination}`,

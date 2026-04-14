@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Plus, Search, Filter, Trash2, CheckSquare } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -28,17 +28,26 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
   const { user: currentUser, isManager } = useCurrentUser();
   const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
   const hasFunnelStages = funnelStages.length > 0;
+  // Restore filters from sessionStorage
+  const saved = typeof sessionStorage !== "undefined" ? JSON.parse(sessionStorage.getItem("deals_filters") || "{}") : {};
   const [deals, setDeals] = useState(initialDeals);
-  const [search, setSearch] = useState("");
-  const [stageFilter, setStageFilter] = useState("all");
+  const [search, setSearch] = useState(saved.search || "");
+  const [stageFilter, setStageFilter] = useState(saved.stageFilter || "all");
   const [showCreate, setShowCreate] = useState(false);
-  const [view, setView] = useState<"table" | "kanban">("table");
+  const [view, setView] = useState<"table" | "kanban">(saved.view || "table");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkTaskOpen, setBulkTaskOpen] = useState(false);
   const [kanbanLimits, setKanbanLimits] = useState<Record<string, number>>({});
-  const [dateFrom, setDateFrom] = useState<string | null>(null);
-  const [dateTo, setDateTo] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState<string | null>(saved.dateFrom || null);
+  const [dateTo, setDateTo] = useState<string | null>(saved.dateTo || null);
+
+  // Persist filters to sessionStorage
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("deals_filters", JSON.stringify({ search, stageFilter, view, dateFrom, dateTo }));
+    } catch { /* ignore */ }
+  }, [search, stageFilter, view, dateFrom, dateTo]);
 
   const filtered = deals.filter((d) => {
     const matchesSearch = !search ||

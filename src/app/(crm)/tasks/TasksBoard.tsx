@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Trash2, Edit2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, Trash2, Edit2, Filter } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
@@ -52,10 +52,15 @@ export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [filterUser, setFilterUser] = useState<string>(isManager && currentUser ? currentUser.id : "all");
+  const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
 
-  const visibleTasks = isManager && currentUser
-    ? tasks.filter((t) => (t as any).assigned_to === currentUser.id)
-    : tasks;
+  useEffect(() => {
+    createClient().from("users").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setUsers(data ?? []));
+  }, []);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const visibleTasks = filterUser === "all" ? tasks : tasks.filter((t) => (t as any).assigned_to === filterUser);
 
   const grouped = {
     pending: visibleTasks.filter((t) => t.status === "pending"),
@@ -89,7 +94,22 @@ export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
 
   return (
     <div>
-      <div className="flex justify-end mb-5">
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2">
+          <Filter size={14} className="text-slate-400" />
+          <select
+            value={filterUser}
+            onChange={(e) => setFilterUser(e.target.value)}
+            className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            <option value="all">Все сотрудники</option>
+            {currentUser && <option value={currentUser.id}>Мои задачи</option>}
+            {users.filter((u) => u.id !== currentUser?.id).map((u) => (
+              <option key={u.id} value={u.id}>{u.full_name}</option>
+            ))}
+          </select>
+          <span className="text-xs text-slate-400">{visibleTasks.length} задач</span>
+        </div>
         <Button size="sm" onClick={() => setModalOpen(true)}>
           <Plus size={16} /> Новая задача
         </Button>
