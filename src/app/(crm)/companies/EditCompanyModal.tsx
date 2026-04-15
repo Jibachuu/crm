@@ -23,7 +23,7 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
 
   useEffect(() => {
     if (!open) { setDataReady(false); return; }
-    createClient().from("users").select("id, full_name").eq("is_active", true).then(({ data }) => {
+    Promise.resolve(createClient().from("users").select("id, full_name").eq("is_active", true)).then(({ data }) => {
       setUsers(data ?? []);
       setDataReady(true);
     }).catch(() => { setDataReady(true); });
