@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Send, X, Paperclip, FileText, ChevronDown } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import Button from "./Button";
@@ -37,7 +37,7 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [sentMsg, setSentMsg] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
+
 
   // Templates & signatures
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -203,10 +203,10 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
         )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
-            <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-            <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-gray-100 transition-colors" style={{ color: "#888" }}>
+            <label className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-gray-100 transition-colors cursor-pointer" style={{ color: "#888" }}>
               <Paperclip size={13} /> Файл
-            </button>
+              <input type="file" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+            </label>
             <FileTemplatesPanel onInsert={(tplFiles) => {
               Promise.all(tplFiles.map((f) =>
                 fetch(f.url).then((r) => r.blob()).then((blob) => new File([blob], f.name, { type: f.type || "application/octet-stream" }))
