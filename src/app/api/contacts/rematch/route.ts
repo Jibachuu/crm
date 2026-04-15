@@ -46,29 +46,38 @@ export async function POST() {
     return name;
   }
 
-  // Helper: find best contact for a name
+  // Helper: find best contact for a name — STRICT matching only
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function findBestContact(name: string, currentContactId: string): any | null {
-    const n = norm(name);
-    if (n.length < 3) return null;
+  function findBestContact(title: string, currentContactId: string): any | null {
+    // 1. Try phone from title (e.g. "Елена WhatsApp(79196073052)")
+    const phoneMatch = title.match(/(\d{10,11})/);
+    if (phoneMatch) {
+      const s = phoneSuffix(phoneMatch[1]);
+      if (s.length >= 7) {
+        const c = contactByPhone.get(s);
+        if (c && c.id !== currentContactId) return c;
+      }
+    }
 
-    // Exact name match
+    // 2. Extract name and require BOTH first+last name (2+ words) for matching
+    const nameFromTitle = extractName(title);
+    const n = norm(nameFromTitle);
+    const words = n.split(" ").filter((w) => w.length >= 2);
+    if (words.length < 2) return null; // Single name like "Анна" — too ambiguous
+
+    // Exact full name match
     const exact = contactByName.get(n);
     if (exact) {
-      // Prefer contact with phone, not the current one
       const better = exact.find((c: { id: string; phone?: string }) => c.id !== currentContactId && c.phone);
       if (better) return better;
     }
 
-    // Partial match: search all contacts for name containment
+    // Match where ALL words from title appear in contact name
     for (const c of allContacts ?? []) {
       if (c.id === currentContactId) continue;
-      if (!c.phone && !c.email) continue; // skip junk contacts
+      if (!c.phone && !c.email) continue;
       const cn = norm(c.full_name);
-      // Both directions: title name contains contact name, or contact name contains title name
-      if (cn.length >= 3 && n.length >= 3 && (cn.includes(n) || n.includes(cn))) {
-        return c;
-      }
+      if (words.every((w) => cn.includes(w))) return c;
     }
     return null;
   }
@@ -84,17 +93,8 @@ export async function POST() {
     const contact = lead.contacts as any;
     if (!contact?.full_name || !lead.title) continue;
 
-    const nameFromTitle = extractName(lead.title);
-    if (!nameFromTitle || nameFromTitle.length < 3) continue;
-
-    // Check if current contact name matches title
-    const contactNorm = norm(contact.full_name);
-    const titleNorm = norm(nameFromTitle);
-    const isMatch = contactNorm.includes(titleNorm) || titleNorm.includes(contactNorm);
-    if (isMatch) continue; // Current link is correct
-
-    // Current contact doesn't match title — find better one
-    const better = findBestContact(nameFromTitle, contact.id);
+    // Try to find a better contact match from title
+    const better = findBestContact(lead.title, contact.id);
     if (better) {
       await admin.from("leads").update({ contact_id: better.id }).eq("id", lead.id);
       results.push(`Lead: "${lead.title}" — ${contact.full_name} → ${better.full_name}`);
@@ -113,15 +113,7 @@ export async function POST() {
     const contact = deal.contacts as any;
     if (!contact?.full_name || !deal.title) continue;
 
-    const nameFromTitle = extractName(deal.title);
-    if (!nameFromTitle || nameFromTitle.length < 3) continue;
-
-    const contactNorm = norm(contact.full_name);
-    const titleNorm = norm(nameFromTitle);
-    const isMatch = contactNorm.includes(titleNorm) || titleNorm.includes(contactNorm);
-    if (isMatch) continue;
-
-    const better = findBestContact(nameFromTitle, contact.id);
+    const better = findBestContact(deal.title, contact.id);
     if (better) {
       await admin.from("deals").update({ contact_id: better.id }).eq("id", deal.id);
       results.push(`Deal: "${deal.title}" — ${contact.full_name} → ${better.full_name}`);
