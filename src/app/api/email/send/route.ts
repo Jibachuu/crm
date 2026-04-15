@@ -39,6 +39,9 @@ export async function POST(req: NextRequest) {
     const transporter = nodemailer.createTransport({
       host, port, secure: port === 465,
       auth: { user, pass },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
 
     const attachments = (files ?? [])
