@@ -355,7 +355,8 @@ export async function POST(req: NextRequest) {
       // ── Company: find by name or INN, create if new, enrich existing ──
       const companyName = String(row.company_name ?? "").trim();
       const companyInn = String(row.company_inn ?? "").trim();
-      const companyAddress = String(row.company_address ?? "").trim();
+      const companyLegalAddress = String(row.company_legal_address ?? "").trim();
+      const companyActualAddress = String(row.company_actual_address ?? "").trim();
       const companyCity = String(row.company_city ?? "").trim();
       let companyId: string | null = null;
 
@@ -372,7 +373,8 @@ export async function POST(req: NextRequest) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const upd: any = {};
           if (companyInn) upd.inn = companyInn;
-          if (companyAddress) upd.legal_address = companyAddress;
+          if (companyLegalAddress) upd.legal_address = companyLegalAddress;
+          if (companyActualAddress) upd.actual_address = companyActualAddress;
           if (companyCity) upd.city = companyCity;
           if (Object.keys(upd).length > 0) await admin.from("companies").update(upd).eq("id", companyId);
         } else {
@@ -380,7 +382,8 @@ export async function POST(req: NextRequest) {
           const { data: newCo } = await admin.from("companies").insert({
             name: companyName || `ИНН ${companyInn}`,
             inn: companyInn || null,
-            legal_address: companyAddress || null,
+            legal_address: companyLegalAddress || null,
+            actual_address: companyActualAddress || null,
             city: companyCity || null,
             created_by: user.id,
           }).select("id, name").single();
@@ -451,6 +454,7 @@ export async function POST(req: NextRequest) {
       if (table === "deals") {
         rec.amount = parseNum(row.amount);
         if (row.bitrix_id) rec.bitrix_id = String(row.bitrix_id).trim();
+        if (row.delivery_address) rec.delivery_address = String(row.delivery_address).trim();
       }
       if (table === "leads") {
         rec.telegram_username = row.telegram_username || null;
