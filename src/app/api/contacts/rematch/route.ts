@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-// Re-match deals and leads to correct contacts by phone/email
-// Fixes cases where "Анна" was matched to wrong contact
+function norm(s: string) { return (s || "").trim().toLowerCase().replace(/\s+/g, " "); }
+function phoneSuffix(p: string) { return p.replace(/\D/g, "").slice(-10); }
+
 export async function POST() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -12,156 +13,154 @@ export async function POST() {
   const admin = createAdminClient();
   const results: string[] = [];
 
-  // 1. Build contact lookup by phone/email/messenger IDs
+  // Load all contacts with lookup indexes
   const { data: allContacts } = await admin.from("contacts").select("id, full_name, phone, phone_mobile, email, telegram_id, telegram_username, maks_id");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const contactByPhone = new Map<string, any>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contactByEmail = new Map<string, any>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contactByTgId = new Map<string, any>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contactByMaksId = new Map<string, any>();
+  const contactByName = new Map<string, any[]>(); // name → [contacts]
 
   for (const c of allContacts ?? []) {
-    if (c.phone) {
-      const clean = c.phone.replace(/\D/g, "").slice(-10);
-      if (clean.length >= 7) contactByPhone.set(clean, c);
+    if (c.phone) { const s = phoneSuffix(c.phone); if (s.length >= 7) contactByPhone.set(s, c); }
+    if (c.phone_mobile) { const s = phoneSuffix(c.phone_mobile); if (s.length >= 7 && !contactByPhone.has(s)) contactByPhone.set(s, c); }
+    // Index by name parts for fuzzy matching
+    const n = norm(c.full_name);
+    if (n.length >= 3) {
+      if (!contactByName.has(n)) contactByName.set(n, []);
+      contactByName.get(n)!.push(c);
     }
-    if (c.phone_mobile) {
-      const clean = c.phone_mobile.replace(/\D/g, "").slice(-10);
-      if (clean.length >= 7) contactByPhone.set(clean, c);
-    }
-    if (c.email) contactByEmail.set(c.email.toLowerCase(), c);
-    if (c.telegram_id) contactByTgId.set(c.telegram_id, c);
-    if (c.maks_id) contactByMaksId.set(c.maks_id, c);
   }
 
-  // 2. Check all leads — find better contact match by messenger ID, phone, or name
+  // Helper: extract person name from deal/lead title
+  function extractName(title: string): string {
+    // "Заявка с сайта Анна Митина "ЭСТЕТИКА МАНИКЮРА" Брянск" → "Анна Митина"
+    // "МАКС: Полина Клиент" → "Полина Клиент"
+    // "Telegram: Имя Фамилия" → "Имя Фамилия"
+    let name = title;
+    // Remove source prefix
+    name = name.replace(/^(Заявка с сайта|МАКС|Telegram|Email|Звонок)\s*:?\s*/i, "");
+    // Remove quoted company name
+    name = name.replace(/["«»"][^"«»"]*["«»"]/g, "").trim();
+    // Remove city-like suffixes
+    name = name.replace(/\s+(г\.|город|Москва|Брянск|Казань|Екатеринбург|Новосибирск|Краснодар|Ростов|Воронеж|Самара|Уфа|Тюмень|Омск|Пермь|Волгоград|Красноярск|Саратов|Нижний|Санкт).*$/i, "").trim();
+    return name;
+  }
+
+  // Helper: find best contact for a name
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function findBestContact(name: string, currentContactId: string): any | null {
+    const n = norm(name);
+    if (n.length < 3) return null;
+
+    // Exact name match
+    const exact = contactByName.get(n);
+    if (exact) {
+      // Prefer contact with phone, not the current one
+      const better = exact.find((c: { id: string; phone?: string }) => c.id !== currentContactId && c.phone);
+      if (better) return better;
+    }
+
+    // Partial match: search all contacts for name containment
+    for (const c of allContacts ?? []) {
+      if (c.id === currentContactId) continue;
+      if (!c.phone && !c.email) continue; // skip junk contacts
+      const cn = norm(c.full_name);
+      // Both directions: title name contains contact name, or contact name contains title name
+      if (cn.length >= 3 && n.length >= 3 && (cn.includes(n) || n.includes(cn))) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  // ── Fix leads ──
   const { data: leads } = await admin.from("leads")
-    .select("id, title, contact_id, contacts(id, full_name, phone, email, telegram_id, maks_id)")
+    .select("id, title, contact_id, contacts(id, full_name, phone, email)")
     .not("contact_id", "is", null);
 
   let leadsFixed = 0;
   for (const lead of leads ?? []) {
-    const contact = lead.contacts as unknown as { id: string; full_name: string; phone?: string; email?: string; telegram_id?: string; maks_id?: string } | null;
-    if (!contact) continue;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contact = lead.contacts as any;
+    if (!contact?.full_name || !lead.title) continue;
 
-    // Skip if contact already has phone/email AND messenger IDs — probably correct
-    if ((contact.phone || contact.email) && (contact.telegram_id || contact.maks_id)) continue;
+    const nameFromTitle = extractName(lead.title);
+    if (!nameFromTitle || nameFromTitle.length < 3) continue;
 
-    // Try to find a better match
-    const titleMatch = lead.title?.match(/:\s*(.+)/);
-    const nameFromTitle = titleMatch?.[1]?.trim();
-    if (!nameFromTitle) continue;
+    // Check if current contact name matches title
+    const contactNorm = norm(contact.full_name);
+    const titleNorm = norm(nameFromTitle);
+    const isMatch = contactNorm.includes(titleNorm) || titleNorm.includes(contactNorm);
+    if (isMatch) continue; // Current link is correct
 
-    // Search by messenger ID first, then by name+phone
-    let betterContact = null;
-
-    // If current contact has telegram_id, find if there's a BETTER contact with same tg_id + phone
-    if (contact.telegram_id) {
-      const match = contactByTgId.get(contact.telegram_id);
-      if (match && match.id !== contact.id) betterContact = match;
-    }
-    if (!betterContact && contact.maks_id) {
-      const match = contactByMaksId.get(contact.maks_id);
-      if (match && match.id !== contact.id) betterContact = match;
-    }
-
-    // If no messenger match, try name match to a contact WITH phone
-    if (!betterContact && !contact.phone) {
-      const { data: betterContacts } = await admin.from("contacts")
-        .select("id, full_name, phone, email")
-        .ilike("full_name", `%${nameFromTitle}%`)
-        .not("phone", "is", null)
-        .limit(1);
-      if (betterContacts?.[0]) betterContact = betterContacts[0];
-    }
-
-    if (betterContact) {
-      await admin.from("leads").update({ contact_id: betterContact.id }).eq("id", lead.id);
-      results.push(`Lead "${lead.title}": ${contact.full_name} → ${betterContact.full_name} (${betterContact.phone})`);
+    // Current contact doesn't match title — find better one
+    const better = findBestContact(nameFromTitle, contact.id);
+    if (better) {
+      await admin.from("leads").update({ contact_id: better.id }).eq("id", lead.id);
+      results.push(`Lead: "${lead.title}" — ${contact.full_name} → ${better.full_name}`);
       leadsFixed++;
     }
   }
 
-  // 3. Same for deals
+  // ── Fix deals ──
   const { data: deals } = await admin.from("deals")
-    .select("id, title, contact_id, contacts(id, full_name, phone, email, telegram_id, maks_id)")
+    .select("id, title, contact_id, contacts(id, full_name, phone, email)")
     .not("contact_id", "is", null);
 
   let dealsFixed = 0;
   for (const deal of deals ?? []) {
-    const contact = deal.contacts as unknown as { id: string; full_name: string; phone?: string; email?: string; telegram_id?: string; maks_id?: string } | null;
-    if (!contact) continue;
-    if ((contact.phone || contact.email) && (contact.telegram_id || contact.maks_id)) continue;
-
-    const titleMatch = deal.title?.match(/:\s*(.+)/);
-    const nameFromTitle = titleMatch?.[1]?.trim();
-    if (!nameFromTitle) continue;
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let betterContact: any = null;
-    if (contact.telegram_id) {
-      const match = contactByTgId.get(contact.telegram_id);
-      if (match && match.id !== contact.id) betterContact = match;
-    }
-    if (!betterContact && contact.maks_id) {
-      const match = contactByMaksId.get(contact.maks_id);
-      if (match && match.id !== contact.id) betterContact = match;
-    }
-    if (!betterContact && !contact.phone) {
-      const { data: found } = await admin.from("contacts")
-        .select("id, full_name, phone, email")
-        .ilike("full_name", `%${nameFromTitle}%`)
-        .not("phone", "is", null)
-        .limit(1);
-      if (found?.[0]) betterContact = found[0];
-    }
+    const contact = deal.contacts as any;
+    if (!contact?.full_name || !deal.title) continue;
 
-    if (betterContact) {
-      await admin.from("deals").update({ contact_id: betterContact.id }).eq("id", deal.id);
-      results.push(`Deal "${deal.title}": ${contact.full_name} → ${betterContact.full_name} (${betterContact.phone})`);
+    const nameFromTitle = extractName(deal.title);
+    if (!nameFromTitle || nameFromTitle.length < 3) continue;
+
+    const contactNorm = norm(contact.full_name);
+    const titleNorm = norm(nameFromTitle);
+    const isMatch = contactNorm.includes(titleNorm) || titleNorm.includes(contactNorm);
+    if (isMatch) continue;
+
+    const better = findBestContact(nameFromTitle, contact.id);
+    if (better) {
+      await admin.from("deals").update({ contact_id: better.id }).eq("id", deal.id);
+      results.push(`Deal: "${deal.title}" — ${contact.full_name} → ${better.full_name}`);
       dealsFixed++;
     }
   }
 
-  // 4. Merge duplicate contacts: if same phone exists on 2+ contacts, keep the one with more data
+  // ── Merge duplicate contacts by phone ──
   let merged = 0;
   const phoneGroups = new Map<string, typeof allContacts>();
   for (const c of allContacts ?? []) {
     if (!c.phone) continue;
-    const clean = c.phone.replace(/\D/g, "").slice(-10);
+    const clean = phoneSuffix(c.phone);
     if (clean.length < 7) continue;
     if (!phoneGroups.has(clean)) phoneGroups.set(clean, []);
     phoneGroups.get(clean)!.push(c);
   }
-
   for (const [, group] of phoneGroups) {
     if (!group || group.length < 2) continue;
-    // Score each contact: more fields filled = higher score
     const scored = group.map((c) => ({
       ...c,
-      score: [c.full_name, c.phone, c.email, c.telegram_id, c.telegram_username, c.maks_id].filter(Boolean).length,
+      score: [c.full_name, c.phone, c.email, c.telegram_id, c.telegram_username, c.maks_id].filter(Boolean).length
+        + (c.full_name && !/^\d+$/.test(c.full_name.trim()) ? 2 : 0),
     })).sort((a, b) => b.score - a.score);
-
     const keeper = scored[0];
     for (let i = 1; i < scored.length; i++) {
       const dup = scored[i];
-      // Move leads/deals from duplicate to keeper
       await admin.from("leads").update({ contact_id: keeper.id }).eq("contact_id", dup.id);
       await admin.from("deals").update({ contact_id: keeper.id }).eq("contact_id", dup.id);
-      // Enrich keeper with dup's data
-      const updates: Record<string, string> = {};
-      if (dup.email && !keeper.email) updates.email = dup.email;
-      if (dup.telegram_id && !keeper.telegram_id) updates.telegram_id = dup.telegram_id;
-      if (dup.telegram_username && !keeper.telegram_username) updates.telegram_username = dup.telegram_username;
-      if (dup.maks_id && !keeper.maks_id) updates.maks_id = dup.maks_id;
-      if (Object.keys(updates).length > 0) await admin.from("contacts").update(updates).eq("id", keeper.id);
-      // Delete duplicate
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const upd: any = {};
+      if (dup.email && !keeper.email) upd.email = dup.email;
+      if (dup.telegram_id && !keeper.telegram_id) upd.telegram_id = dup.telegram_id;
+      if (dup.telegram_username && !keeper.telegram_username) upd.telegram_username = dup.telegram_username;
+      if (dup.maks_id && !keeper.maks_id) upd.maks_id = dup.maks_id;
+      if (Object.keys(upd).length > 0) await admin.from("contacts").update(upd).eq("id", keeper.id);
       await admin.from("contacts").delete().eq("id", dup.id);
       merged++;
-      results.push(`Merged: "${dup.full_name}" → "${keeper.full_name}" (${keeper.phone})`);
+      results.push(`Merged: "${dup.full_name}" → "${keeper.full_name}"`);
     }
   }
 
@@ -170,6 +169,6 @@ export async function POST() {
     leads_fixed: leadsFixed,
     deals_fixed: dealsFixed,
     contacts_merged: merged,
-    details: results.slice(0, 100),
+    details: results.slice(0, 200),
   });
 }
