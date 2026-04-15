@@ -32,9 +32,10 @@ const CHANNEL_CONFIG: Record<string, { icon: typeof MessageSquare; color: string
 interface Props {
   entityType: string;
   entityId: string;
+  refreshKey?: number;
 }
 
-export default function CommunicationsTimeline({ entityType, entityId }: Props) {
+export default function CommunicationsTimeline({ entityType, entityId, refreshKey }: Props) {
   const [comms, setComms] = useState<Communication[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -47,7 +48,7 @@ export default function CommunicationsTimeline({ entityType, entityId }: Props) 
 
   useEffect(() => {
     loadComms();
-  }, [entityType, entityId]);
+  }, [entityType, entityId, refreshKey]);
 
   async function loadComms() {
     setLoading(true);

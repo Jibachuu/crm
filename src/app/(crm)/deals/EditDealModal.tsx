@@ -54,38 +54,39 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
     setLoading(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const supabase = createClient();
 
-    const { data, error: err } = await supabase
-      .from("deals")
-      .update({
-        title: fd.get("title") as string,
-        stage: fd.get("stage") as string,
-        source: (fd.get("source") as string) || null,
-        amount: fd.get("amount") ? Number(fd.get("amount")) : null,
-        contact_id: (fd.get("contact_id") as string) || null,
-        company_id: (fd.get("company_id") as string) || null,
-        assigned_to: (fd.get("assigned_to") as string) || null,
-        description: (fd.get("description") as string) || null,
-        objections: (fd.get("objections") as string) || null,
-      })
-      .eq("id", deal.id)
-      .select(`*, contacts(id, full_name, phone, email), companies(id, name), users!deals_assigned_to_fkey(id, full_name)`)
-      .single();
-
-    if (err) { setError(err.message); setLoading(false); return; }
-
-    // Cascade: if assigned_to changed on deal, cascade to company + linked entities
-    const newAssignedTo = (fd.get("assigned_to") as string) || null;
-    if (newAssignedTo && newAssignedTo !== deal.assigned_to) {
-      await fetch("/api/responsible", {
-        method: "POST",
+    try {
+      const res = await fetch("/api/deals", {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cascade_deal", deal_id: deal.id, new_assigned_to: newAssignedTo }),
-      }).catch(() => {});
-    }
+        body: JSON.stringify({
+          id: deal.id,
+          title: fd.get("title") as string,
+          stage: fd.get("stage") as string,
+          source: (fd.get("source") as string) || null,
+          amount: fd.get("amount") ? Number(fd.get("amount")) : null,
+          contact_id: (fd.get("contact_id") as string) || null,
+          company_id: (fd.get("company_id") as string) || null,
+          assigned_to: (fd.get("assigned_to") as string) || null,
+          description: (fd.get("description") as string) || null,
+          objections: (fd.get("objections") as string) || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Ошибка"); setLoading(false); return; }
 
-    onSaved(data); onClose();
+      // Cascade: if assigned_to changed on deal, cascade to company + linked entities
+      const newAssignedTo = (fd.get("assigned_to") as string) || null;
+      if (newAssignedTo && newAssignedTo !== deal.assigned_to) {
+        await fetch("/api/responsible", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "cascade_deal", deal_id: deal.id, new_assigned_to: newAssignedTo }),
+        }).catch(() => {});
+      }
+
+      onSaved(data); onClose();
+    } catch (e) { setError(String(e)); }
     setLoading(false);
   }
 

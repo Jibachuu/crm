@@ -80,6 +80,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
   const [contractSaving, setContractSaving] = useState(false);
   const [contractUploading, setContractUploading] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [commsRefreshKey, setCommsRefreshKey] = useState(0);
 
   async function addNote() {
     if (!noteText.trim()) return;
@@ -91,7 +92,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
       .insert({ entity_type: "company", entity_id: company.id, channel: "note", direction: "outbound", body: noteText.trim(), created_by: user?.id ?? null })
       .select("*, users!communications_created_by_fkey(full_name)")
       .single();
-    if (data) { setCommunications((p: unknown[]) => [data, ...p]); setNoteText(""); }
+    if (data) { setCommunications((p: unknown[]) => [data, ...p]); setNoteText(""); setCommsRefreshKey((k) => k + 1); }
     setNoteLoading(false);
   }
 
@@ -359,7 +360,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                     </div>
                   </CardBody>
                 </Card>
-                <CommunicationsTimeline entityType="company" entityId={company.id} />
+                <CommunicationsTimeline entityType="company" entityId={company.id} refreshKey={commsRefreshKey} />
               </div>
             )}
 

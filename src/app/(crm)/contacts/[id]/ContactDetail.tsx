@@ -34,6 +34,7 @@ export default function ContactDetail({ contact: initialContact, communications:
   const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "email" | "telegram" | "maks">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
+  const [commsRefreshKey, setCommsRefreshKey] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -66,7 +67,7 @@ export default function ContactDetail({ contact: initialContact, communications:
       .insert({ entity_type: "contact", entity_id: contact.id, channel: "note", direction: "outbound", body: noteText.trim(), created_by: user?.id ?? null })
       .select("*, users!communications_created_by_fkey(full_name)")
       .single();
-    if (data) { setCommunications((p: unknown[]) => [data, ...p]); setNoteText(""); }
+    if (data) { setCommunications((p: unknown[]) => [data, ...p]); setNoteText(""); setCommsRefreshKey((k) => k + 1); }
     setNoteLoading(false);
   }
 
@@ -280,7 +281,7 @@ export default function ContactDetail({ contact: initialContact, communications:
                     </div>
                   </CardBody>
                 </Card>
-                <CommunicationsTimeline entityType="contact" entityId={contact.id} />
+                <CommunicationsTimeline entityType="contact" entityId={contact.id} refreshKey={commsRefreshKey} />
               </div>
             )}
 

@@ -77,8 +77,8 @@ async function findOrCreateContact(admin: any, identifiers: {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function createLeadForContact(admin: any, contactId: string, title: string, source: string, createdBy?: string) {
-  // Double-check: no lead for this contact_id + source already?
-  const { data: existingLead } = await admin.from("leads").select("id").eq("contact_id", contactId).eq("source", source).limit(1).single();
+  // Only create lead if this contact has ZERO leads (truly first contact)
+  const { data: existingLead } = await admin.from("leads").select("id").eq("contact_id", contactId).limit(1).single();
   if (existingLead) return null;
 
   const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();

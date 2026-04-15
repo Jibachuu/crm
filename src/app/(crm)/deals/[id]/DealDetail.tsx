@@ -61,6 +61,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   }, [deal.id]);
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
+  const [commsRefreshKey, setCommsRefreshKey] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [addProductBlock, setAddProductBlock] = useState<"request" | "order" | null>(null);
@@ -103,7 +104,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
       .insert({ entity_type: "deal", entity_id: deal.id, channel: "note", direction: "outbound", body: noteText.trim(), created_by: user?.id ?? null })
       .select("*, users!communications_created_by_fkey(full_name)")
       .single();
-    if (data) { setCommunications((p: unknown[]) => [data, ...p]); setNoteText(""); }
+    if (data) { setCommunications((p: unknown[]) => [data, ...p]); setNoteText(""); setCommsRefreshKey((k) => k + 1); }
     setNoteLoading(false);
   }
 
@@ -221,6 +222,20 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   const totalRequest = requestProducts.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
   const totalOrder = orderProducts.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
   const stageIndex = STAGES.findIndex((s) => s.key === deal.stage);
+
+  // Recalculate deal.amount from products
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function recalcDealAmount(products: any[]) {
+    const total = products.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
+    if (total > 0) {
+      setDeal((prev: typeof deal) => ({ ...prev, amount: total }));
+      fetch("/api/deals", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: deal.id, title: deal.title, stage: deal.stage, amount: total }),
+      }).catch(() => {});
+    }
+  }
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -394,7 +409,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                     </div>
                   </CardBody>
                 </Card>
-                <CommunicationsTimeline entityType="deal" entityId={deal.id} />
+                <CommunicationsTimeline entityType="deal" entityId={deal.id} refreshKey={commsRefreshKey} />
               </div>
             )}
 
@@ -461,26 +476,36 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
             {activeTab === "files" && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-2 px-3 py-1.5 text-sm rounded cursor-pointer hover:bg-blue-50" style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}>
-                    <Paperclip size={14} /> {fileUploading ? "Загрузка..." : "Загрузить файл"}
-                    <input type="file" multiple className="hidden" disabled={fileUploading} onChange={async (e) => {
-                      const files = e.target.files;
-                      if (!files) return;
-                      setFileUploading(true);
-                      for (let i = 0; i < files.length; i++) {
-                        const fd = new FormData();
-                        fd.append("file", files[i]);
-                        fd.append("deal_id", deal.id);
-                        const res = await fetch("/api/deals/files", { method: "POST", body: fd });
-                        if (res.ok) {
-                          const f = await res.json();
-                          setDealFiles((prev) => [f, ...prev]);
+                  <button
+                    type="button"
+                    disabled={fileUploading}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm rounded cursor-pointer hover:bg-blue-50"
+                    style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}
+                    onClick={() => {
+                      const input = document.createElement("input");
+                      input.type = "file";
+                      input.multiple = true;
+                      input.onchange = async () => {
+                        const files = input.files;
+                        if (!files) return;
+                        setFileUploading(true);
+                        for (let i = 0; i < files.length; i++) {
+                          const fd = new FormData();
+                          fd.append("file", files[i]);
+                          fd.append("deal_id", deal.id);
+                          const res = await fetch("/api/deals/files", { method: "POST", body: fd });
+                          if (res.ok) {
+                            const f = await res.json();
+                            setDealFiles((prev) => [f, ...prev]);
+                          }
                         }
-                      }
-                      setFileUploading(false);
-                      e.target.value = "";
-                    }} />
-                  </label>
+                        setFileUploading(false);
+                      };
+                      input.click();
+                    }}
+                  >
+                    <Paperclip size={14} /> {fileUploading ? "Загрузка..." : "Загрузить файл"}
+                  </button>
                 </div>
                 {dealFiles.length === 0 ? (
                   <p className="text-sm text-center py-8" style={{ color: "#aaa" }}>Нет файлов</p>
@@ -539,8 +564,8 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   items={requestProducts}
                   total={totalRequest}
                   onAdd={() => setAddProductBlock("request")}
-                  onRemove={(id) => setDealProducts((p: { id: string }[]) => p.filter((x) => x.id !== id))}
-                  onUpdate={(id, fields) => setDealProducts((p: { id: string }[]) => p.map((x) => x.id === id ? { ...x, ...fields } : x))}
+                  onRemove={(id) => { const updated = dealProducts.filter((x: { id: string }) => x.id !== id); setDealProducts(updated); recalcDealAmount(updated); }}
+                  onUpdate={(id, fields) => { const updated = dealProducts.map((x: { id: string }) => x.id === id ? { ...x, ...fields } : x); setDealProducts(updated); recalcDealAmount(updated); }}
                 />
                 <DealProductBlock
                   title="Заказ"
@@ -549,8 +574,8 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   total={totalOrder}
                   onAdd={() => setAddProductBlock("order")}
                   block="order"
-                  onRemove={(id) => setDealProducts((p: { id: string }[]) => p.filter((x) => x.id !== id))}
-                  onUpdate={(id, fields) => setDealProducts((p: { id: string }[]) => p.map((x) => x.id === id ? { ...x, ...fields } : x))}
+                  onRemove={(id) => { const updated = dealProducts.filter((x: { id: string }) => x.id !== id); setDealProducts(updated); recalcDealAmount(updated); }}
+                  onUpdate={(id, fields) => { const updated = dealProducts.map((x: { id: string }) => x.id === id ? { ...x, ...fields } : x); setDealProducts(updated); recalcDealAmount(updated); }}
                 />
               </div>
             )}
@@ -659,7 +684,11 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
         entityType="deal"
         entityId={deal.id}
         productBlock={addProductBlock ?? "request"}
-        onAdded={(item) => setDealProducts((p: unknown[]) => [...p, item])}
+        onAdded={(item) => {
+          const updated = [...dealProducts, item];
+          setDealProducts(updated);
+          recalcDealAmount(updated);
+        }}
       />
       <CreateTaskModal
         open={taskOpen}

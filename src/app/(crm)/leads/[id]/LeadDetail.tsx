@@ -78,6 +78,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   });
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
+  const [commsRefreshKey, setCommsRefreshKey] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [addProductBlock, setAddProductBlock] = useState<"request" | "order" | null>(null);
@@ -100,7 +101,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
       .insert({ entity_type: "lead", entity_id: lead.id, channel: "note", direction: "outbound", body: noteText.trim(), created_by: user?.id ?? null })
       .select("*, users!communications_created_by_fkey(full_name)")
       .single();
-    if (data) { setCommunications((prev: unknown[]) => [data, ...prev]); setNoteText(""); }
+    if (data) { setCommunications((prev: unknown[]) => [data, ...prev]); setNoteText(""); setCommsRefreshKey((k) => k + 1); }
     setNoteLoading(false);
   }
 
@@ -410,7 +411,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                     </div>
                   </CardBody>
                 </Card>
-                <CommunicationsTimeline entityType="lead" entityId={lead.id} />
+                <CommunicationsTimeline entityType="lead" entityId={lead.id} refreshKey={commsRefreshKey} />
               </div>
             )}
 
@@ -458,26 +459,36 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
             {activeTab === "files" && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-2 px-3 py-1.5 text-sm rounded cursor-pointer hover:bg-blue-50" style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}>
-                    <Paperclip size={14} /> {fileUploading ? "Загрузка..." : "Загрузить файл"}
-                    <input type="file" multiple className="hidden" disabled={fileUploading} onChange={async (e) => {
-                      const files = e.target.files;
-                      if (!files) return;
-                      setFileUploading(true);
-                      for (let i = 0; i < files.length; i++) {
-                        const fd = new FormData();
-                        fd.append("file", files[i]);
-                        fd.append("lead_id", lead.id);
-                        const res = await fetch("/api/deals/files", { method: "POST", body: fd });
-                        if (res.ok) {
-                          const f = await res.json();
-                          setLeadFiles((prev) => [f, ...prev]);
+                  <button
+                    type="button"
+                    disabled={fileUploading}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm rounded cursor-pointer hover:bg-blue-50"
+                    style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}
+                    onClick={() => {
+                      const input = document.createElement("input");
+                      input.type = "file";
+                      input.multiple = true;
+                      input.onchange = async () => {
+                        const files = input.files;
+                        if (!files) return;
+                        setFileUploading(true);
+                        for (let i = 0; i < files.length; i++) {
+                          const fd = new FormData();
+                          fd.append("file", files[i]);
+                          fd.append("lead_id", lead.id);
+                          const res = await fetch("/api/deals/files", { method: "POST", body: fd });
+                          if (res.ok) {
+                            const f = await res.json();
+                            setLeadFiles((prev) => [f, ...prev]);
+                          }
                         }
-                      }
-                      setFileUploading(false);
-                      e.target.value = "";
-                    }} />
-                  </label>
+                        setFileUploading(false);
+                      };
+                      input.click();
+                    }}
+                  >
+                    <Paperclip size={14} /> {fileUploading ? "Загрузка..." : "Загрузить файл"}
+                  </button>
                 </div>
                 {leadFiles.length === 0 ? (
                   <p className="text-sm text-center py-8" style={{ color: "#aaa" }}>Нет файлов</p>
