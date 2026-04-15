@@ -17,7 +17,7 @@ function linkifyText(text: string) {
   );
 }
 
-export default function MaxChat({ chatId, compact = false, entityType, entityId, phone }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string; phone?: string }) {
+export default function MaxChat({ chatId, compact = false, entityType, entityId, phone }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string; phone?: string; }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[]; chatId?: string; reactions?: { emoji: string; count: number }[]; forwardedFrom?: { senderName?: string; text?: string } | null; replyTo?: { id: string; senderName?: string; text?: string } | null; read?: boolean | null }[]>([]);
@@ -29,6 +29,8 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -72,7 +74,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   async function loadMessages() {
     setError("");
     try {
-      const res = await fetch(`/api/max?action=messages&chat_id=${chatId}&count=50`, { cache: "no-store" });
+      const res = await fetch(`/api/max?action=messages&chat_id=${chatId}&count=100`, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Ошибка"); return; }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -80,6 +82,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
         ...m,
         isMe: myId ? (Number(m.senderId) === Number(myId)) : false,
       }));
+      setHasMore(msgs.length >= 100);
       // Only update state if messages actually changed
       const newIds = msgs.map((m: { id: string }) => m.id).join(",");
       const oldIds = messages.map((m) => m.id).join(",");
@@ -97,6 +100,30 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
       }
     } catch (e) { setError(String(e)); }
     if (!loadingDoneRef.current) { setLoading(false); loadingDoneRef.current = true; }
+  }
+
+  async function loadOlderMessages() {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/max?action=messages&chat_id=${chatId}&count=100&offset=${messages.length}`, { cache: "no-store" });
+      const data = await res.json();
+      if (res.ok) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const older = (data.messages ?? []).map((m: any) => ({
+          ...m,
+          isMe: myId ? (Number(m.senderId) === Number(myId)) : false,
+        }));
+        if (older.length < 100) setHasMore(false);
+        if (older.length > 0) {
+          // Prepend older messages, dedup by id
+          const existingIds = new Set(messages.map((m) => m.id));
+          const newOlder = older.filter((m: { id: string }) => !existingIds.has(m.id));
+          setMessages((prev) => [...newOlder, ...prev]);
+        }
+      }
+    } catch { /* skip */ }
+    setLoadingMore(false);
   }
 
   useEffect(() => { if (chatId && myId !== null) refreshAndLoad(); }, [chatId, myId]);
@@ -228,6 +255,15 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2" style={{ background: "#f8f9fa" }}>
         {loading && messages.length === 0 && <p className="text-xs text-center py-4" style={{ color: "#aaa" }}>Загрузка...</p>}
         {!loading && messages.length === 0 && <p className="text-xs text-center py-4" style={{ color: "#aaa" }}>Отправьте первое сообщение</p>}
+        {!loading && hasMore && messages.length > 0 && (
+          <div className="text-center py-2">
+            <button onClick={loadOlderMessages} disabled={loadingMore}
+              className="text-xs px-3 py-1.5 rounded hover:bg-white disabled:opacity-50"
+              style={{ color: "#0067a5", border: "1px solid #d0e8f5" }}>
+              {loadingMore ? "Загрузка..." : "Загрузить ещё"}
+            </button>
+          </div>
+        )}
         {messages.map((msg) => (
           <div key={msg.id} className="flex" style={{ justifyContent: msg.isMe ? "flex-end" : "flex-start" }}>
             <div style={{

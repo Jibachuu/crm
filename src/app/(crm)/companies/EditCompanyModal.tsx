@@ -10,6 +10,17 @@ import DirectorySelect from "@/components/ui/DirectorySelect";
 import { createClient } from "@/lib/supabase/client";
 import { getTimezoneFromRegion } from "@/components/ui/ClientTimeIndicator";
 
+const RUSSIAN_CITIES = [
+  "Москва","Санкт-Петербург","Новосибирск","Екатеринбург","Казань","Нижний Новгород","Челябинск",
+  "Самара","Омск","Ростов-на-Дону","Уфа","Красноярск","Воронеж","Пермь","Волгоград",
+  "Краснодар","Саратов","Тюмень","Тольятти","Ижевск","Барнаул","Ульяновск","Иркутск",
+  "Хабаровск","Ярославль","Владивосток","Махачкала","Томск","Оренбург","Кемерово",
+  "Новокузнецк","Рязань","Астрахань","Пенза","Липецк","Тула","Киров","Чебоксары",
+  "Калининград","Брянск","Курск","Иваново","Магнитогорск","Тверь","Белгород","Сочи",
+  "Ставрополь","Сургут","Владимир","Архангельск","Чита","Смоленск","Курган","Калуга",
+  "Орёл","Вологда","Мурманск","Грозный","Петрозаводск","Великий Новгород",
+];
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function EditCompanyModal({ open, onClose, company, onSaved }: { open: boolean; onClose: () => void; company: any; onSaved: (company: any) => void }) {
   const [loading, setLoading] = useState(false);
@@ -183,7 +194,14 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
         <Input label="Адрес доставки" name="delivery_address" defaultValue={company?.delivery_address ?? ""} />
 
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Город" name="city" defaultValue={company?.city ?? ""} />
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Город</label>
+            <input name="city" defaultValue={company?.city ?? ""} list="city-datalist"
+              className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <datalist id="city-datalist">
+              {RUSSIAN_CITIES.map((c) => <option key={c} value={c} />)}
+            </datalist>
+          </div>
           <Input label="Регион" name="region" defaultValue={company?.region ?? ""} />
         </div>
 

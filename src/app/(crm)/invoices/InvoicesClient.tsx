@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Plus, Search, Receipt, FileDown, Eye, Trash2, Edit2, Save } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
@@ -14,6 +14,49 @@ const STATUS_VARIANTS: Record<string, "default" | "warning" | "success" | "dange
 
 interface PriceTier { from_qty: number; to_qty: number | null; price: number }
 interface InvoiceItem { product_id: string; name: string; quantity: number; unit: string; price: number; total: number; price_tiers?: PriceTier[] }
+
+function SearchableCompanySelect({ companies, value, onChange, inputStyle, placeholder = "Поиск компании..." }: { companies: { id: string; name: string }[]; value: string; onChange: (id: string) => void; inputStyle: React.CSSProperties; placeholder?: string }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = companies.find((c: { id: string }) => c.id === value);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const filtered = query
+    ? companies.filter((c: { name: string }) => c.name.toLowerCase().includes(query.toLowerCase())).slice(0, 30)
+    : companies.slice(0, 30);
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        value={open ? query : (selected?.name ?? "")}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => { setOpen(true); setQuery(""); }}
+        placeholder={placeholder}
+        style={inputStyle}
+      />
+      {value && !open && (
+        <button type="button" onClick={() => { onChange(""); setQuery(""); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs" style={{ color: "#aaa" }}>✕</button>
+      )}
+      {open && (
+        <div className="absolute z-50 w-full mt-1 rounded shadow-lg max-h-48 overflow-y-auto" style={{ border: "1px solid #e4e4e4", background: "#fff" }}>
+          {filtered.length === 0 && <p className="text-xs px-3 py-2" style={{ color: "#aaa" }}>Не найдено</p>}
+          {filtered.map((c: { id: string; name: string }) => (
+            <button type="button" key={c.id} onClick={() => { onChange(c.id); setOpen(false); setQuery(""); }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50" style={{ borderBottom: "1px solid #f0f0f0", background: c.id === value ? "#e8f4fd" : "transparent" }}>
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function InvoicesClient({ initialInvoices, companies, products, deals, supplier, quotes = [] }: any) {
@@ -440,10 +483,13 @@ function doPrint(){
           </div>
           <div>
             <label style={lblStyle}>Покупатель (из CRM)</label>
-            <select value={form.buyer_company_id} onChange={(e) => selectBuyer(e.target.value)} style={inputStyle}>
-              <option value="">Выберите или введите вручную</option>
-              {companies.map((c: { id: string; name: string }) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <SearchableCompanySelect
+              companies={companies}
+              value={form.buyer_company_id}
+              onChange={selectBuyer}
+              inputStyle={inputStyle}
+              placeholder="Поиск компании..."
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label style={lblStyle}>Название покупателя</label><input value={form.buyer_name} onChange={(e) => setForm({ ...form, buyer_name: e.target.value })} style={inputStyle} /></div>

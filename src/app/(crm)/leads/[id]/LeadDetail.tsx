@@ -197,6 +197,20 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   const totalRequest = requestProducts.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
   const totalOrder = orderProducts.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
 
+  // Extract email from any available source: contact, company, or lead title (e.g. "Email: Name <email@x.com>")
+  const contactEmail = lead.contacts?.email || null;
+  const companyEmail = lead.companies?.email || null;
+  const leadEmailFromTitle = (() => {
+    if (lead.source === "email" || (lead.title && /email/i.test(lead.title))) {
+      const match = (lead.title || "").match(/<([^>]+@[^>]+)>/) || (lead.description || "").match(/<([^>]+@[^>]+)>/);
+      if (match) return match[1];
+      const match2 = (lead.title || "").match(/[\w.+-]+@[\w.-]+\.\w{2,}/) || (lead.description || "").match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
+      if (match2) return match2[0];
+    }
+    return null;
+  })();
+  const resolvedEmail = contactEmail || companyEmail || leadEmailFromTitle;
+
   const tabs = [
     { id: "info", label: "Информация" },
     { id: "communications", label: `Коммуникации (${communications.length})` },
@@ -512,8 +526,8 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
             )}
 
             {activeTab === "email" && (
-              lead.contacts?.email ? (
-                <EmailThread email={lead.contacts.email} compact entityType="lead" entityId={lead.id} />
+              resolvedEmail ? (
+                <EmailThread email={resolvedEmail} compact entityType="lead" entityId={lead.id} />
               ) : (
                 <div className="text-center py-8">
                   <Mail size={24} className="mx-auto mb-2" style={{ color: "#ddd" }} />

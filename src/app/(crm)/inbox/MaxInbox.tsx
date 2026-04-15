@@ -57,14 +57,19 @@ export default function MaxInbox() {
           const byMaksId = new Map<string, any>();
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const byPhone = new Map<string, any>();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const byName = new Map<string, any>();
           for (const c of contacts ?? []) {
             if (c.maks_id) byMaksId.set(c.maks_id, c);
             if (c.phone) byPhone.set(c.phone.replace(/\D/g, "").slice(-10), c);
+            if (c.full_name) byName.set(c.full_name.toLowerCase().trim(), c);
           }
           for (const chat of chatList) {
             const chatId = String(chat.chatId ?? chat.id ?? "");
             const phoneSuffix = chat.phone ? String(chat.phone).replace(/\D/g, "").slice(-10) : "";
-            const contact = byMaksId.get(chatId) || (phoneSuffix ? byPhone.get(phoneSuffix) : undefined);
+            const titleLower = chat.title ? chat.title.toLowerCase().trim() : "";
+            const contact = byMaksId.get(chatId) || (phoneSuffix ? byPhone.get(phoneSuffix) : undefined) || (titleLower ? byName.get(titleLower) : undefined);
+            if (!contact) { console.log("[MaxInbox] Unmatched chat:", chatId, chat.title); }
             if (contact?.full_name && !/^\d+$/.test(contact.full_name)) {
               const companyName = contact.company_id ? companyMap.get(contact.company_id) : undefined;
               chat.title = companyName ? `${contact.full_name} · ${companyName}` : contact.full_name;

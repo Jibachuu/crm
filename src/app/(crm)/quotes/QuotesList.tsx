@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Plus, Search, FileSpreadsheet, Trash2, Eye, Download, Copy, Check, Send, X, ImagePlus } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -24,6 +24,49 @@ interface QuoteItem {
   image_url: string;
   description: string;
   price_tiers?: PriceTier[];
+}
+
+function SearchableSelect({ options, value, onChange, inputStyle, placeholder = "Поиск..." }: { options: { id: string; label: string }[]; value: string; onChange: (id: string) => void; inputStyle: React.CSSProperties; placeholder?: string }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.id === value);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const filtered = query
+    ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())).slice(0, 30)
+    : options.slice(0, 30);
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        value={open ? query : (selected?.label ?? "")}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => { setOpen(true); setQuery(""); }}
+        placeholder={placeholder}
+        style={inputStyle}
+      />
+      {value && !open && (
+        <button type="button" onClick={() => { onChange(""); setQuery(""); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs" style={{ color: "#aaa" }}>✕</button>
+      )}
+      {open && (
+        <div className="absolute z-50 w-full mt-1 rounded shadow-lg max-h-48 overflow-y-auto" style={{ border: "1px solid #e4e4e4", background: "#fff" }}>
+          {filtered.length === 0 && <p className="text-xs px-3 py-2" style={{ color: "#aaa" }}>Не найдено</p>}
+          {filtered.map((o) => (
+            <button type="button" key={o.id} onClick={() => { onChange(o.id); setOpen(false); setQuery(""); }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50" style={{ borderBottom: "1px solid #f0f0f0", background: o.id === value ? "#e8f4fd" : "transparent" }}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -293,17 +336,23 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={lblStyle}>Компания</label>
-              <select value={form.company_id} onChange={(e) => setForm({ ...form, company_id: e.target.value, contact_id: "" })} style={inputStyle}>
-                <option value="">Выберите...</option>
-                {companies.map((c: { id: string; name: string }) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <SearchableSelect
+                options={companies.map((c: { id: string; name: string }) => ({ id: c.id, label: c.name }))}
+                value={form.company_id}
+                onChange={(id) => setForm({ ...form, company_id: id, contact_id: "" })}
+                inputStyle={inputStyle}
+                placeholder="Поиск компании..."
+              />
             </div>
             <div>
               <label style={lblStyle}>Контакт</label>
-              <select value={form.contact_id} onChange={(e) => setForm({ ...form, contact_id: e.target.value })} style={inputStyle}>
-                <option value="">Выберите...</option>
-                {companyContacts.map((c: { id: string; full_name: string }) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-              </select>
+              <SearchableSelect
+                options={companyContacts.map((c: { id: string; full_name: string }) => ({ id: c.id, label: c.full_name }))}
+                value={form.contact_id}
+                onChange={(id) => setForm({ ...form, contact_id: id })}
+                inputStyle={inputStyle}
+                placeholder="Поиск контакта..."
+              />
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3">

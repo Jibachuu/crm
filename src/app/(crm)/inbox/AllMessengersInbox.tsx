@@ -267,11 +267,13 @@ export default function AllMessengersInbox() {
         const byTgId = new Map<string, ContactRow>();
         const byTgUsername = new Map<string, ContactRow>();
         const byPhone = new Map<string, ContactRow>();
+        const byName = new Map<string, ContactRow>();
         for (const c of contacts ?? []) {
           if (c.maks_id) byMaksId.set(c.maks_id, c);
           if (c.telegram_id) byTgId.set(String(c.telegram_id), c);
           if (c.telegram_username) byTgUsername.set(c.telegram_username.toLowerCase(), c);
           if (c.phone) byPhone.set(c.phone.replace(/\D/g, "").slice(-10), c);
+          if (c.full_name) byName.set(c.full_name.toLowerCase().trim(), c);
         }
 
         // Cache TG avatars → CRM contacts (background, fire-and-forget)
@@ -280,9 +282,12 @@ export default function AllMessengersInbox() {
         for (const d of all) {
           const phoneSuffix = d.phone ? d.phone.replace(/\D/g, "").slice(-10) : "";
           const contact = d.channel === "maks"
-            ? (byMaksId.get(d.chatId!) || (phoneSuffix ? byPhone.get(phoneSuffix) : undefined))
+            ? (byMaksId.get(d.chatId!) || (phoneSuffix ? byPhone.get(phoneSuffix) : undefined) || (d.name ? byName.get(d.name.toLowerCase().trim()) : undefined))
             : (byTgId.get(d.id.replace("tg_", "")) || (d.username ? byTgUsername.get(d.username.toLowerCase()) : undefined) || (phoneSuffix ? byPhone.get(phoneSuffix) : undefined));
-          if (!contact) continue;
+          if (!contact) {
+            if (d.channel === "maks") console.log("[Inbox] Unmatched MAX chat:", d.chatId, d.name);
+            continue;
+          }
 
           // Use CRM entity name + company
           if (contact.full_name && !/^\d+$/.test(contact.full_name)) {
