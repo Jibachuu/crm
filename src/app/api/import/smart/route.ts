@@ -108,24 +108,27 @@ export async function POST(req: NextRequest) {
   // ── Load lookup maps once ──────────────────────────────────────────────────
   const [existingCompanies, existingContacts, allUsers] = await Promise.all([
     fetchAllRows("companies", "id, name"),
-    fetchAllRows("contacts", "id, full_name, phone, email"),
+    fetchAllRows("contacts", "id, full_name, phone, email, telegram_id, telegram_username, maks_id"),
     fetchAllRows("users", "id, full_name"),
   ]);
 
   const companyMap = new Map<string, string>(); // norm(name) → id
   for (const c of existingCompanies ?? []) companyMap.set(norm(c.name), c.id);
 
-  // Contact lookup: phone/email are unique identifiers, name is fallback only with phone
-  const contactByPhone = new Map<string, string>(); // norm(phone last 10) → id
-  const contactByEmail = new Map<string, string>(); // norm(email) → id
+  // Contact lookup: messenger IDs → phone → email → name+phone
+  const contactByTgId = new Map<string, string>();
+  const contactByMaksId = new Map<string, string>();
+  const contactByPhone = new Map<string, string>();
+  const contactByEmail = new Map<string, string>();
   const contactMap = new Map<string, string>(); // norm(name)|norm(phone) → id
   for (const c of existingContacts ?? []) {
+    if (c.telegram_id) contactByTgId.set(c.telegram_id, c.id);
+    if (c.maks_id) contactByMaksId.set(c.maks_id, c.id);
     if (c.phone) {
       const clean = c.phone.replace(/\D/g, "").slice(-10);
       if (clean.length >= 7) contactByPhone.set(clean, c.id);
     }
     if (c.email) contactByEmail.set(norm(c.email), c.id);
-    // Name+phone key only when phone exists (prevents "Анна|" matching any Анна)
     if (c.phone) contactMap.set(norm(c.full_name) + "|" + norm(c.phone), c.id);
     if (c.email) contactMap.set(norm(c.full_name) + "|" + norm(c.email), c.id);
   }

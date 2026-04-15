@@ -12,12 +12,16 @@ export async function POST() {
   const admin = createAdminClient();
   const results: string[] = [];
 
-  // 1. Build contact lookup by phone
+  // 1. Build contact lookup by phone/email/messenger IDs
   const { data: allContacts } = await admin.from("contacts").select("id, full_name, phone, phone_mobile, email, telegram_id, telegram_username, maks_id");
-  const contactByPhone = new Map<string, { id: string; full_name: string }>();
-  const contactByEmail = new Map<string, { id: string; full_name: string }>();
-  const contactByTgId = new Map<string, { id: string; full_name: string }>();
-  const contactByMaksId = new Map<string, { id: string; full_name: string }>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contactByPhone = new Map<string, any>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contactByEmail = new Map<string, any>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contactByTgId = new Map<string, any>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contactByMaksId = new Map<string, any>();
 
   for (const c of allContacts ?? []) {
     if (c.phone) {
@@ -33,65 +37,91 @@ export async function POST() {
     if (c.maks_id) contactByMaksId.set(c.maks_id, c);
   }
 
-  // 2. Check all leads — if contact has same name but different phone, try to find better match
+  // 2. Check all leads — find better contact match by messenger ID, phone, or name
   const { data: leads } = await admin.from("leads")
-    .select("id, title, contact_id, contacts(id, full_name, phone, email)")
+    .select("id, title, contact_id, contacts(id, full_name, phone, email, telegram_id, maks_id)")
     .not("contact_id", "is", null);
 
   let leadsFixed = 0;
   for (const lead of leads ?? []) {
-    const contact = lead.contacts as unknown as { id: string; full_name: string; phone?: string; email?: string } | null;
+    const contact = lead.contacts as unknown as { id: string; full_name: string; phone?: string; email?: string; telegram_id?: string; maks_id?: string } | null;
     if (!contact) continue;
 
-    // Extract phone/email from lead title or description
-    // Lead titles like "МАКС: Анна Митина" or "Telegram: Имя"
-    // If contact has no phone/email, it was probably matched by name only — wrong
-    if (contact.phone || contact.email) continue; // Already has identifiers — probably correct
+    // Skip if contact already has phone/email AND messenger IDs — probably correct
+    if ((contact.phone || contact.email) && (contact.telegram_id || contact.maks_id)) continue;
 
-    // This contact has NO phone and NO email — likely a junk auto-created contact
-    // Try to find a better match from the lead title
+    // Try to find a better match
     const titleMatch = lead.title?.match(/:\s*(.+)/);
     const nameFromTitle = titleMatch?.[1]?.trim();
     if (!nameFromTitle) continue;
 
-    // Search for a contact with same name but WITH phone/email
-    const { data: betterContacts } = await admin.from("contacts")
-      .select("id, full_name, phone, email")
-      .ilike("full_name", `%${nameFromTitle}%`)
-      .not("phone", "is", null)
-      .limit(1);
+    // Search by messenger ID first, then by name+phone
+    let betterContact = null;
 
-    if (betterContacts?.[0]) {
-      await admin.from("leads").update({ contact_id: betterContacts[0].id }).eq("id", lead.id);
-      results.push(`Lead "${lead.title}": ${contact.full_name} → ${betterContacts[0].full_name} (${betterContacts[0].phone})`);
+    // If current contact has telegram_id, find if there's a BETTER contact with same tg_id + phone
+    if (contact.telegram_id) {
+      const match = contactByTgId.get(contact.telegram_id);
+      if (match && match.id !== contact.id) betterContact = match;
+    }
+    if (!betterContact && contact.maks_id) {
+      const match = contactByMaksId.get(contact.maks_id);
+      if (match && match.id !== contact.id) betterContact = match;
+    }
+
+    // If no messenger match, try name match to a contact WITH phone
+    if (!betterContact && !contact.phone) {
+      const { data: betterContacts } = await admin.from("contacts")
+        .select("id, full_name, phone, email")
+        .ilike("full_name", `%${nameFromTitle}%`)
+        .not("phone", "is", null)
+        .limit(1);
+      if (betterContacts?.[0]) betterContact = betterContacts[0];
+    }
+
+    if (betterContact) {
+      await admin.from("leads").update({ contact_id: betterContact.id }).eq("id", lead.id);
+      results.push(`Lead "${lead.title}": ${contact.full_name} → ${betterContact.full_name} (${betterContact.phone})`);
       leadsFixed++;
     }
   }
 
   // 3. Same for deals
   const { data: deals } = await admin.from("deals")
-    .select("id, title, contact_id, contacts(id, full_name, phone, email)")
+    .select("id, title, contact_id, contacts(id, full_name, phone, email, telegram_id, maks_id)")
     .not("contact_id", "is", null);
 
   let dealsFixed = 0;
   for (const deal of deals ?? []) {
-    const contact = deal.contacts as unknown as { id: string; full_name: string; phone?: string; email?: string } | null;
+    const contact = deal.contacts as unknown as { id: string; full_name: string; phone?: string; email?: string; telegram_id?: string; maks_id?: string } | null;
     if (!contact) continue;
-    if (contact.phone || contact.email) continue;
+    if ((contact.phone || contact.email) && (contact.telegram_id || contact.maks_id)) continue;
 
     const titleMatch = deal.title?.match(/:\s*(.+)/);
     const nameFromTitle = titleMatch?.[1]?.trim();
     if (!nameFromTitle) continue;
 
-    const { data: betterContacts } = await admin.from("contacts")
-      .select("id, full_name, phone, email")
-      .ilike("full_name", `%${nameFromTitle}%`)
-      .not("phone", "is", null)
-      .limit(1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let betterContact: any = null;
+    if (contact.telegram_id) {
+      const match = contactByTgId.get(contact.telegram_id);
+      if (match && match.id !== contact.id) betterContact = match;
+    }
+    if (!betterContact && contact.maks_id) {
+      const match = contactByMaksId.get(contact.maks_id);
+      if (match && match.id !== contact.id) betterContact = match;
+    }
+    if (!betterContact && !contact.phone) {
+      const { data: found } = await admin.from("contacts")
+        .select("id, full_name, phone, email")
+        .ilike("full_name", `%${nameFromTitle}%`)
+        .not("phone", "is", null)
+        .limit(1);
+      if (found?.[0]) betterContact = found[0];
+    }
 
-    if (betterContacts?.[0]) {
-      await admin.from("deals").update({ contact_id: betterContacts[0].id }).eq("id", deal.id);
-      results.push(`Deal "${deal.title}": ${contact.full_name} → ${betterContacts[0].full_name} (${betterContacts[0].phone})`);
+    if (betterContact) {
+      await admin.from("deals").update({ contact_id: betterContact.id }).eq("id", deal.id);
+      results.push(`Deal "${deal.title}": ${contact.full_name} → ${betterContact.full_name} (${betterContact.phone})`);
       dealsFixed++;
     }
   }
