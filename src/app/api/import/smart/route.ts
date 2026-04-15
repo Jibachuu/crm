@@ -674,14 +674,71 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Auto-link messengers for newly created/updated contacts (background, best-effort)
-  if (entity === "leads" || entity === "deals") {
+  // Auto-link messengers for newly created/updated contacts
+  if ((entity === "leads" || entity === "deals") && added > 0) {
     try {
-      // Fire bulk-link in background — don't await, don't block response
-      const baseUrl = process.env.NEXT_PUBLIC_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "";
-      if (baseUrl) {
-        fetch(`${baseUrl}/api/contacts/bulk-link-messengers`, { method: "POST", headers: { Cookie: "" } }).catch(() => {});
+      // Load TG dialogs + MAX chats, match to contacts by phone
+      const { tgProxy } = await import("@/lib/telegram/proxy");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tgByPhone = new Map<string, any>();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tgByUsername = new Map<string, any>();
+      try {
+        const tgData = await tgProxy<{ dialogs: Array<{ id: string; username: string | null; phone: string | null; isUser: boolean }> }>("/dialogs");
+        for (const d of tgData.dialogs ?? []) {
+          if (!d.isUser) continue;
+          if (d.phone) { const c = d.phone.replace(/\D/g, "").slice(-10); if (c.length >= 7) tgByPhone.set(c, { id: String(d.id), username: d.username }); }
+          if (d.username) tgByUsername.set(d.username.toLowerCase(), { id: String(d.id), username: d.username });
+        }
+      } catch { /* TG unavailable */ }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const maxByPhone = new Map<string, any>();
+      try {
+        const maxProxy = process.env.MAX_PROXY_URL;
+        const maxKey = process.env.MAX_PROXY_KEY;
+        if (maxProxy && maxKey) {
+          const res = await fetch(`${maxProxy}/chats`, { headers: { Authorization: maxKey } });
+          if (res.ok) {
+            const d = await res.json();
+            for (const c of d.chats ?? []) {
+              const chatId = String(c.chatId ?? c.id ?? "");
+              if (!chatId || Number(chatId) < 0) continue;
+              if (c.phone) { const cl = String(c.phone).replace(/\D/g, "").slice(-10); if (cl.length >= 7) maxByPhone.set(cl, chatId); }
+            }
+          }
+        }
+      } catch { /* MAX unavailable */ }
+
+      // Update contacts missing messenger IDs
+      const { data: recentContacts } = await admin.from("contacts")
+        .select("id, phone, telegram_id, telegram_username, maks_id")
+        .or("telegram_id.is.null,maks_id.is.null")
+        .not("phone", "is", null)
+        .limit(500);
+
+      let autoLinked = 0;
+      for (const c of recentContacts ?? []) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const upd: any = {};
+        const cleanPhone = c.phone?.replace(/\D/g, "").slice(-10) || "";
+        if (!c.telegram_id && cleanPhone) {
+          const tg = tgByPhone.get(cleanPhone);
+          if (tg) { upd.telegram_id = tg.id; if (tg.username && !c.telegram_username) upd.telegram_username = tg.username; }
+        }
+        if (!c.telegram_id && !upd.telegram_id && c.telegram_username) {
+          const tg = tgByUsername.get(c.telegram_username.replace("@", "").toLowerCase());
+          if (tg) upd.telegram_id = tg.id;
+        }
+        if (!c.maks_id && cleanPhone) {
+          const maksId = maxByPhone.get(cleanPhone);
+          if (maksId) upd.maks_id = maksId;
+        }
+        if (Object.keys(upd).length > 0) {
+          await admin.from("contacts").update(upd).eq("id", c.id);
+          autoLinked++;
+        }
       }
+      if (autoLinked > 0) errors.push(`✓ Автопривязка мессенджеров: ${autoLinked} контактов`);
     } catch { /* ignore */ }
   }
 
