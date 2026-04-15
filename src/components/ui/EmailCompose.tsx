@@ -214,12 +214,15 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
         )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
-            <label className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-gray-100 transition-colors cursor-pointer" style={{ color: "#888" }}>
+            <button type="button" onClick={() => {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.multiple = true;
+              input.onchange = () => { addFiles(input.files); };
+              input.click();
+            }} className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-gray-100 transition-colors" style={{ color: "#888" }}>
               <Paperclip size={13} /> Файл
-              <input type="file" multiple
-                style={{ position: "fixed", left: "-9999px", top: "-9999px", opacity: 0 }}
-                onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-            </label>
+            </button>
             <FileTemplatesPanel onInsert={(tplFiles) => {
               Promise.all(tplFiles.map((f) =>
                 fetch(f.url).then((r) => r.blob()).then((blob) => new File([blob], f.name, { type: f.type || "application/octet-stream" }))
