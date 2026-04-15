@@ -7,11 +7,16 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const dealId = new URL(req.url).searchParams.get("deal_id");
-  if (!dealId) return NextResponse.json({ error: "deal_id required" }, { status: 400 });
+  const { searchParams } = new URL(req.url);
+  const dealId = searchParams.get("deal_id");
+  const leadId = searchParams.get("lead_id");
+  if (!dealId && !leadId) return NextResponse.json({ error: "deal_id or lead_id required" }, { status: 400 });
 
   const admin = createAdminClient();
-  const { data } = await admin.from("deal_files").select("*").eq("deal_id", dealId).order("created_at", { ascending: false });
+  let query = admin.from("deal_files").select("*").order("created_at", { ascending: false });
+  if (dealId) query = query.eq("deal_id", dealId);
+  else query = query.eq("lead_id", leadId);
+  const { data } = await query;
   return NextResponse.json({ files: data ?? [] });
 }
 
@@ -22,12 +27,14 @@ export async function POST(req: NextRequest) {
 
   const formData = await req.formData();
   const file = formData.get("file") as File;
-  const dealId = formData.get("deal_id") as string;
-  if (!file || !dealId) return NextResponse.json({ error: "file and deal_id required" }, { status: 400 });
+  const dealId = formData.get("deal_id") as string | null;
+  const leadId = formData.get("lead_id") as string | null;
+  if (!file || (!dealId && !leadId)) return NextResponse.json({ error: "file and (deal_id or lead_id) required" }, { status: 400 });
 
   const admin = createAdminClient();
-  const ext = file.name.split(".").pop() ?? "bin";
-  const path = `deals/${dealId}/${Date.now()}_${file.name}`;
+  const entityId = dealId || leadId!;
+  const folder = dealId ? "deals" : "leads";
+  const path = `${folder}/${entityId}/${Date.now()}_${file.name}`;
   const buffer = Buffer.from(new Uint8Array(await file.arrayBuffer()));
 
   const { error: upErr } = await admin.storage.from("attachments").upload(path, buffer, { contentType: file.type, upsert: true });
@@ -43,7 +50,8 @@ export async function POST(req: NextRequest) {
   const { data: urlData } = admin.storage.from("attachments").getPublicUrl(path);
 
   const { data, error } = await admin.from("deal_files").insert({
-    deal_id: dealId,
+    deal_id: dealId || null,
+    lead_id: leadId || null,
     file_name: file.name,
     file_url: urlData.publicUrl,
     file_type: file.type,

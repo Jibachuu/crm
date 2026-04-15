@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Edit2, Trash2, MessageSquare, CheckSquare, Phone, Mail, Building2, Plus, Package, ArrowRightCircle } from "lucide-react";
+import { ChevronLeft, Edit2, Trash2, MessageSquare, CheckSquare, Phone, Mail, Building2, Plus, Package, ArrowRightCircle, Paperclip } from "lucide-react";
 import TaskItem from "@/components/ui/TaskItem";
 import TelegramChat from "@/components/ui/TelegramChat";
 import MaxChat from "@/components/ui/MaxChat";
@@ -68,7 +68,14 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
   const [leadProducts, setLeadProducts] = useState(initialProducts ?? []);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram" | "maks">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "files" | "email" | "telegram" | "maks">("info");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [leadFiles, setLeadFiles] = useState<any[]>([]);
+  const [fileUploading, setFileUploading] = useState(false);
+
+  useState(() => {
+    fetch(`/api/deals/files?lead_id=${lead.id}`).then((r) => r.json()).then((d) => setLeadFiles(d.files ?? [])).catch(() => {});
+  });
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -194,6 +201,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
     { id: "communications", label: `Коммуникации (${communications.length})` },
     { id: "tasks", label: `Задачи (${tasks.length})` },
     { id: "products", label: `Товары (${leadProducts.length})` },
+    { id: "files", label: `📎 Файлы (${leadFiles.length})` },
     { id: "email", label: "📧 Почта" },
     { id: "telegram", label: "💬 Telegram" },
     { id: "maks", label: "🔵 МАКС" },
@@ -444,6 +452,51 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                   total={totalOrder}
                   onAdd={() => setAddProductBlock("order")}
                 />
+              </div>
+            )}
+
+            {activeTab === "files" && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-2 px-3 py-1.5 text-sm rounded cursor-pointer hover:bg-blue-50" style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}>
+                    <Paperclip size={14} /> {fileUploading ? "Загрузка..." : "Загрузить файл"}
+                    <input type="file" multiple className="hidden" disabled={fileUploading} onChange={async (e) => {
+                      const files = e.target.files;
+                      if (!files) return;
+                      setFileUploading(true);
+                      for (let i = 0; i < files.length; i++) {
+                        const fd = new FormData();
+                        fd.append("file", files[i]);
+                        fd.append("lead_id", lead.id);
+                        const res = await fetch("/api/deals/files", { method: "POST", body: fd });
+                        if (res.ok) {
+                          const f = await res.json();
+                          setLeadFiles((prev) => [f, ...prev]);
+                        }
+                      }
+                      setFileUploading(false);
+                      e.target.value = "";
+                    }} />
+                  </label>
+                </div>
+                {leadFiles.length === 0 ? (
+                  <p className="text-sm text-center py-8" style={{ color: "#aaa" }}>Нет файлов</p>
+                ) : (
+                  <div className="space-y-1">
+                    {leadFiles.map((f: { id: string; file_name: string; file_url: string; file_size?: number; created_at: string }) => (
+                      <div key={f.id} className="flex items-center gap-3 px-3 py-2 rounded hover:bg-slate-50" style={{ border: "1px solid #f0f0f0" }}>
+                        <Paperclip size={14} className="flex-shrink-0 text-slate-400" />
+                        <a href={f.file_url} target="_blank" rel="noopener noreferrer" className="flex-1 text-sm text-blue-600 hover:underline truncate">{f.file_name}</a>
+                        <span className="text-xs text-slate-400">{f.file_size ? `${(f.file_size / 1024).toFixed(0)} KB` : ""}</span>
+                        <button onClick={async () => {
+                          if (!confirm("Удалить файл?")) return;
+                          await fetch("/api/deals/files", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id }) });
+                          setLeadFiles((prev) => prev.filter((x: { id: string }) => x.id !== f.id));
+                        }} className="p-1 rounded hover:bg-red-50"><Trash2 size={12} className="text-red-400" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
