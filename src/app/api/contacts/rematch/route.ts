@@ -75,7 +75,7 @@ export async function POST() {
 
   let dealsFixed = 0;
   for (const deal of deals ?? []) {
-    const contact = deal.contacts as { id: string; full_name: string; phone?: string; email?: string } | null;
+    const contact = deal.contacts as unknown as { id: string; full_name: string; phone?: string; email?: string } | null;
     if (!contact) continue;
     if (contact.phone || contact.email) continue;
 
