@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -23,37 +23,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "to, subject, body обязательны" }, { status: 400 });
   }
 
-  const resendKey = process.env.RESEND_API_KEY;
-  const fromAddr = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "info@art-evo.ru";
+  const host = process.env.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT ?? "465");
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const fromAddr = process.env.SMTP_FROM ?? user;
   const fromName = process.env.SMTP_FROM_NAME ?? "Artevo";
-  const from = `${fromName} <${fromAddr}>`;
+  const from = `"${fromName}" <${fromAddr}>`;
 
-  if (!resendKey) {
-    return NextResponse.json({ error: "RESEND_API_KEY не настроен" }, { status: 503 });
+  if (!host || !user || !pass) {
+    return NextResponse.json({ error: "Email (SMTP) не настроен" }, { status: 503 });
   }
 
   try {
-    const resend = new Resend(resendKey);
+    const transporter = nodemailer.createTransport({
+      host, port, secure: port === 465,
+      auth: { user, pass },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 30000,
+    });
 
     const attachments = (files ?? [])
       .filter((f) => f.data && f.name)
       .map((f) => ({
         filename: f.name,
-        content: Buffer.from(f.data, "base64"),
+        content: f.data,
+        encoding: "base64" as const,
       }));
 
-    const { error } = await resend.emails.send({
-      from,
-      to: [to],
-      subject,
+    await transporter.sendMail({
+      from, to, subject,
       text: body,
       html: body.replace(/\n/g, "<br>"),
       attachments,
     });
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
 
     // Save sent email to DB
     const supabase = await createClient();
