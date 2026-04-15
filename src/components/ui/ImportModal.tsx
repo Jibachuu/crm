@@ -343,19 +343,19 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
         {/* Step 1: Upload */}
         {step === 1 && (
           <div>
-            <div
+            <label
               className="flex flex-col items-center justify-center py-12 cursor-pointer transition-colors rounded-lg"
               style={{ border: "2px dashed #d0d0d0", background: "#fafafa" }}
-              onClick={() => fileRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
             >
               <Upload size={32} className="mb-3" style={{ color: "#ccc" }} />
               <p className="text-sm font-medium" style={{ color: "#555" }}>Перетащите файл или нажмите для выбора</p>
               <p className="text-xs mt-1" style={{ color: "#aaa" }}>Поддерживается .xlsx, .xls, .csv</p>
-              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-            </div>
+              <input type="file" accept=".xlsx,.xls,.csv"
+                style={{ position: "fixed", left: "-9999px", top: "-9999px", opacity: 0 }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
+            </label>
           </div>
         )}
 
