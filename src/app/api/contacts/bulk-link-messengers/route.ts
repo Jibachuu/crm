@@ -59,9 +59,13 @@ export async function POST() {
   let linked = 0;
   const results: string[] = [];
 
+  const startTime = Date.now();
   for (const contact of contacts ?? []) {
+    // Timeout after 90 seconds to avoid request hang
+    if (Date.now() - startTime > 90000) { results.push("Timeout — обработано частично, запустите ещё раз"); break; }
+
     const phones = [contact.phone, contact.phone_mobile, contact.phone_other].filter(Boolean) as string[];
-    if (phones.length === 0) continue;
+    if (phones.length === 0 && !contact.telegram_username) continue;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updates: any = {};
@@ -91,7 +95,7 @@ export async function POST() {
             const { tgProxy } = await import("@/lib/telegram/proxy");
             const res = await tgProxy<{ ok: boolean; user?: { id: string; username?: string } }>("/add-contact", {
               method: "POST",
-              body: JSON.stringify({ username: uname }),
+              body: { username: uname },
             });
             if (res.ok && res.user?.id) {
               updates.telegram_id = String(res.user.id);
@@ -107,7 +111,7 @@ export async function POST() {
             const { tgProxy } = await import("@/lib/telegram/proxy");
             const res = await tgProxy<{ ok: boolean; user?: { id: string; username?: string } }>("/add-contact", {
               method: "POST",
-              body: JSON.stringify({ phone: p }),
+              body: { phone: p },
             });
             if (res.ok && res.user?.id) {
               updates.telegram_id = String(res.user.id);
