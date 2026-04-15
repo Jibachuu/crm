@@ -109,13 +109,17 @@ export async function POST(req: NextRequest) {
 
   // ── Load lookup maps once ──────────────────────────────────────────────────
   const [existingCompanies, existingContacts, allUsers] = await Promise.all([
-    fetchAllRows("companies", "id, name"),
+    fetchAllRows("companies", "id, name, inn"),
     fetchAllRows("contacts", "id, full_name, phone, email, telegram_id, telegram_username, maks_id"),
     fetchAllRows("users", "id, full_name"),
   ]);
 
   const companyMap = new Map<string, string>(); // norm(name) → id
-  for (const c of existingCompanies ?? []) companyMap.set(norm(c.name), c.id);
+  const companyByInn = new Map<string, string>(); // inn → id
+  for (const c of existingCompanies ?? []) {
+    companyMap.set(norm(c.name), c.id);
+    if (c.inn) companyByInn.set(c.inn.trim(), c.id);
+  }
 
   // Contact lookup: messenger IDs → phone → email → name+phone
   const contactByTgId = new Map<string, string>();
@@ -365,10 +369,13 @@ export async function POST(req: NextRequest) {
       if (companyName || companyInn) {
         // Find existing by name
         companyId = companyName ? (companyMap.get(norm(companyName)) ?? null) : null;
-        // If not found and INN given, search by INN
+        // If not found and INN given, search by INN (cached)
         if (!companyId && companyInn) {
-          const { data: byInn } = await admin.from("companies").select("id, name").eq("inn", companyInn).limit(1).single();
-          if (byInn) { companyId = byInn.id; companyMap.set(norm(byInn.name), byInn.id); }
+          companyId = companyByInn.get(companyInn.trim()) ?? null;
+          if (!companyId) {
+            const { data: byInn } = await admin.from("companies").select("id, name").eq("inn", companyInn).limit(1).single();
+            if (byInn) { companyId = byInn.id; companyMap.set(norm(byInn.name), byInn.id); companyByInn.set(companyInn.trim(), byInn.id); }
+          }
         }
         if (companyId) {
           // Enrich existing company
@@ -422,13 +429,18 @@ export async function POST(req: NextRequest) {
       if (!contactId && contactName) contactId = contactMap.get(norm(contactName) + "|") ?? null;
 
       if (contactId) {
-        // Enrich existing contact
+        // Enrich existing contact — single query instead of 4
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const upd: any = {};
-        if (contactPhone) { const { data: c } = await admin.from("contacts").select("phone").eq("id", contactId).single(); if (c && !c.phone) upd.phone = contactPhone; }
-        if (contactEmail) { const { data: c } = await admin.from("contacts").select("email").eq("id", contactId).single(); if (c && !c.email) upd.email = contactEmail; }
-        if (tgUsername) { const { data: c } = await admin.from("contacts").select("telegram_username").eq("id", contactId).single(); if (c && !c.telegram_username) upd.telegram_username = tgUsername; }
-        if (companyId) { const { data: c } = await admin.from("contacts").select("company_id").eq("id", contactId).single(); if (c && !c.company_id) upd.company_id = companyId; }
+        if (contactPhone || contactEmail || tgUsername || companyId) {
+          const { data: c } = await admin.from("contacts").select("phone, email, telegram_username, company_id").eq("id", contactId).single();
+          if (c) {
+            if (contactPhone && !c.phone) upd.phone = contactPhone;
+            if (contactEmail && !c.email) upd.email = contactEmail;
+            if (tgUsername && !c.telegram_username) upd.telegram_username = tgUsername;
+            if (companyId && !c.company_id) upd.company_id = companyId;
+          }
+        }
         if (Object.keys(upd).length > 0) await admin.from("contacts").update(upd).eq("id", contactId);
       } else if (contactName || contactPhone || contactEmail) {
         // Create new contact

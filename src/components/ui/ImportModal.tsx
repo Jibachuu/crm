@@ -309,8 +309,8 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
       setResult({ added: data.added ?? 0, updated: 0, skipped: 0, errors: data.errors ?? [], total: fileRows.length });
       if (data.added > 0) onImported?.(data.added);
     } else {
-      // Split into batches of 50 to avoid timeout
-      const BATCH_SIZE = 50;
+      // Split into batches
+      const BATCH_SIZE = 150;
       let totalAdded = 0, totalUpdated = 0, totalSkipped = 0;
       const allErrors: string[] = [];
       for (let i = 0; i < mapped.length; i += BATCH_SIZE) {
