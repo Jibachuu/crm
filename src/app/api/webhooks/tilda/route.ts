@@ -67,7 +67,8 @@ export async function POST(req: NextRequest) {
   const { data: adminUser } = await admin.from("users").select("id").eq("role", "admin").limit(1).single();
   const adminId = adminUser?.id;
 
-  // Check if contact already exists by phone or email
+  // Find existing contact by UNIQUE identifiers (email, phone) — NOT by name!
+  // Name alone is not unique ("Анна" matches many contacts)
   let contactId: string | null = null;
   if (finalEmail) {
     const { data } = await admin.from("contacts").select("id").ilike("email", finalEmail).limit(1).single();
@@ -75,14 +76,22 @@ export async function POST(req: NextRequest) {
   }
   if (!contactId && finalPhone) {
     const cleanPhone = finalPhone.replace(/\D/g, "");
-    if (cleanPhone.length >= 7) {
-      const { data } = await admin.from("contacts").select("id").ilike("phone", `%${cleanPhone.slice(-10)}%`).limit(1).single();
+    const suffix = cleanPhone.slice(-10);
+    if (suffix.length >= 7) {
+      // Use exact suffix match, not broad LIKE
+      const { data } = await admin.from("contacts").select("id, phone")
+        .or(`phone.ilike.%${suffix},phone_mobile.ilike.%${suffix}`)
+        .limit(1).single();
       if (data) contactId = data.id;
     }
   }
 
-  // Create or update contact
+  // Only create new contact if we have phone OR email — never match by name alone
   if (!contactId) {
+    if (!finalPhone && !finalEmail) {
+      // No unique identifier — create contact but log warning
+      console.warn("[TILDA] Creating contact without phone/email:", finalName);
+    }
     const { data: newContact } = await admin.from("contacts").insert({
       full_name: finalName || finalEmail || finalPhone,
       phone: finalPhone || null,
@@ -91,16 +100,18 @@ export async function POST(req: NextRequest) {
     }).select("id").single();
     contactId = newContact?.id ?? null;
   } else {
-    // Update existing contact with missing data
-    const updates: Record<string, string> = {};
-    if (finalPhone) updates.phone = finalPhone;
-    if (finalEmail) updates.email = finalEmail;
-    if (finalName) updates.full_name = finalName;
-    if (Object.keys(updates).length > 0) {
-      await admin.from("contacts").update(updates).eq("id", contactId).is("phone", null);
-      // Also update name/email if missing
-      if (finalEmail) await admin.from("contacts").update({ email: finalEmail }).eq("id", contactId).is("email", null);
-      if (finalName) await admin.from("contacts").update({ full_name: finalName }).eq("id", contactId);
+    // Enrich existing contact — only fill MISSING fields, never overwrite
+    const { data: existing } = await admin.from("contacts").select("full_name, phone, email").eq("id", contactId).single();
+    if (existing) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updates: any = {};
+      if (finalPhone && !existing.phone) updates.phone = finalPhone;
+      if (finalEmail && !existing.email) updates.email = finalEmail;
+      // Only update name if current name is junk (numeric or empty)
+      if (finalName && (!existing.full_name || /^\d+$/.test(existing.full_name.trim()))) updates.full_name = finalName;
+      if (Object.keys(updates).length > 0) {
+        await admin.from("contacts").update(updates).eq("id", contactId);
+      }
     }
   }
 

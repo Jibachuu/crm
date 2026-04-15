@@ -20,12 +20,14 @@ export default function EditContactModal({ open, onClose, contact, onSaved }: { 
     if (!open) { setDataReady(false); return; }
     const supabase = createClient();
     Promise.all([
-      supabase.from("companies").select("id, name").order("name"),
+      supabase.from("companies").select("id, name").order("name").limit(2000),
       supabase.from("users").select("id, full_name").eq("is_active", true),
     ]).then(([co, u]) => {
       setCompanies(co.data ?? []);
       setUsers(u.data ?? []);
       setDataReady(true);
+    }).catch(() => {
+      setDataReady(true); // show form even if load fails
     });
   }, [open]);
 

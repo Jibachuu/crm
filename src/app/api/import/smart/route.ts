@@ -115,9 +115,18 @@ export async function POST(req: NextRequest) {
   const companyMap = new Map<string, string>(); // norm(name) → id
   for (const c of existingCompanies ?? []) companyMap.set(norm(c.name), c.id);
 
+  // Contact lookup: phone/email are unique identifiers, name is fallback only with phone
+  const contactByPhone = new Map<string, string>(); // norm(phone last 10) → id
+  const contactByEmail = new Map<string, string>(); // norm(email) → id
   const contactMap = new Map<string, string>(); // norm(name)|norm(phone) → id
   for (const c of existingContacts ?? []) {
-    contactMap.set(norm(c.full_name) + "|" + norm(c.phone ?? ""), c.id);
+    if (c.phone) {
+      const clean = c.phone.replace(/\D/g, "").slice(-10);
+      if (clean.length >= 7) contactByPhone.set(clean, c.id);
+    }
+    if (c.email) contactByEmail.set(norm(c.email), c.id);
+    // Name+phone key only when phone exists (prevents "Анна|" matching any Анна)
+    if (c.phone) contactMap.set(norm(c.full_name) + "|" + norm(c.phone), c.id);
     if (c.email) contactMap.set(norm(c.full_name) + "|" + norm(c.email), c.id);
   }
 
@@ -337,7 +346,7 @@ export async function POST(req: NextRequest) {
       for (const c of data ?? []) companyMap.set(norm(c.name), c.id);
     }
 
-    // Batch-create missing contacts
+    // Batch-create missing contacts — match by phone/email FIRST, not by name
     const contactsToCreate: Record<string, unknown>[] = [];
     const pendingContactKeys = new Set<string>();
     for (const row of rows) {
@@ -345,6 +354,15 @@ export async function POST(req: NextRequest) {
       if (!name) continue;
       const phone = String(row.contact_phone ?? "").trim() || null;
       const email = String(row.contact_email ?? "").trim() || null;
+
+      // Already exists by phone?
+      if (phone) {
+        const cleanP = phone.replace(/\D/g, "").slice(-10);
+        if (cleanP.length >= 7 && contactByPhone.has(cleanP)) continue;
+      }
+      // Already exists by email?
+      if (email && contactByEmail.has(norm(email))) continue;
+
       const key = norm(name) + "|" + norm(phone ?? "");
       if (contactMap.has(key) || pendingContactKeys.has(key)) continue;
       pendingContactKeys.add(key);
@@ -356,9 +374,14 @@ export async function POST(req: NextRequest) {
       });
     }
     if (contactsToCreate.length > 0) {
-      const { data } = await admin.from("contacts").insert(contactsToCreate).select("id, full_name, phone");
+      const { data } = await admin.from("contacts").insert(contactsToCreate).select("id, full_name, phone, email");
       for (const c of data ?? []) {
         contactMap.set(norm(c.full_name) + "|" + norm(c.phone ?? ""), c.id);
+        if (c.phone) {
+          const cleanP = c.phone.replace(/\D/g, "").slice(-10);
+          if (cleanP.length >= 7) contactByPhone.set(cleanP, c.id);
+        }
+        if (c.email) contactByEmail.set(norm(c.email), c.id);
       }
     }
 
@@ -374,9 +397,15 @@ export async function POST(req: NextRequest) {
       const companyId = companyMap.get(norm(String(row.company_name ?? "").trim())) ?? null;
       const contactPhone = String(row.contact_phone ?? "").trim() || null;
       const contactName = String(row.contact_name ?? "").trim() || null;
-      const contactId = contactName
-        ? (contactMap.get(norm(contactName) + "|" + norm(contactPhone ?? "")) ?? null)
-        : null;
+      // Find contact: phone first (unique), then email, then name+phone combo
+      let contactId: string | null = null;
+      if (contactPhone) {
+        const cleanP = contactPhone.replace(/\D/g, "").slice(-10);
+        if (cleanP.length >= 7) contactId = contactByPhone.get(cleanP) ?? null;
+      }
+      const contactEmail = String(row.contact_email ?? "").trim() || null;
+      if (!contactId && contactEmail) contactId = contactByEmail.get(norm(contactEmail)) ?? null;
+      if (!contactId && contactName) contactId = contactMap.get(norm(contactName) + "|" + norm(contactPhone ?? "")) ?? null;
 
       const rec: Record<string, unknown> = {
         title,

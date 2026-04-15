@@ -26,7 +26,7 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
     createClient().from("users").select("id, full_name").eq("is_active", true).then(({ data }) => {
       setUsers(data ?? []);
       setDataReady(true);
-    });
+    }).catch(() => { setDataReady(true); });
     setVenueTypeId(company?.venue_type_id ?? null);
     setSupplierId(company?.supplier_id ?? null);
     // Fetch venue type name for dynamic fields
