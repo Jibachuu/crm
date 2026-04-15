@@ -73,9 +73,13 @@ const ENTITY_FIELDS: Record<Entity, CrmField[]> = {
     { key: "source", label: "Источник" },
     { key: "amount", label: "Сумма итого" },
     { key: "company_name", label: "Компания" },
+    { key: "company_inn", label: "ИНН компании" },
+    { key: "company_address", label: "Адрес компании" },
+    { key: "company_city", label: "Город компании" },
     { key: "contact_name", label: "Контакт (имя)" },
     { key: "contact_phone", label: "Телефон контакта" },
     { key: "contact_email", label: "Email контакта" },
+    { key: "telegram_username", label: "Telegram контакта" },
     ...Array.from({ length: 10 }, (_, i) => [
       { key: `product_${i + 1}_category`, label: `Товар ${i + 1} — категория` },
       { key: `product_${i + 1}_subcategory`, label: `Товар ${i + 1} — подкатегория` },

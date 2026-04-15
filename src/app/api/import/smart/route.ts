@@ -337,58 +337,13 @@ export async function POST(req: NextRequest) {
   else if (entity === "leads" || entity === "deals") {
     const table = entity;
 
-    // Batch-create missing companies
-    const uniqueCompanyNames = [...new Set(
-      rows.map((r) => String(r.company_name ?? "").trim()).filter(Boolean)
-    )];
-    const missingCompanies = uniqueCompanyNames.filter((n) => !companyMap.has(norm(n)));
-    if (missingCompanies.length > 0) {
-      const { data } = await admin.from("companies")
-        .insert(missingCompanies.map((n) => ({ name: n, created_by: user.id })))
-        .select("id, name");
-      for (const c of data ?? []) companyMap.set(norm(c.name), c.id);
+    // Also build telegram_username lookup
+    const contactByTgUsername = new Map<string, string>();
+    for (const c of existingContacts ?? []) {
+      if (c.telegram_username) contactByTgUsername.set(norm(c.telegram_username).replace("@", ""), c.id);
     }
 
-    // Batch-create missing contacts — match by phone/email FIRST, not by name
-    const contactsToCreate: Record<string, unknown>[] = [];
-    const pendingContactKeys = new Set<string>();
-    for (const row of rows) {
-      const name = String(row.contact_name ?? "").trim();
-      if (!name) continue;
-      const phone = String(row.contact_phone ?? "").trim() || null;
-      const email = String(row.contact_email ?? "").trim() || null;
-
-      // Already exists by phone?
-      if (phone) {
-        const cleanP = phone.replace(/\D/g, "").slice(-10);
-        if (cleanP.length >= 7 && contactByPhone.has(cleanP)) continue;
-      }
-      // Already exists by email?
-      if (email && contactByEmail.has(norm(email))) continue;
-
-      const key = norm(name) + "|" + norm(phone ?? "");
-      if (contactMap.has(key) || pendingContactKeys.has(key)) continue;
-      pendingContactKeys.add(key);
-      const companyId = companyMap.get(norm(String(row.company_name ?? "").trim())) ?? null;
-      contactsToCreate.push({
-        full_name: name, phone, email,
-        telegram_username: row.telegram_username || null,
-        company_id: companyId, created_by: user.id,
-      });
-    }
-    if (contactsToCreate.length > 0) {
-      const { data } = await admin.from("contacts").insert(contactsToCreate).select("id, full_name, phone, email");
-      for (const c of data ?? []) {
-        contactMap.set(norm(c.full_name) + "|" + norm(c.phone ?? ""), c.id);
-        if (c.phone) {
-          const cleanP = c.phone.replace(/\D/g, "").slice(-10);
-          if (cleanP.length >= 7) contactByPhone.set(cleanP, c.id);
-        }
-        if (c.email) contactByEmail.set(norm(c.email), c.id);
-      }
-    }
-
-    // Build main records
+    // ── Process each row: find/create company + contact, then create deal/lead ──
     const toInsert: Record<string, unknown>[] = [];
     const productRows: { idx: number; name: string; sku: string | null; price: number | null; qty: number | null; category: string | null; subcategory: string | null; volume: string | null; aroma: string | null }[] = [];
 
@@ -397,19 +352,93 @@ export async function POST(req: NextRequest) {
       const title = String(row.title ?? "").trim();
       if (!title) { errors.push(`Строка ${i + 2}: нет названия`); continue; }
 
-      const companyId = companyMap.get(norm(String(row.company_name ?? "").trim())) ?? null;
-      const contactPhone = String(row.contact_phone ?? "").trim() || null;
+      // ── Company: find by name or INN, create if new, enrich existing ──
+      const companyName = String(row.company_name ?? "").trim();
+      const companyInn = String(row.company_inn ?? "").trim();
+      const companyAddress = String(row.company_address ?? "").trim();
+      const companyCity = String(row.company_city ?? "").trim();
+      let companyId: string | null = null;
+
+      if (companyName || companyInn) {
+        // Find existing by name
+        companyId = companyName ? (companyMap.get(norm(companyName)) ?? null) : null;
+        // If not found and INN given, search by INN
+        if (!companyId && companyInn) {
+          const { data: byInn } = await admin.from("companies").select("id, name").eq("inn", companyInn).limit(1).single();
+          if (byInn) { companyId = byInn.id; companyMap.set(norm(byInn.name), byInn.id); }
+        }
+        if (companyId) {
+          // Enrich existing company
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const upd: any = {};
+          if (companyInn) upd.inn = companyInn;
+          if (companyAddress) upd.legal_address = companyAddress;
+          if (companyCity) upd.city = companyCity;
+          if (Object.keys(upd).length > 0) await admin.from("companies").update(upd).eq("id", companyId);
+        } else {
+          // Create new company
+          const { data: newCo } = await admin.from("companies").insert({
+            name: companyName || `ИНН ${companyInn}`,
+            inn: companyInn || null,
+            legal_address: companyAddress || null,
+            city: companyCity || null,
+            created_by: user.id,
+          }).select("id, name").single();
+          if (newCo) { companyId = newCo.id; companyMap.set(norm(newCo.name), newCo.id); }
+        }
+      }
+
+      // ── Contact: find by phone → tg_username → email → name, create if new ──
       const contactName = String(row.contact_name ?? "").trim() || null;
-      // Find contact: phone first (unique), then email, then name+phone combo
+      const contactPhone = String(row.contact_phone ?? "").trim() || null;
+      const contactEmail = String(row.contact_email ?? "").trim() || null;
+      const tgUsername = String(row.telegram_username ?? "").trim().replace("@", "") || null;
       let contactId: string | null = null;
+
+      // 1. Phone (most reliable)
       if (contactPhone) {
         const cleanP = contactPhone.replace(/\D/g, "").slice(-10);
         if (cleanP.length >= 7) contactId = contactByPhone.get(cleanP) ?? null;
       }
-      const contactEmail = String(row.contact_email ?? "").trim() || null;
+      // 2. Telegram username
+      if (!contactId && tgUsername) contactId = contactByTgUsername.get(norm(tgUsername)) ?? null;
+      // 3. Email
       if (!contactId && contactEmail) contactId = contactByEmail.get(norm(contactEmail)) ?? null;
-      if (!contactId && contactName) contactId = contactMap.get(norm(contactName) + "|" + norm(contactPhone ?? "")) ?? null;
+      // 4. Name+phone key
+      if (!contactId && contactName && contactPhone) contactId = contactMap.get(norm(contactName) + "|" + norm(contactPhone)) ?? null;
+      // 5. Name only (for rows where same contact appears multiple times, phone only in first row)
+      if (!contactId && contactName) contactId = contactMap.get(norm(contactName) + "|") ?? null;
 
+      if (contactId) {
+        // Enrich existing contact
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const upd: any = {};
+        if (contactPhone) { const { data: c } = await admin.from("contacts").select("phone").eq("id", contactId).single(); if (c && !c.phone) upd.phone = contactPhone; }
+        if (contactEmail) { const { data: c } = await admin.from("contacts").select("email").eq("id", contactId).single(); if (c && !c.email) upd.email = contactEmail; }
+        if (tgUsername) { const { data: c } = await admin.from("contacts").select("telegram_username").eq("id", contactId).single(); if (c && !c.telegram_username) upd.telegram_username = tgUsername; }
+        if (companyId) { const { data: c } = await admin.from("contacts").select("company_id").eq("id", contactId).single(); if (c && !c.company_id) upd.company_id = companyId; }
+        if (Object.keys(upd).length > 0) await admin.from("contacts").update(upd).eq("id", contactId);
+      } else if (contactName || contactPhone || contactEmail) {
+        // Create new contact
+        const { data: newC } = await admin.from("contacts").insert({
+          full_name: contactName || contactEmail || contactPhone || "Контакт",
+          phone: contactPhone || null,
+          email: contactEmail || null,
+          telegram_username: tgUsername || null,
+          company_id: companyId,
+          created_by: user.id,
+        }).select("id").single();
+        if (newC) {
+          contactId = newC.id;
+          if (contactPhone) { const cleanP = contactPhone.replace(/\D/g, "").slice(-10); if (cleanP.length >= 7) contactByPhone.set(cleanP, newC.id); }
+          if (contactEmail) contactByEmail.set(norm(contactEmail), newC.id);
+          if (tgUsername) contactByTgUsername.set(norm(tgUsername), newC.id);
+          if (contactName && contactPhone) contactMap.set(norm(contactName) + "|" + norm(contactPhone), newC.id);
+          if (contactName) contactMap.set(norm(contactName) + "|", newC.id);
+        }
+      }
+
+      // ── Build deal/lead record ──
       const rec: Record<string, unknown> = {
         title,
         [table === "leads" ? "status" : "stage"]: normStage(row.status ?? row.stage, table === "leads"),
