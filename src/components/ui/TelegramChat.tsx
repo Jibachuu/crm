@@ -176,12 +176,43 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const resolveAttemptedRef = useRef(false);
+
   const fetchMessages = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const res = await fetch(`/api/telegram/messages?peer=${encodeURIComponent(peer)}&limit=50`);
       const data = await res.json();
-      if (data.error) { setError(data.error); return; }
+      if (data.error) {
+        // If entity not found, try to resolve via add-contact with phone
+        if (data.error.includes("Could not find") && !resolveAttemptedRef.current) {
+          resolveAttemptedRef.current = true;
+          if (phone) {
+            try {
+              await fetch("/api/telegram/add-contact", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phone }),
+              });
+              // Retry with phone as peer
+              const retry = await fetch(`/api/telegram/messages?peer=${encodeURIComponent(phone)}&limit=50`);
+              const retryData = await retry.json();
+              if (!retryData.error) {
+                const msgs = (retryData.messages as TgMessage[]).reverse();
+                setMessages(msgs);
+                setError(null);
+                setLoading(false);
+                return;
+              }
+            } catch { /* fall through */ }
+          }
+          setError("Не удалось найти пользователя в Telegram. Добавьте username или номер телефона в карточку контакта.");
+          setLoading(false);
+          return;
+        }
+        setError(data.error);
+        return;
+      }
       // Messages come newest-first from iterMessages, reverse to show oldest at top
       const msgs = (data.messages as TgMessage[]).reverse();
       setMessages(msgs);
