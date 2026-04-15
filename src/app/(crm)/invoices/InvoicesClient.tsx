@@ -16,7 +16,7 @@ interface PriceTier { from_qty: number; to_qty: number | null; price: number }
 interface InvoiceItem { product_id: string; name: string; quantity: number; unit: string; price: number; total: number; price_tiers?: PriceTier[] }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function InvoicesClient({ initialInvoices, companies, products, deals, supplier }: any) {
+export default function InvoicesClient({ initialInvoices, companies, products, deals, supplier, quotes = [] }: any) {
   const [invoices, setInvoices] = useState(initialInvoices);
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
@@ -36,6 +36,24 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     basis: "Основной договор", deal_id: "", comment: "", vat_included: false,
   });
   const [items, setItems] = useState<InvoiceItem[]>([{ product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]);
+
+  async function importFromQuote(quoteId: string) {
+    if (!quoteId) return;
+    const supabase = createClient();
+    const { data: qItems } = await supabase.from("quote_items").select("*").eq("quote_id", quoteId).order("sort_order");
+    if (!qItems?.length) { alert("В КП нет товаров"); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const q = quotes.find((qq: any) => qq.id === quoteId);
+    if (q?.company_id) selectBuyer(q.company_id);
+    setItems(qItems.map((qi: { product_id?: string; name: string; qty: number; client_price: number; sum: number }) => ({
+      product_id: qi.product_id || "",
+      name: qi.name,
+      quantity: qi.qty ?? 1,
+      unit: "шт",
+      price: qi.client_price ?? 0,
+      total: qi.sum ?? 0,
+    })));
+  }
 
   function selectBuyer(companyId: string) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -449,7 +467,17 @@ function doPrint(){
           <div>
             <div className="flex items-center justify-between mb-2">
               <label style={{ ...lblStyle, marginBottom: 0 }}>Товары</label>
-              <button onClick={addItem} className="text-xs px-2 py-1 rounded" style={{ color: "#0067a5", border: "1px solid #0067a5" }}>+ Строка</button>
+              <div className="flex items-center gap-2">
+                {quotes.length > 0 && (
+                  <select onChange={(e) => { importFromQuote(e.target.value); e.target.value = ""; }}
+                    className="text-xs px-2 py-1 rounded" style={{ border: "1px solid #e65c00", color: "#e65c00", maxWidth: 180 }}>
+                    <option value="">Из КП...</option>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    {quotes.map((q: any) => <option key={q.id} value={q.id}>КП #{q.quote_number} {q.companies?.name ? `· ${q.companies.name}` : ""}</option>)}
+                  </select>
+                )}
+                <button onClick={addItem} className="text-xs px-2 py-1 rounded" style={{ color: "#0067a5", border: "1px solid #0067a5" }}>+ Строка</button>
+              </div>
             </div>
             <div className="space-y-2">
               {items.map((item, i) => (

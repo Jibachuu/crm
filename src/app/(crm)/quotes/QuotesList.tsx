@@ -27,7 +27,7 @@ interface QuoteItem {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function QuotesList({ initialQuotes, companies, contacts, products, users, currentUserId }: any) {
+export default function QuotesList({ initialQuotes, companies, contacts, products, users, currentUserId, invoices = [] }: any) {
   const [quotes, setQuotes] = useState(initialQuotes);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -100,6 +100,30 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
 
   function addManualItem() {
     setItems([...items, { product_id: "", name: "", article: "", base_price: 0, client_price: 0, discount_pct: 0, qty: 1, sum: 0, image_url: "", description: "" }]);
+  }
+
+  async function importFromInvoice(invoiceId: string) {
+    if (!invoiceId) return;
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
+    const { data: invItems } = await supabase.from("invoice_items").select("*").eq("invoice_id", invoiceId);
+    if (!invItems?.length) { alert("В счёте нет товаров"); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const inv = invoices.find((i: any) => i.id === invoiceId);
+    if (inv?.buyer_company_id) setForm((prev) => ({ ...prev, company_id: inv.buyer_company_id }));
+    const newItems: QuoteItem[] = invItems.map((ii: { product_id?: string; name: string; quantity: number; price: number; total: number }) => ({
+      product_id: ii.product_id || "",
+      name: ii.name,
+      article: "",
+      base_price: ii.price,
+      client_price: ii.price,
+      discount_pct: 0,
+      qty: ii.quantity ?? 1,
+      sum: ii.total ?? 0,
+      image_url: "",
+      description: "",
+    }));
+    setItems((prev) => [...prev, ...newItems]);
   }
 
   function updateItem(idx: number, field: string, val: string | number) {
@@ -321,7 +345,17 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
           <div>
             <div className="flex items-center justify-between mb-2">
               <label style={{ ...lblStyle, marginBottom: 0 }}>Позиции ({items.length})</label>
-              <button onClick={addManualItem} className="text-xs px-2 py-1 rounded" style={{ color: "#0067a5", border: "1px solid #0067a5" }}>+ Вручную</button>
+              <div className="flex items-center gap-2">
+                {invoices.length > 0 && (
+                  <select onChange={(e) => { importFromInvoice(e.target.value); e.target.value = ""; }}
+                    className="text-xs px-2 py-1 rounded" style={{ border: "1px solid #e65c00", color: "#e65c00", maxWidth: 180 }}>
+                    <option value="">Из счёта...</option>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    {invoices.map((inv: any) => <option key={inv.id} value={inv.id}>Счёт #{inv.invoice_number} {inv.buyer_name ? `· ${inv.buyer_name}` : ""}</option>)}
+                  </select>
+                )}
+                <button onClick={addManualItem} className="text-xs px-2 py-1 rounded" style={{ color: "#0067a5", border: "1px solid #0067a5" }}>+ Вручную</button>
+              </div>
             </div>
             {items.length === 0 ? (
               <p className="text-xs text-center py-6" style={{ color: "#aaa" }}>Добавьте товары из каталога или вручную</p>
