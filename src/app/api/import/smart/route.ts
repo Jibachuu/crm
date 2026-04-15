@@ -356,8 +356,8 @@ export async function POST(req: NextRequest) {
       const companyName = String(row.company_name ?? "").trim();
       const companyInn = String(row.company_inn ?? "").trim();
       const companyLegalAddress = String(row.company_legal_address ?? "").trim();
-      const companyActualAddress = String(row.company_actual_address ?? "").trim();
       const companyCity = String(row.company_city ?? "").trim();
+      const rowAddress = String(row.address ?? "").trim();
       let companyId: string | null = null;
 
       if (companyName || companyInn) {
@@ -374,8 +374,15 @@ export async function POST(req: NextRequest) {
           const upd: any = {};
           if (companyInn) upd.inn = companyInn;
           if (companyLegalAddress) upd.legal_address = companyLegalAddress;
-          if (companyActualAddress) upd.actual_address = companyActualAddress;
           if (companyCity) upd.city = companyCity;
+          // Append address to addresses array if not duplicate
+          if (rowAddress) {
+            const { data: co } = await admin.from("companies").select("addresses").eq("id", companyId).single();
+            const existing = (co?.addresses ?? []) as { type: string; address: string }[];
+            if (!existing.some((a: { address: string }) => a.address === rowAddress)) {
+              upd.addresses = [...existing, { type: "delivery", address: rowAddress }];
+            }
+          }
           if (Object.keys(upd).length > 0) await admin.from("companies").update(upd).eq("id", companyId);
         } else {
           // Create new company
@@ -383,8 +390,8 @@ export async function POST(req: NextRequest) {
             name: companyName || `ИНН ${companyInn}`,
             inn: companyInn || null,
             legal_address: companyLegalAddress || null,
-            actual_address: companyActualAddress || null,
             city: companyCity || null,
+            addresses: rowAddress ? [{ type: "delivery", address: rowAddress }] : [],
             created_by: user.id,
           }).select("id, name").single();
           if (newCo) { companyId = newCo.id; companyMap.set(norm(newCo.name), newCo.id); }
@@ -454,7 +461,7 @@ export async function POST(req: NextRequest) {
       if (table === "deals") {
         rec.amount = parseNum(row.amount);
         if (row.bitrix_id) rec.bitrix_id = String(row.bitrix_id).trim();
-        if (row.delivery_address) rec.delivery_address = String(row.delivery_address).trim();
+        if (rowAddress) rec.addresses = [{ type: "delivery", address: rowAddress }];
       }
       if (table === "leads") {
         rec.telegram_username = row.telegram_username || null;

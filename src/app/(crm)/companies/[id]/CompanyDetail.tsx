@@ -18,6 +18,7 @@ import Badge from "@/components/ui/Badge";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
 import EditCompanyModal from "../EditCompanyModal";
+import AddressList from "@/components/ui/AddressList";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
@@ -200,13 +201,19 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
               </div>
               {company.legal_address && (
                 <p className="mt-3 text-sm text-slate-600 flex items-start gap-2">
-                  <MapPin size={14} className="mt-0.5 flex-shrink-0 text-slate-400" /> {company.legal_address}
+                  <MapPin size={14} className="mt-0.5 flex-shrink-0 text-slate-400" /> <span className="text-xs text-slate-400">Юр.:</span> {company.legal_address}
                 </p>
               )}
-              {company.delivery_address && (
-                <p className="mt-2 text-sm text-slate-600 flex items-start gap-2">
-                  <MapPin size={14} className="mt-0.5 flex-shrink-0 text-green-500" /> <span><span className="text-xs text-slate-400">Доставка:</span> {company.delivery_address}</span>
-                </p>
+              {(company.addresses?.length > 0 || true) && (
+                <div className="mt-2">
+                  <AddressList
+                    addresses={company.addresses ?? []}
+                    onChange={async (addresses) => {
+                      await createClient().from("companies").update({ addresses }).eq("id", company.id);
+                      setCompany((prev: Record<string, unknown>) => ({ ...prev, addresses }));
+                    }}
+                  />
+                </div>
               )}
               {company.description && <p className="mt-3 text-sm text-slate-600">{company.description}</p>}
             </CardBody>

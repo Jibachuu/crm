@@ -17,6 +17,7 @@ import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
 import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import AddProductModal from "@/components/ui/AddProductModal";
 import EditDealModal from "../EditDealModal";
+import AddressList from "@/components/ui/AddressList";
 import { formatDate, formatDateTime, formatCurrency, getInitials } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
@@ -359,6 +360,16 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 <p>Обновлена: {formatDateTime(deal.updated_at)}</p>
                 {deal.source && <p>Источник: {deal.source}</p>}
                 {deal.closed_at && <p>Закрыта: {formatDate(deal.closed_at)}</p>}
+                <div className="mt-2">
+                  <p className="text-xs font-semibold mb-1" style={{ color: "#888" }}>Адреса:</p>
+                  <AddressList
+                    addresses={deal.addresses ?? []}
+                    onChange={async (addresses) => {
+                      await createClient().from("deals").update({ addresses }).eq("id", deal.id);
+                      setDeal((prev: Record<string, unknown>) => ({ ...prev, addresses }));
+                    }}
+                  />
+                </div>
                 {deal.objections && (
                   <div className="mt-3">
                     <p className="font-medium mb-1" style={{ color: "#333" }}>Возражения:</p>
