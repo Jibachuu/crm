@@ -66,8 +66,9 @@ export async function POST() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updates: any = {};
 
-    // Find in TG by phone
+    // Find in TG: by phone from dialogs, then by username from dialogs
     if (!contact.telegram_id) {
+      // 1. Match by phone in TG dialogs
       for (const p of phones) {
         const clean = p.replace(/\D/g, "").slice(-10);
         if (clean.length < 7) continue;
@@ -78,10 +79,43 @@ export async function POST() {
           break;
         }
       }
-      // Also try by existing telegram_username
+      // 2. Match by username in TG dialogs
       if (!updates.telegram_id && contact.telegram_username) {
-        const tg = tgByUsername.get(contact.telegram_username.toLowerCase());
-        if (tg) updates.telegram_id = tg.id;
+        const uname = contact.telegram_username.replace("@", "").toLowerCase();
+        const tg = tgByUsername.get(uname);
+        if (tg) {
+          updates.telegram_id = tg.id;
+        } else {
+          // 3. Active resolve via TG proxy (username not in dialogs but exists in TG)
+          try {
+            const { tgProxy } = await import("@/lib/telegram/proxy");
+            const res = await tgProxy<{ ok: boolean; user?: { id: string; username?: string } }>("/add-contact", {
+              method: "POST",
+              body: JSON.stringify({ username: uname }),
+            });
+            if (res.ok && res.user?.id) {
+              updates.telegram_id = String(res.user.id);
+              if (res.user.username && !contact.telegram_username) updates.telegram_username = res.user.username;
+            }
+          } catch { /* skip */ }
+        }
+      }
+      // 4. Active resolve via phone if username didn't work
+      if (!updates.telegram_id && phones.length > 0) {
+        for (const p of phones) {
+          try {
+            const { tgProxy } = await import("@/lib/telegram/proxy");
+            const res = await tgProxy<{ ok: boolean; user?: { id: string; username?: string } }>("/add-contact", {
+              method: "POST",
+              body: JSON.stringify({ phone: p }),
+            });
+            if (res.ok && res.user?.id) {
+              updates.telegram_id = String(res.user.id);
+              if (res.user.username) updates.telegram_username = res.user.username;
+              break;
+            }
+          } catch { /* skip */ }
+        }
       }
     }
 
