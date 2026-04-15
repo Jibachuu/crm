@@ -578,17 +578,17 @@ export async function POST(req: NextRequest) {
             await admin.from("product_attributes").insert(attrs);
           }
         } else if (pErr) {
-          // SKU conflict — skip, product likely already exists
-          const skuRetry = prod.sku;
-          const { data: d2, error: pErr2 } = await admin.from("products")
-            .insert({ name: prod.name, sku: skuRetry, base_price: prod.price, description: chars || null, category: prod.category || null, subcategory: prod.subcategory || null })
-            .select("id, name, sku")
-            .single();
-          if (d2) {
-            productByName.set(norm(d2.name), d2.id);
-            if (d2.sku) productBySku.set(norm(d2.sku), d2.id);
-          } else if (pErr2) {
-            errors.push(`Товар "${prod.name}": ${pErr2.message}`);
+          // SKU conflict or other error — try to find existing product
+          if (prod.sku) {
+            const { data: existing } = await admin.from("products").select("id, name, sku").eq("sku", prod.sku).limit(1).single();
+            if (existing) {
+              productByName.set(norm(existing.name), existing.id);
+              productBySku.set(norm(existing.sku), existing.id);
+            } else {
+              errors.push(`Товар "${prod.name}": ${pErr.message}`);
+            }
+          } else {
+            errors.push(`Товар "${prod.name}": ${pErr.message}`);
           }
         }
       }
