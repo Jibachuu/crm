@@ -18,6 +18,8 @@ interface Signature {
   name: string;
   body: string;
   is_default: boolean;
+  user_id?: string;
+  users?: { full_name: string };
 }
 
 interface Props {
@@ -45,22 +47,31 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
   const [showTemplates, setShowTemplates] = useState(false);
   const [signatureAppended, setSignatureAppended] = useState(false);
 
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
   useEffect(() => {
     const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
     Promise.all([
       supabase.from("email_templates").select("*").order("name"),
-      supabase.from("email_signatures").select("*").order("created_at"),
+      supabase.from("email_signatures").select("*, users(full_name)").order("created_at"),
     ]).then(([{ data: t }, { data: s }]) => {
       setTemplates(t ?? []);
       setSignatures(s ?? []);
-      // Auto-append default signature
-      const defaultSig = (s ?? []).find((sig) => sig.is_default);
-      if (defaultSig && !defaultSubject) {
-        setBody("\n\n--\n" + defaultSig.body);
-        setSignatureAppended(true);
-      }
     });
-  }, [defaultSubject]);
+  }, []);
+
+  // Auto-append signature: prefer current user's signature, then is_default
+  useEffect(() => {
+    if (signatureAppended || !signatures.length || !currentUserId) return;
+    const mySig = signatures.find((s) => s.user_id === currentUserId);
+    const defaultSig = signatures.find((s) => s.is_default);
+    const sig = mySig || defaultSig;
+    if (sig && !defaultSubject) {
+      setBody((prev) => prev + "\n\n--\n" + sig.body);
+      setSignatureAppended(true);
+    }
+  }, [signatures, currentUserId, defaultSubject, signatureAppended]);
 
   function applyTemplate(t: Template) {
     setSubject(t.subject);
@@ -212,11 +223,34 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
                 fetch(f.url).then((r) => r.blob()).then((blob) => new File([blob], f.name, { type: f.type || "application/octet-stream" }))
               )).then((newFiles) => setFiles((prev) => [...prev, ...newFiles]));
             }} />
-            {/* Signature indicator */}
-            {signatureAppended && (
-              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "#f0f0f0", color: "#888", fontSize: 10 }}>
-                Подпись добавлена
-              </span>
+            {/* Signature selector */}
+            {signatures.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  const sig = signatures.find((s) => s.id === e.target.value);
+                  if (!sig) return;
+                  // Replace existing signature or append
+                  const sigMarker = "\n\n--\n";
+                  const idx = body.indexOf(sigMarker);
+                  const cleanBody = idx >= 0 ? body.slice(0, idx) : body;
+                  setBody(cleanBody + sigMarker + sig.body);
+                  setSignatureAppended(true);
+                }}
+                className="text-xs px-1.5 py-1 rounded"
+                style={{ border: "1px solid #e0e0e0", color: "#888", maxWidth: 140 }}
+              >
+                <option value="">{signatureAppended ? "Сменить подпись" : "Добавить подпись"}</option>
+                {signatures
+                  .filter((s) => s.user_id === currentUserId || !s.user_id)
+                  .map((s) => <option key={s.id} value={s.id}>{s.name}{(s as { users?: { full_name: string } }).users?.full_name ? ` (${(s as { users?: { full_name: string } }).users!.full_name})` : ""}</option>)}
+                {signatures.filter((s) => s.user_id && s.user_id !== currentUserId).length > 0 && (
+                  <option disabled>── Другие ──</option>
+                )}
+                {signatures
+                  .filter((s) => s.user_id && s.user_id !== currentUserId)
+                  .map((s) => <option key={s.id} value={s.id}>{s.name}{(s as { users?: { full_name: string } }).users?.full_name ? ` (${(s as { users?: { full_name: string } }).users!.full_name})` : ""}</option>)}
+              </select>
             )}
           </div>
           <Button size="sm" onClick={handleSend} loading={sending} disabled={!subject.trim() || !body.trim()}>
