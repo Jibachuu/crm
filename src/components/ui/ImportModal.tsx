@@ -65,6 +65,7 @@ const ENTITY_FIELDS: Record<Entity, CrmField[]> = {
     { key: "contact_phone", label: "Телефон контакта" },
     { key: "contact_email", label: "Email контакта" },
     { key: "telegram_username", label: "Telegram контакта" },
+    { key: "maks_id", label: "МАКС ID контакта" },
     { key: "had_call", label: "Был ли звонок" },
     ...Array.from({ length: 10 }, (_, i) => [
       { key: `product_${i + 1}_category`, label: `Товар ${i + 1} — категория` },
@@ -96,6 +97,7 @@ const ENTITY_FIELDS: Record<Entity, CrmField[]> = {
     { key: "contact_phone", label: "Телефон контакта" },
     { key: "contact_email", label: "Email контакта" },
     { key: "telegram_username", label: "Telegram контакта" },
+    { key: "maks_id", label: "МАКС ID контакта" },
     ...Array.from({ length: 10 }, (_, i) => [
       { key: `product_${i + 1}_category`, label: `Товар ${i + 1} — категория` },
       { key: `product_${i + 1}_subcategory`, label: `Товар ${i + 1} — подкатегория` },

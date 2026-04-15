@@ -407,11 +407,12 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // ── Contact: find by phone → tg_username → email → name, create if new ──
+      // ── Contact: find by phone → maks_id → tg_username → email → name, create if new ──
       const contactName = String(row.contact_name ?? "").trim() || null;
       const contactPhone = String(row.contact_phone ?? "").trim() || null;
       const contactEmail = String(row.contact_email ?? "").trim() || null;
       const tgUsername = String(row.telegram_username ?? "").trim().replace("@", "") || null;
+      const maksId = String(row.maks_id ?? "").trim() || null;
       let contactId: string | null = null;
 
       // 1. Phone (most reliable)
@@ -419,9 +420,11 @@ export async function POST(req: NextRequest) {
         const cleanP = contactPhone.replace(/\D/g, "").slice(-10);
         if (cleanP.length >= 7) contactId = contactByPhone.get(cleanP) ?? null;
       }
-      // 2. Telegram username
+      // 2. MAKS ID
+      if (!contactId && maksId) contactId = contactByMaksId.get(maksId) ?? null;
+      // 3. Telegram username
       if (!contactId && tgUsername) contactId = contactByTgUsername.get(norm(tgUsername)) ?? null;
-      // 3. Email
+      // 4. Email
       if (!contactId && contactEmail) contactId = contactByEmail.get(norm(contactEmail)) ?? null;
       // 4. Name+phone key
       if (!contactId && contactName && contactPhone) contactId = contactMap.get(norm(contactName) + "|" + norm(contactPhone)) ?? null;
@@ -433,11 +436,12 @@ export async function POST(req: NextRequest) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const upd: any = {};
         if (contactPhone || contactEmail || tgUsername || companyId) {
-          const { data: c } = await admin.from("contacts").select("phone, email, telegram_username, company_id").eq("id", contactId).single();
+          const { data: c } = await admin.from("contacts").select("phone, email, telegram_username, maks_id, company_id").eq("id", contactId).single();
           if (c) {
             if (contactPhone && !c.phone) upd.phone = contactPhone;
             if (contactEmail && !c.email) upd.email = contactEmail;
             if (tgUsername && !c.telegram_username) upd.telegram_username = tgUsername;
+            if (maksId && !c.maks_id) upd.maks_id = maksId;
             if (companyId && !c.company_id) upd.company_id = companyId;
           }
         }
@@ -449,6 +453,7 @@ export async function POST(req: NextRequest) {
           phone: contactPhone || null,
           email: contactEmail || null,
           telegram_username: tgUsername || null,
+          maks_id: maksId || null,
           company_id: companyId,
           created_by: user.id,
         }).select("id").single();
@@ -457,6 +462,7 @@ export async function POST(req: NextRequest) {
           if (contactPhone) { const cleanP = contactPhone.replace(/\D/g, "").slice(-10); if (cleanP.length >= 7) contactByPhone.set(cleanP, newC.id); }
           if (contactEmail) contactByEmail.set(norm(contactEmail), newC.id);
           if (tgUsername) contactByTgUsername.set(norm(tgUsername), newC.id);
+          if (maksId) contactByMaksId.set(maksId, newC.id);
           if (contactName && contactPhone) contactMap.set(norm(contactName) + "|" + norm(contactPhone), newC.id);
           if (contactName) contactMap.set(norm(contactName) + "|", newC.id);
         }
