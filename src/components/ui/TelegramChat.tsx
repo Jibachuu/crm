@@ -206,7 +206,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
               }
             } catch { /* fall through */ }
           }
-          setError("Не удалось найти пользователя в Telegram. Добавьте username или номер телефона в карточку контакта.");
+          setError("Не удалось найти пользователя в Telegram по ID. Telegram требует username или номер телефона для первого подключения. Добавьте @username или телефон в карточку контакта → Редактировать.");
           setLoading(false);
           return;
         }
