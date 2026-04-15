@@ -40,7 +40,7 @@ export async function POST() {
 
   let leadsFixed = 0;
   for (const lead of leads ?? []) {
-    const contact = lead.contacts as { id: string; full_name: string; phone?: string; email?: string } | null;
+    const contact = lead.contacts as unknown as { id: string; full_name: string; phone?: string; email?: string } | null;
     if (!contact) continue;
 
     // Extract phone/email from lead title or description
