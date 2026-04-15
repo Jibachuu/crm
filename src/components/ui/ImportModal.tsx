@@ -294,13 +294,32 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
       setResult({ added: data.added ?? 0, updated: 0, skipped: 0, errors: data.errors ?? [], total: fileRows.length });
       if (data.added > 0) onImported?.(data.added);
     } else {
-      const res = await fetch("/api/import/smart", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entity, rows: mapped, mode }),
-      });
-      const data = await res.json();
-      setResult(data);
+      // Split into batches of 50 to avoid timeout
+      const BATCH_SIZE = 50;
+      let totalAdded = 0, totalUpdated = 0, totalSkipped = 0;
+      const allErrors: string[] = [];
+      for (let i = 0; i < mapped.length; i += BATCH_SIZE) {
+        const batch = mapped.slice(i, i + BATCH_SIZE);
+        try {
+          const res = await fetch("/api/import/smart", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entity, rows: batch, mode }),
+          });
+          if (!res.ok) {
+            allErrors.push(`Батч ${Math.floor(i / BATCH_SIZE) + 1}: HTTP ${res.status}`);
+            continue;
+          }
+          const data = await res.json();
+          totalAdded += data.added ?? 0;
+          totalUpdated += data.updated ?? 0;
+          totalSkipped += data.skipped ?? 0;
+          if (data.errors?.length) allErrors.push(...data.errors);
+        } catch (e) {
+          allErrors.push(`Батч ${Math.floor(i / BATCH_SIZE) + 1}: ${e}`);
+        }
+      }
+      setResult({ added: totalAdded, updated: totalUpdated, skipped: totalSkipped, errors: allErrors, total: mapped.length });
     }
 
     } catch (err) {
