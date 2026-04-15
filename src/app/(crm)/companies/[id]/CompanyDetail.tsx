@@ -42,6 +42,12 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
   const [taskOpen, setTaskOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [linkingContact, setLinkingContact] = useState<string | null>(null);
+  const [addContactOpen, setAddContactOpen] = useState(false);
+  const [contactSearch, setContactSearch] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [contactResults, setContactResults] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [companyContacts, setCompanyContacts] = useState<any[]>(contacts ?? []);
 
   async function linkContactMessengers(contactId: string) {
     setLinkingContact(contactId);
@@ -209,13 +215,40 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
           {/* Contacts — always visible */}
           <Card>
             <div className="px-6 py-3 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900">Контакты ({contacts?.length ?? 0})</h3>
-              <Link href={`/contacts?company=${company.id}`} className="text-xs text-blue-600 hover:underline">Все</Link>
+              <h3 className="font-semibold text-slate-900">Контакты ({companyContacts?.length ?? 0})</h3>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setAddContactOpen(!addContactOpen)} className="text-xs flex items-center gap-0.5" style={{ color: "#0067a5" }}>
+                  <Plus size={12} /> Привязать
+                </button>
+              </div>
             </div>
             <CardBody className="p-0">
-              {contacts?.length > 0 ? (
+              {addContactOpen && (
+                <div className="px-6 py-3" style={{ background: "#f8f9fa", borderBottom: "1px solid #f0f0f0" }}>
+                  <input value={contactSearch} onChange={async (e) => {
+                    setContactSearch(e.target.value);
+                    if (e.target.value.length >= 2) {
+                      const { data } = await createClient().from("contacts").select("id, full_name, phone").is("company_id", null).ilike("full_name", `%${e.target.value}%`).limit(10);
+                      setContactResults(data ?? []);
+                    } else setContactResults([]);
+                  }} placeholder="Поиск контакта без компании..." className="w-full text-xs px-3 py-1.5 rounded mb-2 focus:outline-none" style={{ border: "1px solid #d0d0d0" }} />
+                  {contactResults.length > 0 && contactResults.map((c: { id: string; full_name: string; phone?: string }) => (
+                    <button key={c.id} onClick={async () => {
+                      await createClient().from("contacts").update({ company_id: company.id }).eq("id", c.id);
+                      setCompanyContacts((prev: { id: string }[]) => [...prev, c]);
+                      setAddContactOpen(false); setContactSearch(""); setContactResults([]);
+                    }} className="w-full text-left text-xs px-3 py-2 rounded hover:bg-blue-50">
+                      {c.full_name} {c.phone ? `· ${c.phone}` : ""}
+                    </button>
+                  ))}
+                  {contactSearch.length >= 2 && contactResults.length === 0 && (
+                    <p className="text-xs py-2" style={{ color: "#aaa" }}>Не найдено (ищет контакты без компании)</p>
+                  )}
+                </div>
+              )}
+              {companyContacts?.length > 0 ? (
                 <ul className="divide-y divide-slate-100">
-                  {contacts.map((c: { id: string; full_name: string; position?: string; phone?: string; email?: string; telegram_id?: string; maks_id?: string }) => (
+                  {companyContacts.map((c: { id: string; full_name: string; position?: string; phone?: string; email?: string; telegram_id?: string; maks_id?: string }) => (
                     <li key={c.id} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50">
                       <Link href={`/contacts/${c.id}`} className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-blue-600 hover:underline">{c.full_name}</p>
@@ -231,16 +264,16 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                             disabled={linkingContact === c.id}
                             className="px-1.5 py-0.5 rounded hover:bg-blue-50 disabled:opacity-50"
                             style={{ color: "#0067a5", border: "1px solid #d0e8f5", fontSize: 10 }}>
-                            {linkingContact === c.id ? "..." : "Привязать"}
+                            {linkingContact === c.id ? "..." : "Мессенджеры"}
                           </button>
                         )}
                       </div>
                     </li>
                   ))}
                 </ul>
-              ) : (
+              ) : !addContactOpen ? (
                 <p className="px-6 py-4 text-sm text-slate-400">Нет привязанных контактов</p>
-              )}
+              ) : null}
             </CardBody>
           </Card>
 

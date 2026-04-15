@@ -111,18 +111,24 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const inv = invoices.find((i: any) => i.id === invoiceId);
     if (inv?.buyer_company_id) setForm((prev) => ({ ...prev, company_id: inv.buyer_company_id }));
-    const newItems: QuoteItem[] = invItems.map((ii: { product_id?: string; name: string; quantity: number; price: number; total: number }) => ({
-      product_id: ii.product_id || "",
-      name: ii.name,
-      article: "",
-      base_price: ii.price,
-      client_price: ii.price,
-      discount_pct: 0,
-      qty: ii.quantity ?? 1,
-      sum: ii.total ?? 0,
-      image_url: "",
-      description: "",
-    }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const productMap = new Map(products.map((p: any) => [p.id, p]));
+    const newItems: QuoteItem[] = invItems.map((ii: { product_id?: string; name: string; quantity: number; price: number; total: number }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const prod = ii.product_id ? productMap.get(ii.product_id) as any : null;
+      return {
+        product_id: ii.product_id || "",
+        name: ii.name,
+        article: prod?.sku || "",
+        base_price: prod?.base_price ?? ii.price,
+        client_price: ii.price,
+        discount_pct: prod?.base_price ? Math.round((prod.base_price - ii.price) / prod.base_price * 1000) / 10 : 0,
+        qty: ii.quantity ?? 1,
+        sum: ii.total ?? 0,
+        image_url: prod?.image_url || "",
+        description: prod?.description || "",
+      };
+    });
     setItems((prev) => [...prev, ...newItems]);
   }
 
