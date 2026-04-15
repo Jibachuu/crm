@@ -58,3 +58,16 @@ tbody tr:hover {
 .card-hover:hover {
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
+
+/* Fix: Tailwind v4 "hidden" (display:none) breaks file inputs inside labels.
+   Override to visually hidden but still clickable via label association. */
+label > input[type="file"].hidden,
+label > input[type="file"][class*="hidden"] {
+  display: block !important;
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
