@@ -189,7 +189,7 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                   <th className="px-3 py-2.5 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleAll} className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
                   </th>
-                  {["Фото", "Товар", "Категория", "Артикул", "Цена", "Наличие", "Статус", ""].map((h) => (
+                  {["Фото", "Товар", "Категория", "Подкатегория", "Объём", "Аромат", "Артикул", "Цена", "Наличие", "Статус", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>{h}</th>
                   ))}
                 </tr>
@@ -236,20 +236,12 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                         )}
                       </td>
                       <td className="px-4 py-2.5">
-                        <p className="font-medium" style={{ color: "#333" }}>
-                          {product.name}
-                          {product.volume_ml ? <span className="text-xs font-normal ml-1" style={{ color: "#888" }}>{product.volume_ml} мл</span> : null}
-                        </p>
-                        {product.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{product.flavor}</p>}
+                        <p className="font-medium" style={{ color: "#333" }}>{product.name}</p>
                       </td>
-                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>
-                        {product.category ? (
-                          <div>
-                            <span>{product.category}</span>
-                            {product.subcategory && <span style={{ color: "#aaa" }}> → {product.subcategory}</span>}
-                          </div>
-                        ) : "—"}
-                      </td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.category || "—"}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.subcategory || "—"}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.volume_ml ? `${product.volume_ml} мл` : "—"}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: "#7b1fa2" }}>{product.flavor || "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.sku}</td>
                       <td className="px-4 py-2.5 font-medium" style={{ color: "#333" }}>{formatCurrency(product.base_price)}</td>
                       <td className="px-4 py-2.5">
