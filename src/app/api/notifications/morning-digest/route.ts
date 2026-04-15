@@ -52,21 +52,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Send email via SMTP
-    const smtpHost = process.env.SMTP_HOST;
-    const smtpUser = process.env.SMTP_USER;
-    const smtpPass = process.env.SMTP_PASS;
-    if (smtpHost && smtpUser && smtpPass && user.email) {
+    const resendKey = process.env.RESEND_API_KEY;
+    const fromAddr = process.env.SMTP_FROM || process.env.SMTP_USER || "info@art-evo.ru";
+    if (resendKey && user.email) {
       try {
-        const nodemailer = await import("nodemailer");
-        const transporter = nodemailer.createTransport({
-          host: smtpHost,
-          port: Number(process.env.SMTP_PORT || 465),
-          secure: true,
-          auth: { user: smtpUser, pass: smtpPass },
-        });
-        await transporter.sendMail({
-          from: process.env.SMTP_FROM || smtpUser,
-          to: user.email,
+        const { Resend } = await import("resend");
+        const resend = new Resend(resendKey);
+        await resend.emails.send({
+          from: `Artevo CRM <${fromAddr}>`,
+          to: [user.email],
           subject: `Задачи на ${today} — CRM`,
           text: lines.join("\n"),
         });

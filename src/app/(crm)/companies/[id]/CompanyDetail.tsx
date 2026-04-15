@@ -396,9 +396,9 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
             {activeTab === "telegram" && tgContact && (
               <div>
                 <p className="text-xs mb-2" style={{ color: "#888" }}>
-                  Переписка с <strong>{tgContact.full_name}</strong> (@{tgContact.telegram_id})
+                  Переписка с <strong>{tgContact.full_name}</strong>{tgContact.telegram_username ? ` (@${tgContact.telegram_username})` : ""}
                 </p>
-                <TelegramChat peer={tgContact.telegram_id} compact />
+                <TelegramChat peer={tgContact.telegram_username || tgContact.phone || tgContact.telegram_id} compact phone={tgContact.phone || undefined} />
               </div>
             )}
 

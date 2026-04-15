@@ -292,9 +292,9 @@ export default function ContactDetail({ contact: initialContact, communications:
               <div>
                 <p className="text-xs mb-2" style={{ color: "#888" }}>
                   Переписка с <strong>{contact.full_name}</strong>
-                  {contact.telegram_id && <> · <span style={{ color: "#0067a5" }}>@{contact.telegram_id}</span></>}
+                  {contact.telegram_username && <> · <span style={{ color: "#0067a5" }}>@{contact.telegram_username}</span></>}
                 </p>
-                <TelegramChat peer={contact.telegram_id} compact />
+                <TelegramChat peer={contact.telegram_username || contact.phone || contact.telegram_id} compact phone={contact.phone || undefined} />
               </div>
             )}
 

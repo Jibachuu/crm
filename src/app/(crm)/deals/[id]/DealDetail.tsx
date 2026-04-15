@@ -420,8 +420,8 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
             {activeTab === "telegram" && (
               deal.contacts?.telegram_id ? (
                 <div>
-                  <p className="text-xs mb-2" style={{ color: "#888" }}>Переписка с <strong>{deal.contacts.full_name}</strong> (@{deal.contacts.telegram_id})</p>
-                  <TelegramChat peer={deal.contacts.telegram_id} compact entityType="deal" entityId={deal.id} />
+                  <p className="text-xs mb-2" style={{ color: "#888" }}>Переписка с <strong>{deal.contacts.full_name}</strong>{deal.contacts.telegram_username ? ` (@${deal.contacts.telegram_username})` : ""}</p>
+                  <TelegramChat peer={deal.contacts.telegram_username || deal.contacts.phone || deal.contacts.telegram_id} compact entityType="deal" entityId={deal.id} phone={deal.contacts.phone || undefined} />
                 </div>
               ) : (
                 <div className="text-center py-8"><p className="text-sm" style={{ color: "#aaa" }}>{deal.contacts ? "У контакта не указан Telegram" : "Привяжите контакт с Telegram"}</p></div>
