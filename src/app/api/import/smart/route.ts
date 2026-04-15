@@ -472,8 +472,8 @@ export async function POST(req: NextRequest) {
       }
       if (row.created_at) { const d = parseDate(row.created_at); if (d) rec.created_at = d; }
 
-      // Deal products — structured columns: product_N_category, subcategory, name, sku, volume, aroma, qty, price, total
-      if (table === "deals") {
+      // Products — structured columns: product_N_category, subcategory, name, sku, volume, aroma, qty, price, total
+      {
         for (let p = 1; p <= 10; p++) {
           const pName = String(row[`product_${p}_name`] ?? "").trim();
           const pSku = String(row[`product_${p}_sku`] ?? "").trim();
@@ -593,10 +593,12 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      const productTable = table === "deals" ? "deal_products" : "lead_products";
+      const fkField = table === "deals" ? "deal_id" : "lead_id";
       const dealProductsToInsert = productRows
         .filter((pr) => insertedIds[pr.idx])
         .map((pr) => ({
-          deal_id: insertedIds[pr.idx],
+          [fkField]: insertedIds[pr.idx],
           product_id: findProductId(pr.name, pr.sku),
           quantity: pr.qty ?? 1,
           unit_price: pr.price ?? 0,
@@ -616,14 +618,14 @@ export async function POST(req: NextRequest) {
         // Insert in batches of 100
         for (let b = 0; b < dealProductsToInsert.length; b += 100) {
           const dpBatch = dealProductsToInsert.slice(b, b + 100);
-          const { error: dpErr } = await admin.from("deal_products").insert(dpBatch);
+          const { error: dpErr } = await admin.from(productTable).insert(dpBatch);
           if (dpErr) {
             errors.push(`[debug] deal_products insert error: ${JSON.stringify(dpErr)}`);
             // Retry without product_block if column doesn't exist yet
             if (dpErr.message?.includes("product_block") || dpErr.message?.includes("schema")) {
               // eslint-disable-next-line @typescript-eslint/no-unused-vars
               const fallback = dpBatch.map(({ product_block: _, ...rest }) => rest);
-              const { error: dpErr2 } = await admin.from("deal_products").insert(fallback);
+              const { error: dpErr2 } = await admin.from(productTable).insert(fallback);
               if (dpErr2) errors.push(`Товары сделок: ${dpErr2.message}`);
               else errors.push("⚠️ Колонка product_block отсутствует — товары добавлены без блока.");
             }
@@ -670,6 +672,17 @@ export async function POST(req: NextRequest) {
       if (err) errors.push(`Пакет ${Math.floor(i / BATCH) + 1}: ${err.message}`);
       else added += batch.length;
     }
+  }
+
+  // Auto-link messengers for newly created/updated contacts (background, best-effort)
+  if (entity === "leads" || entity === "deals") {
+    try {
+      // Fire bulk-link in background — don't await, don't block response
+      const baseUrl = process.env.NEXT_PUBLIC_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "";
+      if (baseUrl) {
+        fetch(`${baseUrl}/api/contacts/bulk-link-messengers`, { method: "POST", headers: { Cookie: "" } }).catch(() => {});
+      }
+    } catch { /* ignore */ }
   }
 
   return NextResponse.json({ added, updated, skipped, errors, total: rows.length });
