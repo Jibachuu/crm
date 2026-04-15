@@ -61,6 +61,18 @@ function formatDuration(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+const URL_REGEX = /(https?:\/\/[^\s<>"')\]]+)/g;
+
+function linkifyText(text: string) {
+  const parts = text.split(URL_REGEX);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    URL_REGEX.test(part) ? (
+      <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: "#0067a5", textDecoration: "underline", wordBreak: "break-all" }}>{part}</a>
+    ) : part
+  );
+}
+
 function MediaBubble({ media, peer, msgId, onLightbox }: { media: NonNullable<TgMessage["media"]>; peer: string; msgId: number; onLightbox?: (src: string) => void }) {
   const mediaUrl = `/api/telegram/media?peer=${encodeURIComponent(peer)}&msgId=${msgId}`;
 
@@ -241,8 +253,25 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
     };
   }, [fetchMessages, pollInterval]);
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const wasAtBottomRef = useRef(true);
+
+  // Track whether user is at bottom before new messages arrive
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const threshold = 80;
+      wasAtBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    };
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (wasAtBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   async function sendMessage() {
@@ -332,7 +361,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   return (
     <div className="flex flex-col" style={{ height, border: compact ? "1px solid #e4e4e4" : "none", borderRadius: compact ? 6 : 0, overflow: "hidden", background: "#fff" }}>
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3" style={{ background: "#f5f5f5" }}>
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-3" style={{ background: "#f5f5f5" }}>
         {messages.length === 0 && (
           <div className="text-center text-sm py-8" style={{ color: "#aaa" }}>Нет сообщений</div>
         )}
@@ -370,7 +399,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                   )}
                   {msg.media && <MediaBubble media={msg.media} peer={peer} msgId={msg.id} onLightbox={setLightbox} />}
                   {msg.text && (
-                    <p className="text-sm whitespace-pre-wrap leading-snug" style={{ color: "#222" }}>{msg.text}</p>
+                    <p className="text-sm whitespace-pre-wrap leading-snug" style={{ color: "#222" }}>{linkifyText(msg.text)}</p>
                   )}
                   {msg.reactions && msg.reactions.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">

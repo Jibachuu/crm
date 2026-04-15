@@ -31,7 +31,10 @@ const CONTRACT_STATUS: Record<string, string> = { none: "Нет договора
 const CONTRACT_COLORS: Record<string, string> = { none: "#c62828", pending: "#e65c00", signed: "#2e7d32", terminated: "#888" };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function CompanyDetail({ company: initialCompany, contacts, deals, communications: initialComms, tasks: initialTasks }: any) {
+const LEAD_STATUS: Record<string, string> = { new: "Новая", callback: "Перезвонить/написать", in_progress: "В работе", samples: "Пробники", samples_shipped: "Пробники отгружены", invoice: "Счёт на предоплату", rejected: "Отказ", converted: "Конвертирован" };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default function CompanyDetail({ company: initialCompany, contacts, deals, leads, communications: initialComms, tasks: initialTasks }: any) {
   const router = useRouter();
   const [company, setCompany] = useState(initialCompany);
   const [communications, setCommunications] = useState(initialComms);
@@ -303,6 +306,31 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
             {activeTab === "info" && (
               <div className="space-y-4">
 
+                {leads?.length > 0 && (
+                  <Card>
+                    <div className="px-6 py-3 border-b border-slate-100">
+                      <h3 className="font-semibold text-slate-900">Лиды ({leads.length})</h3>
+                    </div>
+                    <CardBody className="p-0">
+                      <ul className="divide-y divide-slate-100">
+                        {leads.map((l: { id: string; title: string; status: string; source?: string; created_at?: string }) => (
+                          <li key={l.id}>
+                            <Link href={`/leads/${l.id}`} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50">
+                              <div>
+                                <span className="text-sm text-blue-600 hover:underline">{l.title}</span>
+                                {l.created_at && <p className="text-xs text-slate-400">{new Date(l.created_at).toLocaleDateString("ru-RU")}{l.source ? ` · ${l.source}` : ""}</p>}
+                              </div>
+                              <Badge variant={l.status === "converted" ? "success" : l.status === "rejected" ? "danger" : "default"}>
+                                {LEAD_STATUS[l.status] ?? l.status}
+                              </Badge>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardBody>
+                  </Card>
+                )}
+
                 {deals?.length > 0 && (
                   <Card>
                     <div className="px-6 py-3 border-b border-slate-100">
@@ -350,8 +378,9 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                       value={noteText}
                       onChange={(e) => setNoteText(e.target.value)}
                       placeholder="Добавить заметку..."
-                      rows={2}
+                      rows={4}
                       className="w-full text-sm border border-slate-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      style={{ minHeight: 100 }}
                     />
                     <div className="flex justify-end mt-2">
                       <Button size="sm" onClick={addNote} loading={noteLoading} disabled={!noteText.trim()}>

@@ -32,8 +32,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   const { data: communications } = await supabase
     .from("communications")
     .select("*, users!communications_created_by_fkey(full_name)")
-    .eq("entity_type", "deal")
-    .eq("entity_id", id)
+    .or(`deal_id.eq.${id},and(entity_type.eq.deal,entity_id.eq.${id})`)
     .order("created_at", { ascending: false });
 
   const { data: tasks } = await supabase

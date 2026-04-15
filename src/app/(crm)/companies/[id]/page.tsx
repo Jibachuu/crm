@@ -15,14 +15,14 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
 
   if (!company) notFound();
 
-  const [{ data: contacts }, { data: deals }, { data: communications }, { data: tasks }] = await Promise.all([
+  const [{ data: contacts }, { data: deals }, { data: leads }, { data: communications }, { data: tasks }] = await Promise.all([
     supabase.from("contacts").select("id, full_name, position, phone, email, telegram_id, telegram_username, maks_id").eq("company_id", id),
     supabase.from("deals").select("id, title, stage, amount, created_at").eq("company_id", id),
+    supabase.from("leads").select("id, title, status, source, created_at").eq("company_id", id).order("created_at", { ascending: false }),
     supabase
       .from("communications")
       .select("*, users!communications_created_by_fkey(full_name)")
-      .eq("entity_type", "company")
-      .eq("entity_id", id)
+      .or(`company_id.eq.${id},and(entity_type.eq.company,entity_id.eq.${id})`)
       .order("created_at", { ascending: false }),
     supabase
       .from("tasks")
@@ -40,6 +40,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
           company={company}
           contacts={contacts ?? []}
           deals={deals ?? []}
+          leads={leads ?? []}
           communications={communications ?? []}
           tasks={tasks ?? []}
         />

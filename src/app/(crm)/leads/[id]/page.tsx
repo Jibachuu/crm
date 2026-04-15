@@ -39,8 +39,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const { data: communications } = await supabase
     .from("communications")
     .select("*, users!communications_created_by_fkey(full_name)")
-    .eq("entity_type", "lead")
-    .eq("entity_id", id)
+    .or(`lead_id.eq.${id},and(entity_type.eq.lead,entity_id.eq.${id})`)
     .order("created_at", { ascending: false });
 
   const { data: tasks } = await supabase

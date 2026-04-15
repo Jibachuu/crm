@@ -19,8 +19,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
     supabase
       .from("communications")
       .select("*, users!communications_created_by_fkey(full_name)")
-      .eq("entity_type", "contact")
-      .eq("entity_id", id)
+      .or(`contact_id.eq.${id},and(entity_type.eq.contact,entity_id.eq.${id})`)
       .order("created_at", { ascending: false }),
     supabase
       .from("tasks")

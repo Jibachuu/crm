@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 
 const PAGE_SIZE_OPTIONS = [30, 50, 100] as const;
 
-export function usePagination<T>(items: T[], defaultSize = 40) {
+export function usePagination<T>(items: T[], defaultSize = 100) {
   const [visibleCount, setVisibleCount] = useState(defaultSize);
 
   // slice handles overflow gracefully — visibleCount can be > items.length safely

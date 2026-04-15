@@ -5,6 +5,18 @@ import { Send, RefreshCw, Paperclip, Mic, MicOff } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import ImageLightbox from "./ImageLightbox";
 
+const URL_REGEX = /(https?:\/\/[^\s<>"')\]]+)/g;
+
+function linkifyText(text: string) {
+  const parts = text.split(URL_REGEX);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    URL_REGEX.test(part) ? (
+      <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline", wordBreak: "break-all" }}>{part}</a>
+    ) : part
+  );
+}
+
 export default function MaxChat({ chatId, compact = false, entityType, entityId, phone }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string; phone?: string }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,13 +100,29 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   }
 
   useEffect(() => { if (chatId && myId !== null) refreshAndLoad(); }, [chatId, myId]);
-  // Only scroll when last message ID changes (truly new message)
+  // Only scroll when last message ID changes AND user was at bottom
   const lastMsgIdRef = useRef("");
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const wasAtBottomRef = useRef(true);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const threshold = 80;
+      wasAtBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    };
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
   useEffect(() => {
     const lastId = messages[messages.length - 1]?.id ?? "";
     if (lastId && lastId !== lastMsgIdRef.current) {
       lastMsgIdRef.current = lastId;
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      if (wasAtBottomRef.current) {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
     }
   }, [messages]);
   useEffect(() => {
@@ -197,7 +225,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
         <button onClick={refreshAndLoad} className="p-1 rounded hover:bg-gray-100" title="Обновить"><RefreshCw size={12} style={{ color: "#888" }} /></button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2" style={{ background: "#f8f9fa" }}>
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2" style={{ background: "#f8f9fa" }}>
         {loading && messages.length === 0 && <p className="text-xs text-center py-4" style={{ color: "#aaa" }}>Загрузка...</p>}
         {!loading && messages.length === 0 && <p className="text-xs text-center py-4" style={{ color: "#aaa" }}>Отправьте первое сообщение</p>}
         {messages.map((msg) => (
@@ -275,7 +303,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
                 );
               })}
               {/* Text */}
-              {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
+              {msg.text && <p className="whitespace-pre-wrap">{linkifyText(msg.text)}</p>}
               {/* Empty message without attaches */}
               {!msg.text && (!msg.attaches || msg.attaches.length === 0) && !msg.forwardedFrom && !msg.replyTo && (
                 <p className="text-xs italic" style={{ color: msg.isMe ? "rgba(255,255,255,0.7)" : "#888" }}>📎 Вложение</p>

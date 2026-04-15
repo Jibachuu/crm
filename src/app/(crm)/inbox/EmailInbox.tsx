@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Mail, RefreshCw, ArrowLeft, Paperclip, Reply, Send, Download, Link2 } from "lucide-react";
+import { Mail, RefreshCw, ArrowLeft, Paperclip, Reply, Send, Download, Link2, CheckCheck } from "lucide-react";
 import EmailCompose from "@/components/ui/EmailCompose";
 import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
 
@@ -70,6 +70,7 @@ export default function EmailInbox() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showReply, setShowReply] = useState(false);
   const [linkedOpen, setLinkedOpen] = useState(false);
+  const [markingRead, setMarkingRead] = useState(false);
 
   const myEmail = (process.env.NEXT_PUBLIC_SMTP_USER ?? "").toLowerCase();
 
@@ -151,6 +152,38 @@ export default function EmailInbox() {
     );
     setThreadDetails(details);
     setLoadingDetails(false);
+  }
+
+  async function markThreadAsRead(threadEmails: Email[]) {
+    setMarkingRead(true);
+    const unread = threadEmails.filter((e) => !e.seen && e.folder === "INBOX" && !e.dbId);
+    try {
+      await Promise.all(
+        unread.map((e) =>
+          fetch("/api/email/mark-read", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ uid: e.uid, folder: e.folder }),
+          })
+        )
+      );
+      // Update local state
+      setEmails((prev) =>
+        prev.map((e) =>
+          unread.some((u) => u.uid === e.uid && u.folder === e.folder) ? { ...e, seen: true } : e
+        )
+      );
+      if (selectedThread) {
+        setSelectedThread((prev) =>
+          prev?.map((e) =>
+            unread.some((u) => u.uid === e.uid && u.folder === e.folder) ? { ...e, seen: true } : e
+          ) ?? null
+        );
+      }
+    } catch {
+      alert("Ошибка при пометке как прочитанное");
+    }
+    setMarkingRead(false);
   }
 
   const threads = getThreads();
@@ -263,14 +296,27 @@ export default function EmailInbox() {
                 </h2>
                 <span className="text-xs" style={{ color: "#aaa" }}>{selectedThread.length} сообщ.</span>
               </div>
-              <button
-                onClick={() => setLinkedOpen(!linkedOpen)}
-                className="text-xs px-2 py-1 rounded hover:bg-blue-50 flex items-center gap-1"
-                style={{ color: "#0067a5", border: "1px solid #b3d4f0" }}
-                title="Связанные данные"
-              >
-                <Link2 size={11} /> Связи
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedThread.some((e) => !e.seen && e.folder === "INBOX" && !e.dbId) && (
+                  <button
+                    onClick={() => markThreadAsRead(selectedThread)}
+                    disabled={markingRead}
+                    className="text-xs px-2 py-1 rounded hover:bg-green-50 flex items-center gap-1 disabled:opacity-50"
+                    style={{ color: "#2e7d32", border: "1px solid #a5d6a7" }}
+                    title="Отметить как прочитанное"
+                  >
+                    <CheckCheck size={11} /> {markingRead ? "..." : "Прочитано"}
+                  </button>
+                )}
+                <button
+                  onClick={() => setLinkedOpen(!linkedOpen)}
+                  className="text-xs px-2 py-1 rounded hover:bg-blue-50 flex items-center gap-1"
+                  style={{ color: "#0067a5", border: "1px solid #b3d4f0" }}
+                  title="Связанные данные"
+                >
+                  <Link2 size={11} /> Связи
+                </button>
+              </div>
             </div>
 
             {/* Messages */}

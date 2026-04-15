@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, MessageSquare, Plus, CheckSquare } from "lucide-react";
+import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, MessageSquare, Plus, CheckSquare, Merge, Search, X } from "lucide-react";
 import TaskItem from "@/components/ui/TaskItem";
 import TelegramChat from "@/components/ui/TelegramChat";
 import MaxChat from "@/components/ui/MaxChat";
@@ -40,6 +40,12 @@ export default function ContactDetail({ contact: initialContact, communications:
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [calling, setCalling] = useState(false);
   const [linking, setLinking] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeSearch, setMergeSearch] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [mergeResults, setMergeResults] = useState<any[]>([]);
+  const [mergeSelected, setMergeSelected] = useState<string[]>([]);
+  const [merging, setMerging] = useState(false);
 
   async function callPhone(phone: string) {
     setCalling(true);
@@ -110,6 +116,40 @@ export default function ContactDetail({ contact: initialContact, communications:
     setLinking(false);
   }
 
+  async function searchMerge(q: string) {
+    setMergeSearch(q);
+    if (q.length < 2) { setMergeResults([]); return; }
+    const { data } = await createClient().from("contacts")
+      .select("id, full_name, phone, email")
+      .neq("id", contact.id)
+      .or(`full_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
+      .limit(10);
+    setMergeResults(data ?? []);
+  }
+
+  async function doMerge() {
+    if (mergeSelected.length === 0) return;
+    if (!confirm(`Объединить ${mergeSelected.length} контакт(ов) в "${contact.full_name}"? Дубликаты будут удалены.`)) return;
+    setMerging(true);
+    try {
+      const res = await fetch("/api/contacts/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keepId: contact.id, mergeIds: mergeSelected }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        alert(`Объединено: ${data.merged} контакт(ов)`);
+        setMergeOpen(false);
+        setMergeSelected([]);
+        router.refresh();
+      } else {
+        alert(data.error || "Ошибка объединения");
+      }
+    } catch { alert("Ошибка"); }
+    setMerging(false);
+  }
+
   const hasPhone = contact.phone || contact.phone_mobile || contact.phone_other;
   const missingMessenger = !contact.telegram_id || !contact.maks_id;
 
@@ -129,6 +169,9 @@ export default function ContactDetail({ contact: initialContact, communications:
           <ChevronLeft size={16} /> Все контакты
         </Link>
         <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setMergeOpen(true)}>
+            <Merge size={14} /> Объединить
+          </Button>
           <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
             <Edit2 size={14} /> Редактировать
           </Button>
@@ -272,8 +315,9 @@ export default function ContactDetail({ contact: initialContact, communications:
                 <Card>
                   <CardBody>
                     <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)}
-                      placeholder="Добавить заметку..." rows={2}
-                      className="w-full text-sm border border-slate-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                      placeholder="Добавить заметку..." rows={4}
+                      className="w-full text-sm border border-slate-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      style={{ minHeight: 100 }} />
                     <div className="flex justify-end mt-2">
                       <Button size="sm" onClick={addNote} loading={noteLoading} disabled={!noteText.trim()}>
                         <MessageSquare size={14} /> Добавить заметку
@@ -379,6 +423,70 @@ export default function ContactDetail({ contact: initialContact, communications:
         entityId={contact.id}
         onCreated={(task) => setTasks((p: unknown[]) => [task, ...p])}
       />
+
+      {/* Merge contacts modal */}
+      {mergeOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.4)" }}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-900">Объединить контакты</h3>
+              <button onClick={() => { setMergeOpen(false); setMergeSelected([]); setMergeSearch(""); setMergeResults([]); }} className="p-1 rounded hover:bg-slate-100">
+                <X size={18} className="text-slate-500" />
+              </button>
+            </div>
+            <div className="px-6 py-3">
+              <p className="text-xs mb-3" style={{ color: "#888" }}>
+                Выберите дубликаты для объединения в <strong>{contact.full_name}</strong>. Данные будут перенесены, дубликаты удалены.
+              </p>
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#aaa" }} />
+                <input
+                  value={mergeSearch}
+                  onChange={(e) => searchMerge(e.target.value)}
+                  placeholder="Поиск по имени, телефону, email..."
+                  className="w-full pl-9 pr-3 py-2 text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{ border: "1px solid #d0d0d0" }}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 pb-3">
+              {mergeResults.map((c: { id: string; full_name: string; phone?: string; email?: string }) => {
+                const selected = mergeSelected.includes(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setMergeSelected((prev) => selected ? prev.filter((x) => x !== c.id) : [...prev, c.id])}
+                    className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 transition-colors"
+                    style={{ background: selected ? "#e8f4fd" : "transparent", border: selected ? "1px solid #b3d4f0" : "1px solid transparent" }}
+                  >
+                    <div className={`w-5 h-5 rounded border flex items-center justify-center ${selected ? "bg-blue-600 border-blue-600" : "border-slate-300"}`}>
+                      {selected && <CheckSquare size={12} className="text-white" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">{c.full_name}</p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {[c.phone, c.email].filter(Boolean).join(" · ") || "Нет данных"}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+              {mergeSearch.length >= 2 && mergeResults.length === 0 && (
+                <p className="text-sm text-center py-6" style={{ color: "#aaa" }}>Контакты не найдены</p>
+              )}
+            </div>
+            {mergeSelected.length > 0 && (
+              <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-sm text-slate-600">Выбрано: {mergeSelected.length}</span>
+                <Button onClick={doMerge} loading={merging}>
+                  <Merge size={14} /> Объединить
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

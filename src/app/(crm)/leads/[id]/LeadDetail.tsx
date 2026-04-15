@@ -400,9 +400,9 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                       value={noteText}
                       onChange={(e) => setNoteText(e.target.value)}
                       placeholder="Добавить заметку..."
-                      rows={2}
+                      rows={4}
                       className="w-full text-sm p-3 resize-none focus:outline-none"
-                      style={{ border: "1px solid #ddd", borderRadius: 4 }}
+                      style={{ border: "1px solid #ddd", borderRadius: 4, minHeight: 100 }}
                     />
                     <div className="flex justify-end mt-2">
                       <Button size="sm" onClick={addNote} loading={noteLoading} disabled={!noteText.trim()}>
