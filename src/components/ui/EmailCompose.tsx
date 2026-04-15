@@ -104,7 +104,7 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
   }
 
   async function handleSend() {
-    if (!subject.trim() || !body.trim()) return;
+    if (!subject.trim() || !body.trim() || sending) return;
     setSending(true);
 
     try {
