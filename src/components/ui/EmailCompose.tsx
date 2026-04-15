@@ -216,7 +216,9 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
           <div className="flex items-center gap-1">
             <label className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-gray-100 transition-colors cursor-pointer" style={{ color: "#888" }}>
               <Paperclip size={13} /> Файл
-              <input type="file" multiple className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+              <input type="file" multiple
+                style={{ position: "fixed", left: "-9999px", top: "-9999px", opacity: 0 }}
+                onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
             </label>
             <FileTemplatesPanel onInsert={(tplFiles) => {
               Promise.all(tplFiles.map((f) =>
