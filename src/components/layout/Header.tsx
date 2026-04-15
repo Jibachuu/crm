@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Bell, CheckSquare, MessageSquare, X, CheckCheck, Clock } from "lucide-react";
+import { Bell, CheckSquare, MessageSquare, Users, X, CheckCheck, Clock } from "lucide-react";
 
 interface Notification {
   id: string;
-  type: "task" | "message";
+  type: "task" | "message" | "lead";
   title: string;
   subtitle?: string;
   link?: string;
@@ -92,7 +92,7 @@ export default function Header({ title }: HeaderProps) {
 
           // Show browser notifications for new messages
           if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-            const freshNotifs = newNotifs.filter((n) => freshIds.includes(n.id) && n.type === "message");
+            const freshNotifs = newNotifs.filter((n) => freshIds.includes(n.id) && (n.type === "message" || n.type === "lead"));
             for (const n of freshNotifs.slice(0, 5)) {
               try {
                 const notif = new Notification(n.title, {
@@ -330,7 +330,11 @@ function NotificationItem({ notification: n, isRead, onRead, onClose, timeAgo }:
       }}
     >
       <div className="mt-0.5 flex-shrink-0">
-        {n.type === "task" ? (
+        {n.type === "lead" ? (
+          <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: "#fff3e0" }}>
+            <Users size={12} style={{ color: "#e65c00" }} />
+          </div>
+        ) : n.type === "task" ? (
           <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: "#e8f4fd" }}>
             <CheckSquare size={12} style={{ color: "#0067a5" }} />
           </div>

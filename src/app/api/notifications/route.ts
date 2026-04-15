@@ -13,132 +13,119 @@ export async function GET() {
   // Update last_seen_at for online status
   await supabase.from("users").update({ last_seen_at: new Date().toISOString() }).eq("id", user.id);
 
-  // Admin sees ALL tasks, others see only their own
   const admin = createAdminClient();
-  let query = admin.from("tasks")
-    .select("id, title, due_date, status, entity_type, entity_id, created_at, assigned_to, users!tasks_assigned_to_fkey(full_name)")
-    .in("status", ["pending", "in_progress"])
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  if (!isAdmin) {
-    query = query.eq("assigned_to", user.id);
-  }
-
-  const { data: tasks } = await query;
-
   const notifications: {
     id: string;
-    type: "task" | "message";
+    type: "task" | "message" | "lead";
     title: string;
     subtitle?: string;
     link?: string;
     date: string;
   }[] = [];
 
-  const today = new Date().toISOString().slice(0, 10);
-
-  for (const t of tasks ?? []) {
-    const dueDate = t.due_date ? new Date(t.due_date) : null;
-    const isOverdue = dueDate && dueDate < new Date() && t.due_date.slice(0, 10) < today;
-    const isToday = t.due_date && t.due_date.slice(0, 10) === today;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const assigneeName = isAdmin && t.assigned_to !== user.id ? ` (${(t.users as any)?.full_name ?? ""})` : "";
-    const prefix = isOverdue ? "Просрочена" : isToday ? "Сегодня" : "";
-    notifications.push({
-      id: `task-${t.id}`,
-      type: "task",
-      title: prefix ? `${prefix}: ${t.title}${assigneeName}` : `${t.title}${assigneeName}`,
-      subtitle: t.due_date ? `Срок: ${new Date(t.due_date).toLocaleDateString("ru-RU")}` : undefined,
-      link: t.entity_type && t.entity_id ? `/${t.entity_type}s/${t.entity_id}` : "/tasks",
-      date: t.created_at,
-    });
-  }
-
-  // ── Communications: new messages in the last 24h on entities the user is responsible for ──
-  // Admin sees all incoming messages; others only see messages on their own leads/deals/contacts/companies
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let commQuery: any = admin.from("communications")
-    .select("id, channel, direction, content, created_at, lead_id, deal_id, contact_id, company_id, sender_name")
-    .eq("direction", "incoming")
-    .gte("created_at", since)
-    .order("created_at", { ascending: false })
-    .limit(50);
 
-  const { data: comms } = await commQuery;
+  // ── 1. New messages (messenger/email) on entities user is responsible for ──
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const commQuery: any = admin.from("communications")
+      .select("id, channel, direction, content, created_at, lead_id, deal_id, contact_id, company_id, sender_name")
+      .eq("direction", "incoming")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(50);
 
-  if (comms && comms.length > 0) {
-    // Filter by responsibility (skip filter for admins)
-    let allowedComms = comms;
-    if (!isAdmin) {
-      const leadIds = [...new Set(comms.map((c: { lead_id?: string }) => c.lead_id).filter(Boolean))];
-      const dealIds = [...new Set(comms.map((c: { deal_id?: string }) => c.deal_id).filter(Boolean))];
-      const contactIds = [...new Set(comms.map((c: { contact_id?: string }) => c.contact_id).filter(Boolean))];
-      const companyIds = [...new Set(comms.map((c: { company_id?: string }) => c.company_id).filter(Boolean))];
+    const { data: comms } = await commQuery;
 
-      const ownLeads = leadIds.length ? (await admin.from("leads").select("id").in("id", leadIds).eq("assigned_to", user.id)).data?.map((r) => r.id) ?? [] : [];
-      const ownDeals = dealIds.length ? (await admin.from("deals").select("id").in("id", dealIds).eq("assigned_to", user.id)).data?.map((r) => r.id) ?? [] : [];
-      const ownContacts = contactIds.length ? (await admin.from("contacts").select("id").in("id", contactIds).eq("assigned_to", user.id)).data?.map((r) => r.id) ?? [] : [];
-      const ownCompanies = companyIds.length ? (await admin.from("companies").select("id").in("id", companyIds).eq("assigned_to", user.id)).data?.map((r) => r.id) ?? [] : [];
+    if (comms && comms.length > 0) {
+      let allowedComms = comms;
+      if (!isAdmin) {
+        const leadIds = [...new Set(comms.map((c: { lead_id?: string }) => c.lead_id).filter(Boolean))];
+        const dealIds = [...new Set(comms.map((c: { deal_id?: string }) => c.deal_id).filter(Boolean))];
+        const contactIds = [...new Set(comms.map((c: { contact_id?: string }) => c.contact_id).filter(Boolean))];
+        const companyIds = [...new Set(comms.map((c: { company_id?: string }) => c.company_id).filter(Boolean))];
 
-      const ownLeadsSet = new Set(ownLeads);
-      const ownDealsSet = new Set(ownDeals);
-      const ownContactsSet = new Set(ownContacts);
-      const ownCompaniesSet = new Set(ownCompanies);
+        const ownLeads = leadIds.length ? (await admin.from("leads").select("id").in("id", leadIds).eq("assigned_to", user.id)).data?.map((r) => r.id) ?? [] : [];
+        const ownDeals = dealIds.length ? (await admin.from("deals").select("id").in("id", dealIds).eq("assigned_to", user.id)).data?.map((r) => r.id) ?? [] : [];
+        const ownContacts = contactIds.length ? (await admin.from("contacts").select("id").in("id", contactIds).eq("assigned_to", user.id)).data?.map((r) => r.id) ?? [] : [];
+        const ownCompanies = companyIds.length ? (await admin.from("companies").select("id").in("id", companyIds).eq("assigned_to", user.id)).data?.map((r) => r.id) ?? [] : [];
 
-      allowedComms = comms.filter((c: { lead_id?: string; deal_id?: string; contact_id?: string; company_id?: string }) =>
-        (c.lead_id && ownLeadsSet.has(c.lead_id)) ||
-        (c.deal_id && ownDealsSet.has(c.deal_id)) ||
-        (c.contact_id && ownContactsSet.has(c.contact_id)) ||
-        (c.company_id && ownCompaniesSet.has(c.company_id))
-      );
-    }
+        allowedComms = comms.filter((c: { lead_id?: string; deal_id?: string; contact_id?: string; company_id?: string }) =>
+          (c.lead_id && new Set(ownLeads).has(c.lead_id)) ||
+          (c.deal_id && new Set(ownDeals).has(c.deal_id)) ||
+          (c.contact_id && new Set(ownContacts).has(c.contact_id)) ||
+          (c.company_id && new Set(ownCompanies).has(c.company_id))
+        );
+      }
 
-    // Fetch contact names for sender enrichment
-    const contactIdsForName = [...new Set(allowedComms.map((c: { contact_id?: string }) => c.contact_id).filter(Boolean))];
-    const contactNameMap = new Map<string, { full_name: string; company_id?: string }>();
-    const compNameMap = new Map<string, string>();
-    if (contactIdsForName.length > 0) {
-      const { data: contactRows } = await admin.from("contacts").select("id, full_name, company_id").in("id", contactIdsForName);
-      for (const ct of contactRows ?? []) contactNameMap.set(ct.id, ct);
-      const compIds = [...new Set((contactRows ?? []).map((c) => c.company_id).filter(Boolean))];
-      if (compIds.length > 0) {
-        const { data: compRows } = await admin.from("companies").select("id, name").in("id", compIds);
-        for (const co of compRows ?? []) compNameMap.set(co.id, co.name);
+      // Enrich with contact names
+      const contactIdsForName = [...new Set(allowedComms.map((c: { contact_id?: string }) => c.contact_id).filter(Boolean))];
+      const contactNameMap = new Map<string, { full_name: string; company_id?: string }>();
+      const compNameMap = new Map<string, string>();
+      if (contactIdsForName.length > 0) {
+        const { data: contactRows } = await admin.from("contacts").select("id, full_name, company_id").in("id", contactIdsForName);
+        for (const ct of contactRows ?? []) contactNameMap.set(ct.id, ct);
+        const compIds = [...new Set((contactRows ?? []).map((c) => c.company_id).filter(Boolean))];
+        if (compIds.length > 0) {
+          const { data: compRows } = await admin.from("companies").select("id, name").in("id", compIds);
+          for (const co of compRows ?? []) compNameMap.set(co.id, co.name);
+        }
+      }
+
+      const channelLabels: Record<string, string> = { email: "Почта", telegram: "Telegram", maks: "МАКС", whatsapp: "WhatsApp", phone: "Звонок" };
+      for (const c of allowedComms) {
+        const channelLabel = channelLabels[String(c.channel)] || String(c.channel || "Сообщение");
+        const target = `/inbox?tab=all`;
+        const contact = c.contact_id ? contactNameMap.get(c.contact_id) : undefined;
+        const contactName = contact?.full_name;
+        const companyName = contact?.company_id ? compNameMap.get(contact.company_id) : undefined;
+        const senderDisplay = contactName
+          ? (companyName ? `${contactName} · ${companyName}` : contactName)
+          : (c.sender_name || "новое сообщение");
+
+        notifications.push({
+          id: `comm-${c.id}`,
+          type: "message",
+          title: `${channelLabel}: ${senderDisplay}`,
+          subtitle: c.content ? String(c.content).slice(0, 80) : undefined,
+          link: target,
+          date: c.created_at,
+        });
       }
     }
+  } catch { /* ignore */ }
 
-    const channelLabels: Record<string, string> = { email: "Почта", telegram: "Telegram", maks: "МАКС", whatsapp: "WhatsApp", phone: "Звонок" };
-    const channelTabs: Record<string, string> = { telegram: "all", maks: "all", email: "email" };
-    for (const c of allowedComms) {
-      const channelLabel = channelLabels[String(c.channel)] || String(c.channel || "Сообщение");
-      // For messenger messages, link to inbox; for others, link to entity
-      const isMessenger = ["telegram", "maks", "email"].includes(String(c.channel));
-      const target = isMessenger
-        ? `/inbox?tab=${channelTabs[String(c.channel)] || "all"}`
-        : c.lead_id ? `/leads/${c.lead_id}` : c.deal_id ? `/deals/${c.deal_id}` : c.contact_id ? `/contacts/${c.contact_id}` : c.company_id ? `/companies/${c.company_id}` : "/inbox";
+  // ── 2. New leads assigned to user (last 24h) ──
+  try {
+    let leadQuery = admin.from("leads")
+      .select("id, title, source, created_at, contacts(full_name), companies(name)")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(30);
 
-      // Build rich title with CRM contact name + company
-      const contact = c.contact_id ? contactNameMap.get(c.contact_id) : undefined;
-      const contactName = contact?.full_name;
-      const companyName = contact?.company_id ? compNameMap.get(contact.company_id) : undefined;
-      const senderDisplay = contactName
-        ? (companyName ? `${contactName} · ${companyName}` : contactName)
-        : (c.sender_name || "новое сообщение");
+    if (!isAdmin) {
+      leadQuery = leadQuery.eq("assigned_to", user.id);
+    }
 
+    const { data: newLeads } = await leadQuery;
+    for (const lead of newLeads ?? []) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const contactName = (lead.contacts as any)?.full_name;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const companyName = (lead.companies as any)?.name;
+      const sourceLabel = lead.source === "website" ? "с сайта" : lead.source === "telegram" ? "из Telegram" : lead.source === "maks" ? "из МАКС" : lead.source === "email" ? "из почты" : "";
       notifications.push({
-        id: `comm-${c.id}`,
-        type: "message",
-        title: `${channelLabel}: ${senderDisplay}`,
-        subtitle: c.content ? String(c.content).slice(0, 80) : undefined,
-        link: target,
-        date: c.created_at,
+        id: `lead-${lead.id}`,
+        type: "lead",
+        title: `Новый лид${sourceLabel ? ` ${sourceLabel}` : ""}: ${lead.title}`,
+        subtitle: [contactName, companyName].filter(Boolean).join(" · ") || undefined,
+        link: `/leads/${lead.id}`,
+        date: lead.created_at,
       });
     }
-  }
+  } catch { /* ignore */ }
 
-  // ── Internal personal chat: unread messages addressed to current user ──
+  // ── 3. Internal personal messages (DMs) ──
   try {
     const { data: dms } = await admin
       .from("internal_messages")
@@ -162,7 +149,7 @@ export async function GET() {
     }
   } catch { /* ignore */ }
 
-  // ── Group team chat: unread messages in groups where user is a member ──
+  // ── 4. Group chat messages ──
   try {
     const { data: memberships } = await admin
       .from("group_chat_members")
@@ -205,13 +192,8 @@ export async function GET() {
     }
   } catch { /* ignore */ }
 
-  // Sort: overdue first, then today, then rest, then messages newest-first
-  notifications.sort((a, b) => {
-    const aOverdue = a.title.startsWith("Просрочена") ? 0 : a.title.startsWith("Сегодня") ? 1 : 2;
-    const bOverdue = b.title.startsWith("Просрочена") ? 0 : b.title.startsWith("Сегодня") ? 1 : 2;
-    if (aOverdue !== bOverdue) return aOverdue - bOverdue;
-    return new Date(b.date).getTime() - new Date(a.date).getTime();
-  });
+  // Sort by date, newest first
+  notifications.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return NextResponse.json({ notifications, count: notifications.length });
 }
