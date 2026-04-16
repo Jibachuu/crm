@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Upload, Search, Filter, Plus, Check, X, Phone, ArrowUpDown } from "lucide-react";
+import { Upload, Search, Filter, Plus, Check, X, Phone, ArrowUpDown, Star } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Input from "@/components/ui/Input";
@@ -73,7 +73,7 @@ const DB_FIELDS = [
   "revenue_2022", "revenue_2023", "revenue_2024", "revenue_2025",
   "profit_2022", "profit_2023", "profit_2024", "profit_2025",
   "discovered_phone", "discovered_email", "discovered_name", "discovered_position", "comment",
-  "call_reached",
+  "call_reached", "primary_phone", "primary_email",
 ];
 
 const IMPORT_MAP: Record<string, string> = {
@@ -364,7 +364,12 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
                     </span>
                   )}
                 </td>
-                {COLUMNS.map((col) => (
+                {COLUMNS.map((col) => {
+                  const isPhoneCol = ["main_phone", "additional_phone_1", "additional_phone_2", "additional_phone_3"].includes(col.key);
+                  const isEmailCol = ["main_email", "additional_email_1", "additional_email_2", "additional_email_3"].includes(col.key);
+                  const isPrimary = (isPhoneCol && row.primary_phone === row[col.key] && row[col.key]) ||
+                    (isEmailCol && row.primary_email === row[col.key] && row[col.key]);
+                  return (
                   <td key={col.key} className="px-2 py-1.5">
                     {col.key === "status" ? (
                       <select value={row.status} onChange={(e) => updateField(row.id, "status", e.target.value)}
@@ -374,17 +379,35 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
                       </select>
                     ) : col.key === "call_reached" ? (
                       <input type="checkbox" checked={row.call_reached ?? false} onChange={(e) => updateField(row.id, "call_reached", e.target.checked)} style={{ accentColor: "#0067a5" }} />
+                    ) : (isPhoneCol || isEmailCol) && col.editable ? (
+                      <div className="flex items-center gap-0.5">
+                        <input value={row[col.key] ?? ""} onChange={(e) => updateField(row.id, col.key, e.target.value)}
+                          className="flex-1 text-xs px-1 py-0.5 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          style={{ border: "1px solid transparent", background: isPrimary ? "#e3f2fd" : "transparent" }}
+                          onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = "#d0d0d0"; }}
+                          onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = "transparent"; }} />
+                        {row[col.key] && (
+                          <button title="Сделать основным для конвертации" onClick={() => {
+                            const field = isPhoneCol ? "primary_phone" : "primary_email";
+                            const val = row[col.key];
+                            updateField(row.id, field, isPrimary ? null : val);
+                          }} className="shrink-0 p-0.5 rounded hover:bg-yellow-50">
+                            <Star size={11} fill={isPrimary ? "#f59e0b" : "none"} style={{ color: isPrimary ? "#f59e0b" : "#ccc" }} />
+                          </button>
+                        )}
+                      </div>
                     ) : col.editable ? (
                       <input value={row[col.key] ?? ""} onChange={(e) => updateField(row.id, col.key, e.target.value)}
                         className="w-full text-xs px-1 py-0.5 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
-                        style={{ border: "1px solid transparent", background: col.key === "discovered_phone" && row[col.key] ? "#e8f5e9" : "transparent" }}
+                        style={{ border: "1px solid transparent", background: "transparent" }}
                         onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = "#d0d0d0"; }}
                         onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = "transparent"; }} />
                     ) : (
                       <span className="text-xs" style={{ color: "#555" }}>{row[col.key] ?? ""}</span>
                     )}
                   </td>
-                ))}
+                  );
+                })}
                 <td className="px-1 py-1">
                   <button onClick={() => { fetch("/api/cold-calls", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", id: row.id }) }); setRows((prev) => prev.filter((r) => r.id !== row.id)); }}
                     className="p-1 rounded hover:bg-red-50" title="Удалить"><X size={12} style={{ color: "#c62828" }} /></button>
@@ -451,19 +474,33 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
   );
 }
 
+function cleanPhone(p: string): string {
+  if (!p) return "";
+  return p.replace(/[\s()\-]/g, "");
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function ConvertForm({ row, users, onDone, onCancel }: { row: any; users: { id: string; full_name: string }[]; onDone: (ids: { lead?: string; contact?: string; company?: string }) => void; onCancel: () => void }) {
   const [saving, setSaving] = useState(false);
+
+  // Collect all phones and emails
+  const allPhones = [row.primary_phone || row.main_phone, row.additional_phone_1, row.additional_phone_2, row.additional_phone_3]
+    .filter(Boolean).map(cleanPhone).filter((v, i, a) => a.indexOf(v) === i);
+  const allEmails = [row.primary_email || row.main_email, row.additional_email_1, row.additional_email_2, row.additional_email_3]
+    .filter(Boolean).map((e: string) => e.trim()).filter((v: string, i: number, a: string[]) => a.indexOf(v) === i);
+
   const [companyName, setCompanyName] = useState(row.company_name || "");
   const [companyInn, setCompanyInn] = useState(row.inn || "");
-  const [companyPhone, setCompanyPhone] = useState(row.main_phone || "");
-  const [companyEmail, setCompanyEmail] = useState(row.main_email || "");
+  const [companyPhone, setCompanyPhone] = useState(allPhones[0] || "");
+  const [companyEmail, setCompanyEmail] = useState(allEmails[0] || "");
   const [companyAddress, setCompanyAddress] = useState(row.legal_address || "");
+  const [companyCity, setCompanyCity] = useState(row.city || "");
   const [contactName, setContactName] = useState(row.discovered_name || row.director_name || "");
-  const [contactPhone, setContactPhone] = useState(row.discovered_phone || row.main_phone || "");
-  const [contactEmail, setContactEmail] = useState(row.discovered_email || row.main_email || "");
+  const [contactPhone, setContactPhone] = useState(allPhones[0] || "");
+  const [contactEmail, setContactEmail] = useState(allEmails[0] || "");
   const [contactPosition, setContactPosition] = useState(row.discovered_position || row.director_position || "");
   const [leadTitle, setLeadTitle] = useState(companyName ? `Прозвон: ${companyName}` : "Прозвон");
+  const [leadComment, setLeadComment] = useState(row.comment || "");
   const [assignedTo, setAssignedTo] = useState("");
 
   async function handleSave() {
@@ -472,14 +509,33 @@ function ConvertForm({ row, users, onDone, onCancel }: { row: any; users: { id: 
     const { data: { user } } = await supabase.auth.getUser();
     const ids: { lead?: string; contact?: string; company?: string } = {};
     if (companyName) {
-      const { data } = await supabase.from("companies").insert({ name: companyName, inn: companyInn || null, phone: companyPhone || null, email: companyEmail || null, legal_address: companyAddress || null, assigned_to: assignedTo || user?.id, created_by: user?.id }).select("id").single();
+      const { data } = await supabase.from("companies").insert({
+        name: companyName, inn: companyInn || null,
+        phone: cleanPhone(companyPhone) || null, email: companyEmail || null,
+        additional_phone_1: allPhones[1] || null, additional_phone_2: allPhones[2] || null, additional_phone_3: allPhones[3] || null,
+        additional_email_1: allEmails[1] || null, additional_email_2: allEmails[2] || null, additional_email_3: allEmails[3] || null,
+        legal_address: companyAddress || null, city: companyCity || null,
+        website: row.main_website || null,
+        description: leadComment || null,
+        assigned_to: assignedTo || user?.id, created_by: user?.id,
+      }).select("id").single();
       if (data) ids.company = data.id;
     }
     if (contactName) {
-      const { data } = await supabase.from("contacts").insert({ full_name: contactName, phone: contactPhone || null, email: contactEmail || null, position: contactPosition || null, company_id: ids.company || null, assigned_to: assignedTo || user?.id, created_by: user?.id }).select("id").single();
+      const { data } = await supabase.from("contacts").insert({
+        full_name: contactName, phone: cleanPhone(contactPhone) || null, email: contactEmail || null,
+        position: contactPosition || null,
+        additional_phone_1: allPhones[1] || null, additional_phone_2: allPhones[2] || null, additional_phone_3: allPhones[3] || null,
+        additional_email_1: allEmails[1] || null, additional_email_2: allEmails[2] || null, additional_email_3: allEmails[3] || null,
+        company_id: ids.company || null, assigned_to: assignedTo || user?.id, created_by: user?.id,
+      }).select("id").single();
       if (data) ids.contact = data.id;
     }
-    const { data: lead } = await supabase.from("leads").insert({ title: leadTitle, source: "cold_call", contact_id: ids.contact || null, company_id: ids.company || null, assigned_to: assignedTo || user?.id, created_by: user?.id }).select("id").single();
+    const { data: lead } = await supabase.from("leads").insert({
+      title: leadTitle, source: "cold_call", description: leadComment || null,
+      contact_id: ids.contact || null, company_id: ids.company || null,
+      assigned_to: assignedTo || user?.id, created_by: user?.id,
+    }).select("id").single();
     if (lead) ids.lead = lead.id;
     setSaving(false);
     onDone(ids);
@@ -492,18 +548,33 @@ function ConvertForm({ row, users, onDone, onCancel }: { row: any; users: { id: 
         <div className="grid grid-cols-2 gap-2">
           <Input label="Название" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
           <Input label="ИНН" value={companyInn} onChange={(e) => setCompanyInn(e.target.value)} />
+          <Input label="Телефон" value={companyPhone} onChange={(e) => setCompanyPhone(e.target.value)} />
+          <Input label="Email" value={companyEmail} onChange={(e) => setCompanyEmail(e.target.value)} />
+          <Input label="Город" value={companyCity} onChange={(e) => setCompanyCity(e.target.value)} />
+          <Input label="Юр. адрес" value={companyAddress} onChange={(e) => setCompanyAddress(e.target.value)} />
         </div>
+        {(allPhones.length > 1 || allEmails.length > 1) && (
+          <div className="text-xs mt-1" style={{ color: "#888" }}>
+            {allPhones.length > 1 && <span>Доп. тел: {allPhones.slice(1).join(", ")}</span>}
+            {allPhones.length > 1 && allEmails.length > 1 && <span> · </span>}
+            {allEmails.length > 1 && <span>Доп. почта: {allEmails.slice(1).join(", ")}</span>}
+          </div>
+        )}
       </div>
       <div className="p-3 rounded space-y-2" style={{ background: "#f8f9fa", border: "1px solid #e0e0e0" }}>
         <h4 className="text-xs font-semibold" style={{ color: "#0067a5" }}>Контакт</h4>
         <div className="grid grid-cols-2 gap-2">
           <Input label="ФИО" value={contactName} onChange={(e) => setContactName(e.target.value)} />
           <Input label="Телефон" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+          <Input label="Email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
+          <Input label="Должность" value={contactPosition} onChange={(e) => setContactPosition(e.target.value)} />
         </div>
       </div>
       <div className="p-3 rounded space-y-2" style={{ background: "#f8f9fa", border: "1px solid #e0e0e0" }}>
         <h4 className="text-xs font-semibold" style={{ color: "#0067a5" }}>Лид</h4>
         <Input label="Название" value={leadTitle} onChange={(e) => setLeadTitle(e.target.value)} />
+        <textarea value={leadComment} onChange={(e) => setLeadComment(e.target.value)} placeholder="Комментарий"
+          className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 resize-none" rows={2} />
         <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
           <option value="">Текущий пользователь</option>
           {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
