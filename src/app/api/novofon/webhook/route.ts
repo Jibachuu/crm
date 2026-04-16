@@ -2,82 +2,106 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { pickAutoLeadAssignee } from "@/lib/auto-lead-assigner";
 
-// Novofon webhook handler — receives call events
-// Configure in Novofon: Settings → API → Webhook URL: https://artevo-crm.ru/api/novofon/webhook
+// Novofon webhook handler — receives notification events
+// Each notification type is configured separately in Novofon panel
+// Add &event_type=incoming / outgoing / end / record to the body template
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function flatten(body: any): Record<string, string> {
+  // Novofon sends nested contact_info object — flatten it
+  const flat: Record<string, string> = {};
+  for (const [key, val] of Object.entries(body)) {
+    if (val && typeof val === "object" && !Array.isArray(val)) {
+      for (const [k2, v2] of Object.entries(val as Record<string, unknown>)) {
+        flat[k2] = String(v2 ?? "");
+      }
+    } else {
+      flat[key] = String(val ?? "");
+    }
+  }
+  return flat;
+}
 
 export async function POST(req: NextRequest) {
   const admin = createAdminClient();
 
-  let body: Record<string, string>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let rawBody: any;
   const contentType = req.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    body = await req.json();
+    rawBody = await req.json();
   } else {
     const text = await req.text();
-    body = Object.fromEntries(new URLSearchParams(text));
+    rawBody = Object.fromEntries(new URLSearchParams(text));
   }
 
-  const event = body.event;
-  console.log(`[novofon] ${event}:`, JSON.stringify(body).slice(0, 500));
+  const body = flatten(rawBody);
+  console.log(`[novofon] webhook:`, JSON.stringify(body).slice(0, 500));
 
-  // ── NOTIFY_START: Incoming call started ──
-  if (event === "NOTIFY_START") {
-    const callerNumber = body.caller_id || "";
-    const calledNumber = body.called_did || "";
-    const pbxCallId = body.pbx_call_id || "";
+  // Detect event type from custom field or notification_name
+  const eventType = (body.event_type || body.event || "").toLowerCase();
+  const notifName = (body.notification_name || "").toLowerCase();
 
-    // Find contact by phone
-    const cleanPhone = callerNumber.replace(/\D/g, "").slice(-10);
+  // Determine type: incoming, outgoing, end, record
+  let type = eventType;
+  if (!type) {
+    if (notifName.includes("входящ")) type = "incoming";
+    else if (notifName.includes("исходящ")) type = "outgoing";
+    else if (notifName.includes("заверш") || notifName.includes("оконч")) type = "end";
+    else if (notifName.includes("запис")) type = "record";
+    else type = "unknown";
+  }
+
+  const callerPhone = body.contact_phone_number || body.caller_id || body.caller_number || "";
+  const calledNumber = body.virtual_phone_number || body.called_did || "";
+  const callSessionId = body.call_session_id || body.pbx_call_id || "";
+  const contactName = body.contact_full_name || "";
+  const duration = body.duration || body.wait_time_duration || "0";
+
+  // ── INCOMING CALL ──
+  if (type === "incoming" || type === "notify_start") {
+    const cleanPhone = callerPhone.replace(/\D/g, "").slice(-10);
     let contactId: string | null = null;
-    let contactName: string | null = null;
+    let dbContactName: string | null = null;
     let companyId: string | null = null;
 
     if (cleanPhone.length >= 7) {
       const { data: contact } = await admin.from("contacts")
         .select("id, full_name, company_id")
         .or(`phone.ilike.%${cleanPhone},phone_mobile.ilike.%${cleanPhone}`)
-        .limit(1)
-        .single();
+        .limit(1).single();
       if (contact) {
         contactId = contact.id;
-        contactName = contact.full_name;
+        dbContactName = contact.full_name;
         companyId = contact.company_id;
       }
     }
 
-    // Return caller name to Novofon PBX (shown on phone display)
-    const response: Record<string, string> = {};
-    if (contactName) {
-      response.caller_name = contactName;
-    }
-
-    // Store call start in DB for pop-up notification
+    // Store call for popup
     await admin.from("communications").insert({
       channel: "phone",
       direction: "inbound",
-      subject: `Входящий звонок ${callerNumber}`,
-      body: contactName ? `Входящий от ${contactName}` : `Входящий от ${callerNumber}`,
-      from_address: callerNumber,
+      subject: `Входящий звонок ${callerPhone}`,
+      body: dbContactName ? `Входящий от ${dbContactName}` : `Входящий от ${callerPhone}`,
+      from_address: callerPhone,
       to_address: calledNumber,
-      external_id: `novofon_${pbxCallId}`,
+      external_id: `novofon_${callSessionId}`,
       contact_id: contactId,
       company_id: companyId,
-      sender_name: contactName || callerNumber,
+      sender_name: dbContactName || contactName || callerPhone,
     });
 
-    // If no contact found — create new contact + lead
+    // If no contact — create contact + lead
     if (!contactId && cleanPhone.length >= 7) {
       const { data: newContact } = await admin.from("contacts").insert({
-        full_name: callerNumber,
-        phone: callerNumber,
+        full_name: contactName || callerPhone,
+        phone: callerPhone,
       }).select("id").single();
 
       if (newContact) {
         contactId = newContact.id;
-        // Update communication with contact_id
-        await admin.from("communications").update({ contact_id: newContact.id }).eq("external_id", `novofon_${pbxCallId}`);
+        await admin.from("communications").update({ contact_id: newContact.id }).eq("external_id", `novofon_${callSessionId}`);
 
-        // Create lead for first-time caller with round-robin assignment
         const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
         const { data: firstStage } = funnel
           ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
@@ -85,7 +109,7 @@ export async function POST(req: NextRequest) {
         const assignee = await pickAutoLeadAssignee(admin);
 
         await admin.from("leads").insert({
-          title: `Звонок: ${callerNumber}`,
+          title: `Звонок: ${contactName || callerPhone}`,
           source: "phone",
           status: "new",
           contact_id: newContact.id,
@@ -96,62 +120,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json(response);
+    return NextResponse.json({ caller_name: dbContactName || undefined });
   }
 
-  // ── NOTIFY_END: Call ended ──
-  if (event === "NOTIFY_END") {
-    const pbxCallId = body.pbx_call_id || "";
-    const duration = body.duration || "0";
-    const disposition = body.disposition || "";
-    const isRecorded = body.is_recorded === "1";
-    const callIdWithRec = body.call_id_with_rec || "";
-
-    // Update existing communication record
-    const { data: existing } = await admin.from("communications")
-      .select("id")
-      .eq("external_id", `novofon_${pbxCallId}`)
-      .limit(1)
-      .single();
-
-    if (existing) {
-      await admin.from("communications").update({
-        body: `Звонок: ${duration} сек. (${disposition})`,
-        duration_seconds: Number(duration) || null,
-      }).eq("id", existing.id);
-    }
-
-    // If recorded, store call_id for later recording fetch
-    if (isRecorded && callIdWithRec) {
-      await admin.from("communications").update({
-        recording_url: `pending:${callIdWithRec}`,
-      }).eq("external_id", `novofon_${pbxCallId}`);
-    }
-
-    return NextResponse.json({});
-  }
-
-  // ── NOTIFY_OUT_START: Outbound call started ──
-  if (event === "NOTIFY_OUT_START") {
-    const destination = body.destination || "";
-    const callerId = body.caller_id || "";
-    const pbxCallId = body.pbx_call_id || "";
-    const internal = body.internal || "";
-
-    const cleanPhone = destination.replace(/\D/g, "").slice(-10);
+  // ── OUTGOING CALL ──
+  if (type === "outgoing" || type === "notify_out_start") {
+    const cleanPhone = callerPhone.replace(/\D/g, "").slice(-10);
     let contactId: string | null = null;
-    let contactName: string | null = null;
+    let dbContactName: string | null = null;
     let companyId: string | null = null;
 
     if (cleanPhone.length >= 7) {
       const { data: contact } = await admin.from("contacts")
         .select("id, full_name, company_id")
         .or(`phone.ilike.%${cleanPhone},phone_mobile.ilike.%${cleanPhone}`)
-        .limit(1)
-        .single();
+        .limit(1).single();
       if (contact) {
         contactId = contact.id;
-        contactName = contact.full_name;
+        dbContactName = contact.full_name;
         companyId = contact.company_id;
       }
     }
@@ -159,93 +145,64 @@ export async function POST(req: NextRequest) {
     await admin.from("communications").insert({
       channel: "phone",
       direction: "outbound",
-      subject: `Исходящий звонок ${destination}`,
-      body: contactName ? `Исходящий: ${contactName}` : `Исходящий: ${destination}`,
-      from_address: callerId,
-      to_address: destination,
-      external_id: `novofon_out_${pbxCallId}`,
+      subject: `Исходящий звонок ${callerPhone}`,
+      body: dbContactName ? `Исходящий: ${dbContactName}` : `Исходящий: ${callerPhone}`,
+      from_address: calledNumber,
+      to_address: callerPhone,
+      external_id: `novofon_out_${callSessionId}`,
       contact_id: contactId,
       company_id: companyId,
-      sender_name: internal || callerId,
+      sender_name: dbContactName || contactName || callerPhone,
     });
 
     return NextResponse.json({});
   }
 
-  // ── NOTIFY_OUT_END: Outbound call ended ──
-  if (event === "NOTIFY_OUT_END") {
-    const pbxCallId = body.pbx_call_id || "";
-    const duration = body.duration || "0";
-    const disposition = body.disposition || "";
+  // ── CALL END ──
+  if (type === "end" || type === "notify_end" || type === "notify_out_end") {
+    if (callSessionId) {
+      const { data: existing } = await admin.from("communications")
+        .select("id")
+        .or(`external_id.eq.novofon_${callSessionId},external_id.eq.novofon_out_${callSessionId}`)
+        .limit(1).single();
 
-    const { data: existing } = await admin.from("communications")
-      .select("id")
-      .eq("external_id", `novofon_out_${pbxCallId}`)
-      .limit(1)
-      .single();
-
-    if (existing) {
-      await admin.from("communications").update({
-        body: `Исходящий: ${duration} сек. (${disposition})`,
-        duration_seconds: Number(duration) || null,
-      }).eq("id", existing.id);
+      if (existing) {
+        await admin.from("communications").update({
+          body: `Звонок: ${duration} сек.`,
+          duration_seconds: Number(duration) || null,
+        }).eq("id", existing.id);
+      }
     }
-
     return NextResponse.json({});
   }
 
-  // ── NOTIFY_RECORD: Recording ready ──
-  if (event === "NOTIFY_RECORD") {
-    const pbxCallId = body.pbx_call_id || "";
-    const callIdWithRec = body.call_id_with_rec || "";
-
-    if (callIdWithRec) {
-      // Fetch recording link from Novofon API
+  // ── RECORDING READY ──
+  if (type === "record" || type === "notify_record") {
+    const recordUrl = body.link || body.record_link || body.recording_url || "";
+    if (callSessionId && recordUrl) {
+      await admin.from("communications").update({ recording_url: recordUrl })
+        .or(`external_id.eq.novofon_${callSessionId},external_id.eq.novofon_out_${callSessionId}`);
+    } else if (callSessionId) {
+      // Try to fetch recording via API
       try {
         const { getRecordingLink } = await import("@/lib/novofon");
-        const result = await getRecordingLink(callIdWithRec);
+        const result = await getRecordingLink(callSessionId);
         if (result?.link) {
-          // Update both inbound and outbound records
           await admin.from("communications").update({ recording_url: result.link })
-            .or(`external_id.eq.novofon_${pbxCallId},external_id.eq.novofon_out_${pbxCallId}`);
+            .or(`external_id.eq.novofon_${callSessionId},external_id.eq.novofon_out_${callSessionId}`);
         }
       } catch (e) {
         console.error("[novofon] Recording fetch error:", e);
       }
     }
-
     return NextResponse.json({});
   }
 
-  // ── SMS: Incoming SMS ──
-  if (event === "SMS") {
-    const callerNumber = body.caller_id || "";
-    const text = body.text || "";
-
-    const cleanPhone = callerNumber.replace(/\D/g, "").slice(-10);
-    let contactId: string | null = null;
-    if (cleanPhone.length >= 7) {
-      const { data: contact } = await admin.from("contacts").select("id").or(`phone.ilike.%${cleanPhone},phone_mobile.ilike.%${cleanPhone}`).limit(1).single();
-      if (contact) contactId = contact.id;
-    }
-
-    await admin.from("communications").insert({
-      channel: "phone",
-      direction: "inbound",
-      subject: "SMS",
-      body: text,
-      from_address: callerNumber,
-      contact_id: contactId,
-      sender_name: callerNumber,
-    });
-
-    return NextResponse.json({});
-  }
-
+  // Unknown event — log and accept
+  console.log(`[novofon] unhandled type="${type}":`, JSON.stringify(body).slice(0, 300));
   return NextResponse.json({ ok: true });
 }
 
-// GET for testing webhook URL
 export async function GET() {
   return NextResponse.json({ status: "ok", webhook: "novofon" });
 }
