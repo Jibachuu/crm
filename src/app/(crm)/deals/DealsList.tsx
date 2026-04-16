@@ -28,7 +28,7 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
   const { user: currentUser, isManager } = useCurrentUser();
   const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
   const hasFunnelStages = funnelStages.length > 0;
-  // Restore filters from sessionStorage
+  // Restore only non-date filters from sessionStorage
   const saved = typeof sessionStorage !== "undefined" ? JSON.parse(sessionStorage.getItem("deals_filters") || "{}") : {};
   const [deals, setDeals] = useState(initialDeals);
   const [search, setSearch] = useState(saved.search || "");
@@ -39,8 +39,8 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkTaskOpen, setBulkTaskOpen] = useState(false);
   const [kanbanLimits, setKanbanLimits] = useState<Record<string, number>>({});
-  const [dateFrom, setDateFrom] = useState<string | null>(saved.dateFrom || null);
-  const [dateTo, setDateTo] = useState<string | null>(saved.dateTo || null);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
 
   // Persist filters to sessionStorage
   useEffect(() => {

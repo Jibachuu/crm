@@ -48,8 +48,8 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
   const [kanbanLimits, setKanbanLimits] = useState<Record<string, number>>({});
-  const [dateFrom, setDateFrom] = useState<string | null>(savedL.dateFrom || null);
-  const [dateTo, setDateTo] = useState<string | null>(savedL.dateTo || null);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
 
   useEffect(() => {
     try { sessionStorage.setItem("leads_filters", JSON.stringify({ search, statusFilter, funnelFilter, viewMode, dateFrom, dateTo })); } catch {}
