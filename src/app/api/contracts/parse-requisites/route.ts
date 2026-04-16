@@ -70,10 +70,25 @@ function parseRequisites(text: string) {
   // ── ОГРН / ОГРНИП ──
   const ogrnMatch = text.match(/ОГРН(?:ИП)?\s*:?\s*(\d{13,15})/i);
   if (ogrnMatch) r.buyer_ogrn = ogrnMatch[1];
+  // Fallback: standalone 13-digit number starting with 1 (ОГРН) or 3 (ОГРНИП)
+  if (!r.buyer_ogrn) {
+    const standalone = text.match(/(?:^|\s)([13]\d{12,14})(?:\s|$)/m);
+    if (standalone && standalone[1].length >= 13) r.buyer_ogrn = standalone[1];
+  }
 
-  // ── Address ──
-  const addr = findAfter(/(?:Юр\.?\s*адрес|Юридический адрес банка|Юридический адрес|Адрес)\s*:?\s*(.+?)(?=\n|$)/i);
-  if (addr && !addr.toLowerCase().includes("банка")) r.buyer_address = addr;
+  // ── Address — try multiple patterns ──
+  const addrPatterns = [
+    /(?:Юридический адрес|Юр\.?\s*адрес)\s*:?\s*(.+?)(?=\n|ИНН|Номер|Банк|Валюта|$)/i,
+    /Адрес\s*:?\s*(\d{6}.+?)(?=\n|ИНН|Номер|Банк|Валюта|Ген\.?\s*директор|$)/i,
+    /Адрес\s*:?\s*([^,\n]{5,}.+?)(?=\n|ИНН|Номер|Банк|$)/i,
+  ];
+  for (const pat of addrPatterns) {
+    const m = text.match(pat);
+    if (m && !m[1].toLowerCase().includes("банка") && !m[1].toLowerCase().includes("адрес банка")) {
+      r.buyer_address = m[1].trim().replace(/[,.\s]+$/, "");
+      break;
+    }
+  }
 
   // ── Bank name ──
   const bankName = findAfter(/(?:Наименование банка|Банк)\s*:?\s*(.+?)(?=\n|БИК|$)/i);
