@@ -15,7 +15,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!await requireAdmin()) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
-  const body = await req.json() as { email?: string; password?: string; full_name?: string; role?: string; is_active?: boolean };
+  const body = await req.json() as { email?: string; password?: string; full_name?: string; role?: string; is_active?: boolean; sip_number?: string; phone?: string };
   const admin = createAdminClient();
 
   // Update auth.users (email/password)
@@ -33,6 +33,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.role !== undefined) profileUpdate.role = body.role;
   if (body.is_active !== undefined) profileUpdate.is_active = body.is_active;
   if (body.email !== undefined) profileUpdate.email = body.email;
+  if (body.sip_number !== undefined) profileUpdate.sip_number = body.sip_number;
+  if (body.phone !== undefined) profileUpdate.phone = body.phone;
   if (Object.keys(profileUpdate).length > 0) {
     await admin.from("users").update(profileUpdate).eq("id", id);
   }

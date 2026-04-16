@@ -117,7 +117,7 @@ export default function UsersSettings({ users: initialUsers, permissions: initia
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: "1px solid #e4e4e4", background: "#fafafa" }}>
-                  {["Сотрудник", "Роль", "Статус", ""].map((h) => (
+                  {["Сотрудник", "Телефон / SIP", "Роль", "Статус", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>{h}</th>
                   ))}
                 </tr>
@@ -139,6 +139,10 @@ export default function UsersSettings({ users: initialUsers, permissions: initia
                           <p className="text-xs" style={{ color: "#aaa" }}>{user.email}</p>
                         </div>
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-xs" style={{ color: "#555" }}>{user.phone || "—"}</p>
+                      {user.sip_number && <p className="text-xs" style={{ color: "#aaa" }}>SIP: {user.sip_number}</p>}
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={ROLE_VARIANTS[user.role] ?? "default"}>
@@ -281,9 +285,12 @@ function CreateUserModal({ open, onClose, onSave }: {
 // ── Edit User Modal ──────────────────────────────────────────────────────────────
 function EditUserModal({ open, user, onClose, onSave }: {
   open: boolean; user: Record<string, string>; onClose: () => void;
-  onSave: (f: { full_name?: string; email?: string; password?: string }) => Promise<void>;
+  onSave: (f: { full_name?: string; email?: string; password?: string; sip_number?: string; phone?: string }) => Promise<void>;
 }) {
-  const [form, setForm] = useState({ full_name: user.full_name ?? "", email: user.email ?? "", password: "" });
+  const [form, setForm] = useState({
+    full_name: user.full_name ?? "", email: user.email ?? "", password: "",
+    sip_number: user.sip_number ?? "", phone: user.phone ?? "",
+  });
   const [loading, setLoading] = useState(false);
 
   const inp = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
@@ -291,7 +298,7 @@ function EditUserModal({ open, user, onClose, onSave }: {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const payload: Record<string, string> = { full_name: form.full_name, email: form.email };
+    const payload: Record<string, string> = { full_name: form.full_name, email: form.email, sip_number: form.sip_number, phone: form.phone };
     if (form.password) payload.password = form.password;
     await onSave(payload);
     setLoading(false);
@@ -310,6 +317,14 @@ function EditUserModal({ open, user, onClose, onSave }: {
         <div>
           <label style={lbl}>Email</label>
           <input required type="email" value={form.email} onChange={(e) => inp("email", e.target.value)} style={s} />
+        </div>
+        <div>
+          <label style={lbl}>Телефон</label>
+          <input value={form.phone} onChange={(e) => inp("phone", e.target.value)} style={s} placeholder="+7 (843) 212-69-69" />
+        </div>
+        <div>
+          <label style={lbl}>SIP-номер Novofon <span style={{ fontWeight: 400, textTransform: "none", color: "#bbb" }}>(внутренний номер АТС, напр. 100)</span></label>
+          <input value={form.sip_number} onChange={(e) => inp("sip_number", e.target.value)} style={s} placeholder="100" />
         </div>
         <div>
           <label style={lbl}>Новый пароль <span style={{ fontWeight: 400, textTransform: "none", color: "#bbb" }}>(оставьте пустым чтобы не менять)</span></label>
