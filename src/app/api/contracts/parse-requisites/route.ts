@@ -85,10 +85,39 @@ export async function POST(req: NextRequest) {
 
     if (ext === "pdf") {
       try {
-        const { extractText } = await import("unpdf");
-        const buffer = new Uint8Array(await file.arrayBuffer());
-        const result = await extractText(buffer);
-        text = Array.isArray(result.text) ? result.text.join("\n") : String(result.text);
+        // Extract readable text from PDF binary using regex
+        // Works for most business PDFs with embedded text (not scanned images)
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const raw = buffer.toString("latin1");
+        // Extract text between BT...ET blocks (PDF text objects)
+        const textBlocks: string[] = [];
+        const btEt = raw.match(/BT[\s\S]*?ET/g) || [];
+        for (const block of btEt) {
+          // Extract strings in parentheses: (text) Tj
+          const strings = block.match(/\(([^)]*)\)/g);
+          if (strings) textBlocks.push(...strings.map((s) => s.slice(1, -1)));
+        }
+        // Also try to decode UTF-16BE hex strings: <FEFF...> Tj
+        const hexStrings = raw.match(/<FEFF[0-9A-Fa-f]+>/g) || [];
+        for (const hs of hexStrings) {
+          const hex = hs.slice(5, -1);
+          let decoded = "";
+          for (let i = 0; i < hex.length; i += 4) {
+            const code = parseInt(hex.slice(i, i + 4), 16);
+            if (code > 0) decoded += String.fromCharCode(code);
+          }
+          if (decoded.trim()) textBlocks.push(decoded);
+        }
+        // Decode common PDF escape sequences
+        text = textBlocks.join(" ")
+          .replace(/\\n/g, "\n").replace(/\\r/g, "")
+          .replace(/\\(\(|\)|\\)/g, "$1")
+          .replace(/\x00/g, "");
+        // If no text extracted via BT/ET, try raw string extraction
+        if (text.trim().length < 20) {
+          const rawStrings = raw.match(/[\x20-\x7EА-Яа-яЁё]{4,}/g) || [];
+          text = rawStrings.join(" ");
+        }
       } catch (e) {
         return NextResponse.json({ error: "PDF parse error: " + String(e) }, { status: 500 });
       }
