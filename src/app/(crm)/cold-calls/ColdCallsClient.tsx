@@ -129,15 +129,25 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
         return;
       }
 
-      // Send to server API (bypasses RLS)
-      const res = await fetch("/api/cold-calls/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: toInsert }),
-      });
-      const result = await res.json();
-      if (result.errors?.length) alert(`Ошибки: ${result.errors.join("\n")}`);
-      else alert(`Импортировано: ${result.imported} из ${result.total} записей`);
+      // Send to server API in batches of 200 (bypasses RLS + avoids payload limit)
+      let totalImported = 0;
+      const allErrors: string[] = [];
+      for (let i = 0; i < toInsert.length; i += 200) {
+        const batch = toInsert.slice(i, i + 200);
+        try {
+          const res = await fetch("/api/cold-calls/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rows: batch }),
+          });
+          if (!res.ok) { allErrors.push(`Batch ${Math.floor(i/200)+1}: HTTP ${res.status}`); continue; }
+          const result = await res.json();
+          totalImported += result.imported ?? 0;
+          if (result.errors?.length) allErrors.push(...result.errors);
+        } catch (e) { allErrors.push(`Batch ${Math.floor(i/200)+1}: ${e}`); }
+      }
+      if (allErrors.length) alert(`Импортировано: ${totalImported}\nОшибки: ${allErrors.slice(0,3).join("\n")}`);
+      else alert(`Импортировано: ${totalImported} из ${toInsert.length} записей`);
       window.location.reload();
     } catch (e) { alert("Ошибка импорта: " + String(e)); }
     setImporting(false);
