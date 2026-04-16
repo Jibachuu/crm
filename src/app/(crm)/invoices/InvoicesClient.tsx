@@ -266,11 +266,31 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     return `/api/image-proxy?url=${encodeURIComponent(url)}`;
   }
 
-  function printInvoice() {
+  async function printInvoice() {
     if (!previewInvoice) return;
 
     const stampSrc = supplier?.stamp_url ? proxyUrl(supplier.stamp_url) : "";
     const sigSrc = supplier?.signature_url ? proxyUrl(supplier.signature_url) : "";
+
+    // Generate QR code (CBR standard ST00012)
+    let qrDataUrl = "";
+    try {
+      const QRCode = (await import("qrcode")).default;
+      const total = previewItems.reduce((s: number, i: { total: number }) => s + i.total, 0);
+      const qrParts = [
+        "ST00012",
+        `Name=${supplier?.company_name ?? ""}`,
+        `PersonalAcc=${supplier?.account_number ?? ""}`,
+        `BankName=${supplier?.bank_name ?? ""}`,
+        `BIC=${supplier?.bik ?? ""}`,
+        `CorrespAcc=${supplier?.corr_account ?? ""}`,
+        `PayeeINN=${supplier?.inn ?? ""}`,
+        supplier?.kpp ? `KPP=${supplier.kpp}` : "",
+        `Sum=${Math.round(total * 100)}`,
+        `Purpose=Оплата по счёту №${previewInvoice.invoice_number} от ${new Date(previewInvoice.invoice_date).toLocaleDateString("ru-RU")}`,
+      ].filter(Boolean);
+      qrDataUrl = await QRCode.toDataURL(qrParts.join("|"), { width: 200, margin: 1 });
+    } catch { /* QR generation failed, skip */ }
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) { alert("Браузер заблокировал окно"); return; }
@@ -376,10 +396,16 @@ ${dueDateStr ? `<p style="margin-top:10px">Оплатить не позднее 
 Товар отпускается по факту прихода денег на р/с Поставщика, самовывозом, при наличии доверенности и паспорта.
 </div>
 
-<div class="sign-block">
+<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:25px">
+<div class="sign-block" style="position:relative;flex:1">
 ${stampSrc ? `<img class="stamp" src="${stampSrc}" />` : ""}
 ${sigSrc ? `<img class="signature" src="${sigSrc}" />` : ""}
 <p><strong>Предприниматель</strong> <span class="sign-line"></span> / ${supplier?.director ?? ""} /</p>
+</div>
+${qrDataUrl ? `<div style="text-align:center">
+<img src="${qrDataUrl}" style="width:150px;height:150px" />
+<p style="font-size:9px;color:#555;margin-top:4px">Отсканируйте для оплаты</p>
+</div>` : ""}
 </div>
 
 <script>
