@@ -28,6 +28,7 @@
     "imapflow": "^1.2.18",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
+    "jssip": "^3.13.6",
     "jszip": "^3.10.1",
     "lucide-react": "^1.7.0",
     "mailparser": "^3.9.6",

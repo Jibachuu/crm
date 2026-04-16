@@ -285,11 +285,11 @@ function CreateUserModal({ open, onClose, onSave }: {
 // ── Edit User Modal ──────────────────────────────────────────────────────────────
 function EditUserModal({ open, user, onClose, onSave }: {
   open: boolean; user: Record<string, string>; onClose: () => void;
-  onSave: (f: { full_name?: string; email?: string; password?: string; sip_number?: string; phone?: string }) => Promise<void>;
+  onSave: (f: { full_name?: string; email?: string; password?: string; sip_number?: string; sip_login?: string; sip_password?: string; phone?: string }) => Promise<void>;
 }) {
   const [form, setForm] = useState({
     full_name: user.full_name ?? "", email: user.email ?? "", password: "",
-    sip_number: user.sip_number ?? "", phone: user.phone ?? "",
+    sip_number: user.sip_number ?? "", sip_login: user.sip_login ?? "", sip_password: user.sip_password ?? "", phone: user.phone ?? "",
   });
   const [loading, setLoading] = useState(false);
 
@@ -298,7 +298,7 @@ function EditUserModal({ open, user, onClose, onSave }: {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const payload: Record<string, string> = { full_name: form.full_name, email: form.email, sip_number: form.sip_number, phone: form.phone };
+    const payload: Record<string, string> = { full_name: form.full_name, email: form.email, sip_number: form.sip_number, sip_login: form.sip_login, sip_password: form.sip_password, phone: form.phone };
     if (form.password) payload.password = form.password;
     await onSave(payload);
     setLoading(false);
@@ -325,6 +325,16 @@ function EditUserModal({ open, user, onClose, onSave }: {
         <div>
           <label style={lbl}>SIP-номер Novofon <span style={{ fontWeight: 400, textTransform: "none", color: "#bbb" }}>(внутренний номер АТС, напр. 100)</span></label>
           <input value={form.sip_number} onChange={(e) => inp("sip_number", e.target.value)} style={s} placeholder="100" />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label style={lbl}>SIP логин <span style={{ fontWeight: 400, textTransform: "none", color: "#bbb" }}>(из Novofon)</span></label>
+            <input value={form.sip_login} onChange={(e) => inp("sip_login", e.target.value)} style={s} placeholder="0108429" />
+          </div>
+          <div>
+            <label style={lbl}>SIP пароль</label>
+            <input value={form.sip_password} onChange={(e) => inp("sip_password", e.target.value)} style={s} placeholder="••••••" />
+          </div>
         </div>
         <div>
           <label style={lbl}>Новый пароль <span style={{ fontWeight: 400, textTransform: "none", color: "#bbb" }}>(оставьте пустым чтобы не менять)</span></label>
