@@ -11,7 +11,6 @@ import { formatDate, formatCurrency, getInitials } from "@/lib/utils";
 import PurgeButton from "@/components/ui/PurgeButton";
 import CreateDealModal from "./CreateDealModal";
 import { createClient } from "@/lib/supabase/client";
-import { usePagination } from "@/hooks/usePagination";
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -28,8 +27,6 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
   const { user: currentUser, isManager } = useCurrentUser();
   const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
   const hasFunnelStages = funnelStages.length > 0;
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
   const [deals, setDeals] = useState(initialDeals);
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
@@ -54,7 +51,12 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
     return matchesSearch && matchesStage && matchesDate && matchesOwner;
   });
 
-  const { visible: paginatedDeals, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 100);
+  const [showCount, setShowCount] = useState(100);
+  const paginatedDeals = filtered.slice(0, showCount);
+  const hasMore = showCount < filtered.length;
+  const remaining = Math.max(0, filtered.length - showCount);
+  const totalFiltered = filtered.length;
+  const visibleCount = Math.min(showCount, filtered.length);
 
   const filteredIds = filtered.map((d) => d.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
@@ -132,8 +134,6 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
   const filterOptions = hasFunnelStages
     ? funnelStages.map((s) => ({ value: s.id, label: s.name }))
     : Object.entries(OLD_STAGE_LABELS).map(([v, l]) => ({ value: v, label: l }));
-
-  if (!mounted) return <div className="text-center py-12 text-sm" style={{ color: "#aaa" }}>Загрузка...</div>;
 
   return (
     <div>
@@ -239,7 +239,7 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
             </div>
           )}
         </div>
-        <ShowMore hasMore={hasMore} remaining={remaining} total={totalFiltered} visibleCount={visibleCount} onShowMore={showMore} onShowAll={showAll} />
+        <ShowMore hasMore={hasMore} remaining={remaining} total={totalFiltered} visibleCount={visibleCount} onShowMore={() => setShowCount((c) => c + 100)} onShowAll={() => setShowCount(999999)} />
         </>
       ) : (
         /* KANBAN VIEW using funnel stages */
