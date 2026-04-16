@@ -105,6 +105,7 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
 
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
+      // Use server API to bypass RLS
 
       // Map all rows
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -128,18 +129,16 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
         return;
       }
 
-      // Batch insert (100 per batch)
-      let imported = 0;
-      for (let i = 0; i < toInsert.length; i += 100) {
-        const batch = toInsert.slice(i, i + 100);
-        const { data, error } = await supabase.from("cold_calls").insert(batch).select("*");
-        if (data) {
-          setRows((prev) => [...prev, ...data]);
-          imported += data.length;
-        }
-        if (error) { alert(`Ошибка батча ${Math.floor(i/100)+1}: ${error.message}`); break; }
-      }
-      alert(`Импортировано: ${imported} из ${toInsert.length} записей${unmapped > 0 ? `\n(${unmapped} полей не замаппились)` : ""}`);
+      // Send to server API (bypasses RLS)
+      const res = await fetch("/api/cold-calls/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: toInsert }),
+      });
+      const result = await res.json();
+      if (result.errors?.length) alert(`Ошибки: ${result.errors.join("\n")}`);
+      else alert(`Импортировано: ${result.imported} из ${result.total} записей`);
+      window.location.reload();
     } catch (e) { alert("Ошибка импорта: " + String(e)); }
     setImporting(false);
   }
