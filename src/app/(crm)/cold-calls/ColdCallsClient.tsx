@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Upload, Download, Search, Filter, Plus, Check, X, Phone } from "lucide-react";
+import { Upload, Search, Filter, Plus, Check, X, Phone, ArrowUpDown } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Input from "@/components/ui/Input";
@@ -15,7 +15,6 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   refused: { label: "Отказ", color: "#c62828", bg: "#ffebee" },
 };
 
-// Column definitions for the table
 const COLUMNS: { key: string; label: string; width?: number; editable?: boolean }[] = [
   { key: "status", label: "Статус", width: 120 },
   { key: "company_name", label: "Наименование", width: 200, editable: true },
@@ -27,22 +26,29 @@ const COLUMNS: { key: string; label: string; width?: number; editable?: boolean 
   { key: "director_name", label: "ФИО директора", width: 180, editable: true },
   { key: "director_position", label: "Должность рук.", width: 140, editable: true },
   { key: "main_website", label: "Осн. сайт", width: 150, editable: true },
-  { key: "kpp", label: "КПП", width: 100, editable: true },
-  { key: "ogrn", label: "ОГРН", width: 120, editable: true },
-  { key: "company_type", label: "Тип компании", width: 120, editable: true },
-  { key: "legal_address", label: "Юр. адрес", width: 200, editable: true },
-  { key: "main_okved", label: "Осн. ОКВЭД", width: 120, editable: true },
   { key: "revenue_2024", label: "Выручка 2024", width: 120, editable: true },
   { key: "revenue_2025", label: "Выручка 2025", width: 120, editable: true },
   { key: "call_reached", label: "Дозвон", width: 70 },
-  { key: "discovered_name", label: "Узнанное имя", width: 150, editable: true },
+  { key: "discovered_name", label: "Узн. имя", width: 150, editable: true },
   { key: "discovered_phone", label: "Узн. телефон", width: 130, editable: true },
   { key: "discovered_email", label: "Узн. email", width: 150, editable: true },
   { key: "discovered_position", label: "Узн. должность", width: 140, editable: true },
   { key: "comment", label: "Комментарий", width: 200, editable: true },
 ];
 
-// Map spreadsheet column names → DB field names
+const DB_FIELDS = [
+  "company_name", "inn", "kpp", "ogrn", "city", "region", "legal_address", "postal_code",
+  "company_type", "registration_date", "main_okved", "additional_okveds",
+  "director_name", "director_inn", "director_gender", "director_position", "director_since",
+  "years_since_registration", "main_phone", "additional_phone_1", "additional_phone_2", "additional_phone_3",
+  "main_email", "additional_email_1", "additional_email_2", "additional_email_3",
+  "main_website", "additional_website_1", "additional_website_2", "additional_website_3",
+  "founders", "sro_nopriz", "sro_nostroy",
+  "revenue_2022", "revenue_2023", "revenue_2024", "revenue_2025",
+  "profit_2022", "profit_2023", "profit_2024", "profit_2025",
+  "discovered_phone", "discovered_email", "discovered_name", "discovered_position", "comment",
+];
+
 const IMPORT_MAP: Record<string, string> = {
   "наименование": "company_name", "инн": "inn", "кпп": "kpp", "огрн": "ogrn",
   "город": "city", "регион": "region",
@@ -63,7 +69,10 @@ const IMPORT_MAP: Record<string, string> = {
   "выручка, тыс. рублей (2024)": "revenue_2024", "выручка, тыс. рублей (2025)": "revenue_2025",
   "чистая прибыль (убыток), тыс. рублей (2022)": "profit_2022", "чистая прибыль (убыток), тыс. рублей (2023)": "profit_2023",
   "чистая прибыль (убыток), тыс. рублей (2024)": "profit_2024", "чистая прибыль (убыток), тыс. рублей (2025)": "profit_2025",
-  "комментарий": "comment",
+  "комментарий": "comment", "примечание": "comment", "примечания": "comment",
+  "узнанный номер телефона": "discovered_phone", "узнанный эмайл": "discovered_email",
+  "узнанное имя": "discovered_name", "узнанная должность": "discovered_position",
+  "дозвон/нет": "call_reached",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,20 +81,50 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
   const [rows, setRows] = useState<any[]>(initialRows);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [regionFilter, setRegionFilter] = useState("");
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [convertOpen, setConvertOpen] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [showCount, setShowCount] = useState(200);
+
+  // Mapping state
+  const [mappingOpen, setMappingOpen] = useState(false);
+  const [fileHeaders, setFileHeaders] = useState<string[]>([]);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [pendingRows, setPendingRows] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [greenPhones, setGreenPhones] = useState<Map<number, string>>(new Map());
+
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const filtered = rows.filter((r) => {
+  // Filter + sort
+  let filtered = rows.filter((r) => {
     if (statusFilter !== "all" && r.status !== statusFilter) return false;
+    if (regionFilter && !r.region?.toLowerCase().includes(regionFilter.toLowerCase())) return false;
     if (!search) return true;
     const q = search.toLowerCase();
-    return (r.company_name?.toLowerCase().includes(q)) ||
-      (r.inn?.includes(q)) ||
-      (r.main_phone?.includes(q)) ||
-      (r.director_name?.toLowerCase().includes(q)) ||
-      (r.city?.toLowerCase().includes(q));
+    return (r.company_name?.toLowerCase().includes(q)) || (r.inn?.includes(q)) || (r.main_phone?.includes(q)) || (r.director_name?.toLowerCase().includes(q)) || (r.city?.toLowerCase().includes(q));
   });
+
+  // Sort: discovered_phone first, then by sortField
+  filtered = [...filtered].sort((a, b) => {
+    // Always: rows with discovered_phone first
+    const aHasPhone = a.discovered_phone ? 1 : 0;
+    const bHasPhone = b.discovered_phone ? 1 : 0;
+    if (aHasPhone !== bHasPhone) return bHasPhone - aHasPhone;
+    // Then by sort field
+    if (sortField) {
+      const aVal = Number(a[sortField]) || 0;
+      const bVal = Number(b[sortField]) || 0;
+      return sortDir === "desc" ? bVal - aVal : aVal - bVal;
+    }
+    return 0;
+  });
+
+  const visible = filtered.slice(0, showCount);
+  const regions = [...new Set(rows.map((r) => r.region).filter(Boolean))].sort();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function updateField(id: string, field: string, value: any) {
@@ -93,52 +132,91 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
     setRows((prev) => prev.map((r) => r.id === id ? { ...r, [field]: value } : r));
   }
 
-  async function importXlsx(file: File) {
-    setImporting(true);
-    try {
-      const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer);
+  function handleFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const buf = e.target?.result;
+      if (!buf) return;
+      const wb = XLSX.read(buf, { type: "array", cellStyles: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const jsonRows: any[] = XLSX.utils.sheet_to_json(ws);
+      const jsonRows: any[] = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      if (!jsonRows.length) { alert("Файл пустой"); return; }
 
+      const headers = Object.keys(jsonRows[0]);
+
+      // Try to detect green cells (phone numbers) — check cell fill color
+      const greens = new Map<number, string>();
+      try {
+        const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+        for (let row = range.s.r + 1; row <= range.e.r; row++) {
+          for (let col = range.s.c; col <= range.e.c; col++) {
+            const addr = XLSX.utils.encode_cell({ r: row, c: col });
+            const cell = ws[addr];
+            if (!cell) continue;
+            // Check if cell has green fill
+            const fill = cell.s?.fill?.fgColor?.rgb || cell.s?.fill?.bgColor?.rgb || "";
+            const isGreen = fill && (fill.toLowerCase().includes("00ff00") || fill.toLowerCase().includes("92d050") || fill.toLowerCase().includes("00b050") || fill.toLowerCase().includes("c6efce"));
+            if (isGreen && cell.v) {
+              const val = String(cell.v).trim();
+              if (val && /[\d+\-()]{7,}/.test(val)) {
+                greens.set(row - 1, val); // row-1 because header is row 0
+              }
+            }
+          }
+        }
+      } catch { /* ignore style parsing errors */ }
+      setGreenPhones(greens);
+
+      // Auto-map headers
+      const autoMapping: Record<string, string> = {};
+      for (const h of headers) {
+        const norm = h.toLowerCase().trim();
+        if (IMPORT_MAP[norm]) autoMapping[h] = IMPORT_MAP[norm];
+      }
+
+      setFileHeaders(headers);
+      setMapping(autoMapping);
+      setPendingRows(jsonRows);
+      setMappingOpen(true);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function doImport() {
+    setMappingOpen(false);
+    setImporting(true);
+    try {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      // Use server API to bypass RLS
 
-      // Map all rows
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toInsert: any[] = [];
-      let unmapped = 0;
-      for (const raw of jsonRows) {
+      for (let i = 0; i < pendingRows.length; i++) {
+        const raw = pendingRows[i];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mapped: any = { status: "waiting", created_by: user?.id };
-        for (const [key, val] of Object.entries(raw)) {
-          const dbField = IMPORT_MAP[key.toLowerCase().trim()];
-          if (dbField) mapped[dbField] = String(val).trim();
-          else unmapped++;
+        for (const [header, dbField] of Object.entries(mapping)) {
+          if (dbField && raw[header] !== undefined && raw[header] !== "") {
+            mapped[dbField] = String(raw[header]).trim();
+          }
+        }
+        // Green phone → discovered_phone
+        if (greenPhones.has(i) && !mapped.discovered_phone) {
+          mapped.discovered_phone = greenPhones.get(i);
         }
         if (!mapped.company_name && !mapped.inn && !mapped.main_phone) continue;
         toInsert.push(mapped);
       }
 
-      if (toInsert.length === 0) {
-        alert(`Не удалось замаппить столбцы.\nСтолбцы в файле: ${Object.keys(jsonRows[0] || {}).join(", ")}\n\nУбедитесь что названия столбцов на русском.`);
-        setImporting(false);
-        return;
-      }
+      if (!toInsert.length) { alert("Нет данных для импорта"); setImporting(false); return; }
 
-      // Send to server API in batches of 200 (bypasses RLS + avoids payload limit)
       let totalImported = 0;
       const allErrors: string[] = [];
       for (let i = 0; i < toInsert.length; i += 200) {
         const batch = toInsert.slice(i, i + 200);
         try {
-          const res = await fetch("/api/cold-calls/import", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ rows: batch }),
-          });
+          const res = await fetch("/api/cold-calls/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: batch }) });
           if (!res.ok) { allErrors.push(`Batch ${Math.floor(i/200)+1}: HTTP ${res.status}`); continue; }
           const result = await res.json();
           totalImported += result.imported ?? 0;
@@ -146,13 +224,17 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
         } catch (e) { allErrors.push(`Batch ${Math.floor(i/200)+1}: ${e}`); }
       }
       if (allErrors.length) alert(`Импортировано: ${totalImported}\nОшибки: ${allErrors.slice(0,3).join("\n")}`);
-      else alert(`Импортировано: ${totalImported} из ${toInsert.length} записей`);
+      else alert(`Импортировано: ${totalImported} из ${toInsert.length}`);
       window.location.reload();
-    } catch (e) { alert("Ошибка импорта: " + String(e)); }
+    } catch (e) { alert("Ошибка: " + String(e)); }
     setImporting(false);
   }
 
-  // Convert to lead+contact+company
+  function toggleSort(field: string) {
+    if (sortField === field) setSortDir((d) => d === "desc" ? "asc" : "desc");
+    else { setSortField(field); setSortDir("desc"); }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const convertRow = rows.find((r) => r.id === convertOpen) as any;
 
@@ -178,12 +260,31 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
             </button>
           ))}
         </div>
-        <Button size="sm" variant="secondary" onClick={() => fileRef.current?.click()} disabled={importing}>
+        <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)}
+          className="text-xs px-2 py-1 rounded" style={{ border: "1px solid #d0d0d0", maxWidth: 150 }}>
+          <option value="">Все регионы</option>
+          {regions.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <button onClick={() => toggleSort("revenue_2024")} className="text-xs px-2 py-1 rounded flex items-center gap-1"
+          style={{ border: "1px solid #d0d0d0", color: sortField === "revenue_2024" ? "#0067a5" : "#888" }}>
+          <ArrowUpDown size={12} /> Выручка {sortField === "revenue_2024" ? (sortDir === "desc" ? "↓" : "↑") : ""}
+        </button>
+        <Button size="sm" variant="secondary" onClick={() => { const input = document.createElement("input"); input.type = "file"; input.accept = ".xlsx,.xls,.csv"; input.onchange = () => { if (input.files?.[0]) handleFile(input.files[0]); }; input.click(); }} disabled={importing}>
           <Upload size={13} /> {importing ? "Импорт..." : "Импорт XLSX"}
         </Button>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => {
-          const f = e.target.files?.[0]; if (f) importXlsx(f); e.target.value = "";
-        }} />
+        {rows.length > 0 && (
+          <button onClick={async () => {
+            if (!confirm(`Удалить ВСЕ ${rows.length} записей?`)) return;
+            for (let i = 0; i < rows.length; i += 100) {
+              const ids = rows.slice(i, i + 100).map((r) => r.id);
+              for (const id of ids) await fetch("/api/cold-calls", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", id }) });
+            }
+            setRows([]);
+          }} className="text-xs px-2 py-1 rounded hover:bg-red-50" style={{ color: "#c62828", border: "1px solid #c62828" }}>
+            <X size={12} className="inline mr-1" />Удалить все
+          </button>
+        )}
+        <span className="text-xs" style={{ color: "#aaa" }}>{filtered.length} записей</span>
       </div>
 
       {/* Table */}
@@ -193,19 +294,21 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
             <tr style={{ background: "#fafafa", borderBottom: "2px solid #e4e4e4" }}>
               <th className="px-2 py-2 text-left font-semibold sticky left-0 bg-gray-50 z-20" style={{ width: 40, color: "#888" }}>✓</th>
               {COLUMNS.map((col) => (
-                <th key={col.key} className="px-2 py-2 text-left font-semibold whitespace-nowrap" style={{ width: col.width, color: "#888" }}>{col.label}</th>
+                <th key={col.key} className="px-2 py-2 text-left font-semibold whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                  style={{ width: col.width, color: "#888" }}
+                  onClick={() => col.key.includes("revenue") || col.key.includes("profit") ? toggleSort(col.key) : null}>
+                  {col.label}
+                  {sortField === col.key && <span className="ml-1">{sortDir === "desc" ? "↓" : "↑"}</span>}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map((row) => (
-              <tr key={row.id} style={{ borderBottom: "1px solid #f0f0f0" }} className="hover:bg-gray-50">
-                {/* Tick → convert */}
+            {visible.map((row) => (
+              <tr key={row.id} style={{ borderBottom: "1px solid #f0f0f0", background: row.discovered_phone ? "#f0fff4" : "transparent" }} className="hover:bg-gray-50">
                 <td className="px-2 py-1.5 sticky left-0 bg-white z-10">
                   {row.status !== "lead" ? (
-                    <button onClick={() => { setConvertOpen(row.id); }}
-                      className="w-5 h-5 rounded border flex items-center justify-center hover:bg-green-50"
-                      style={{ borderColor: "#d0d0d0" }} title="Конвертировать в лид">
+                    <button onClick={() => setConvertOpen(row.id)} className="w-5 h-5 rounded border flex items-center justify-center hover:bg-green-50" style={{ borderColor: "#d0d0d0" }}>
                       <Check size={12} style={{ color: "#ccc" }} />
                     </button>
                   ) : (
@@ -223,13 +326,11 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
                         {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                       </select>
                     ) : col.key === "call_reached" ? (
-                      <input type="checkbox" checked={row.call_reached ?? false}
-                        onChange={(e) => updateField(row.id, "call_reached", e.target.checked)}
-                        style={{ accentColor: "#0067a5" }} />
+                      <input type="checkbox" checked={row.call_reached ?? false} onChange={(e) => updateField(row.id, "call_reached", e.target.checked)} style={{ accentColor: "#0067a5" }} />
                     ) : col.editable ? (
                       <input value={row[col.key] ?? ""} onChange={(e) => updateField(row.id, col.key, e.target.value)}
                         className="w-full text-xs px-1 py-0.5 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
-                        style={{ border: "1px solid transparent" }}
+                        style={{ border: "1px solid transparent", background: col.key === "discovered_phone" && row[col.key] ? "#e8f5e9" : "transparent" }}
                         onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = "#d0d0d0"; }}
                         onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = "transparent"; }} />
                     ) : (
@@ -237,17 +338,57 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
                     )}
                   </td>
                 ))}
+                <td className="px-1 py-1">
+                  <button onClick={() => { fetch("/api/cold-calls", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", id: row.id }) }); setRows((prev) => prev.filter((r) => r.id !== row.id)); }}
+                    className="p-1 rounded hover:bg-red-50" title="Удалить"><X size={12} style={{ color: "#c62828" }} /></button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {filtered.length === 0 && (
+        {visible.length === 0 && (
           <div className="text-center py-12">
             <Phone size={32} className="mx-auto mb-2" style={{ color: "#ddd" }} />
             <p className="text-sm" style={{ color: "#aaa" }}>Нет записей. Импортируйте XLSX файл.</p>
           </div>
         )}
       </div>
+      {showCount < filtered.length && (
+        <div className="flex justify-center mt-3">
+          <button onClick={() => setShowCount((c) => c + 200)} className="text-sm px-4 py-1.5 rounded" style={{ color: "#0067a5", border: "1px solid #d0e8f5" }}>
+            Показать ещё {Math.min(200, filtered.length - showCount)}
+          </button>
+        </div>
+      )}
+
+      {/* Mapping Modal */}
+      <Modal open={mappingOpen} onClose={() => setMappingOpen(false)} title={`Маппинг столбцов (${pendingRows.length} строк)`} size="lg">
+        <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
+          <p className="text-xs" style={{ color: "#888" }}>Свяжите столбцы из файла с полями CRM. Незамапленные столбцы будут пропущены.</p>
+          {fileHeaders.map((header) => (
+            <div key={header} className="flex items-center gap-3">
+              <span className="text-xs font-medium w-60 truncate" style={{ color: "#333" }}>{header}</span>
+              <span className="text-xs" style={{ color: "#aaa" }}>→</span>
+              <select value={mapping[header] || ""} onChange={(e) => setMapping((m) => ({ ...m, [header]: e.target.value }))}
+                className="text-xs px-2 py-1 rounded flex-1" style={{ border: "1px solid #d0d0d0" }}>
+                <option value="">— Пропустить —</option>
+                {DB_FIELDS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+          ))}
+          {greenPhones.size > 0 && (
+            <p className="text-xs p-2 rounded" style={{ background: "#e8f5e9", color: "#2e7d32" }}>
+              🟢 Обнаружено {greenPhones.size} зелёных ячеек с телефонами → будут записаны в "Узн. телефон"
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" size="sm" onClick={() => setMappingOpen(false)}>Отмена</Button>
+            <Button size="sm" onClick={doImport} loading={importing}>
+              <Upload size={13} /> Импортировать {pendingRows.length} строк
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Convert Modal */}
       <Modal open={!!convertOpen} onClose={() => setConvertOpen(null)} title="Конвертировать в лид" size="lg">
@@ -283,87 +424,47 @@ function ConvertForm({ row, users, onDone, onCancel }: { row: any; users: { id: 
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     const ids: { lead?: string; contact?: string; company?: string } = {};
-
-    // 1. Create company
     if (companyName) {
-      const { data } = await supabase.from("companies").insert({
-        name: companyName, inn: companyInn || null, phone: companyPhone || null,
-        email: companyEmail || null, legal_address: companyAddress || null,
-        assigned_to: assignedTo || user?.id, created_by: user?.id,
-      }).select("id").single();
+      const { data } = await supabase.from("companies").insert({ name: companyName, inn: companyInn || null, phone: companyPhone || null, email: companyEmail || null, legal_address: companyAddress || null, assigned_to: assignedTo || user?.id, created_by: user?.id }).select("id").single();
       if (data) ids.company = data.id;
     }
-
-    // 2. Create contact
     if (contactName) {
-      const { data } = await supabase.from("contacts").insert({
-        full_name: contactName, phone: contactPhone || null,
-        email: contactEmail || null, position: contactPosition || null,
-        company_id: ids.company || null,
-        assigned_to: assignedTo || user?.id, created_by: user?.id,
-      }).select("id").single();
+      const { data } = await supabase.from("contacts").insert({ full_name: contactName, phone: contactPhone || null, email: contactEmail || null, position: contactPosition || null, company_id: ids.company || null, assigned_to: assignedTo || user?.id, created_by: user?.id }).select("id").single();
       if (data) ids.contact = data.id;
     }
-
-    // 3. Create lead
-    const { data: lead } = await supabase.from("leads").insert({
-      title: leadTitle, source: "cold_call",
-      contact_id: ids.contact || null, company_id: ids.company || null,
-      assigned_to: assignedTo || user?.id, created_by: user?.id,
-    }).select("id").single();
+    const { data: lead } = await supabase.from("leads").insert({ title: leadTitle, source: "cold_call", contact_id: ids.contact || null, company_id: ids.company || null, assigned_to: assignedTo || user?.id, created_by: user?.id }).select("id").single();
     if (lead) ids.lead = lead.id;
-
     setSaving(false);
     onDone(ids);
   }
 
   return (
     <div className="p-5 space-y-4">
-      <p className="text-xs" style={{ color: "#888" }}>Данные предзаполнены из строки прозвона. Проверьте и нажмите «Создать».</p>
-
       <div className="p-3 rounded space-y-2" style={{ background: "#f8f9fa", border: "1px solid #e0e0e0" }}>
         <h4 className="text-xs font-semibold" style={{ color: "#0067a5" }}>Компания</h4>
         <div className="grid grid-cols-2 gap-2">
           <Input label="Название" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
           <Input label="ИНН" value={companyInn} onChange={(e) => setCompanyInn(e.target.value)} />
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          <Input label="Телефон" value={companyPhone} onChange={(e) => setCompanyPhone(e.target.value)} />
-          <Input label="Email" value={companyEmail} onChange={(e) => setCompanyEmail(e.target.value)} />
-          <Input label="Адрес" value={companyAddress} onChange={(e) => setCompanyAddress(e.target.value)} />
-        </div>
       </div>
-
       <div className="p-3 rounded space-y-2" style={{ background: "#f8f9fa", border: "1px solid #e0e0e0" }}>
         <h4 className="text-xs font-semibold" style={{ color: "#0067a5" }}>Контакт</h4>
         <div className="grid grid-cols-2 gap-2">
           <Input label="ФИО" value={contactName} onChange={(e) => setContactName(e.target.value)} />
-          <Input label="Должность" value={contactPosition} onChange={(e) => setContactPosition(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
           <Input label="Телефон" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
-          <Input label="Email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
         </div>
       </div>
-
       <div className="p-3 rounded space-y-2" style={{ background: "#f8f9fa", border: "1px solid #e0e0e0" }}>
         <h4 className="text-xs font-semibold" style={{ color: "#0067a5" }}>Лид</h4>
-        <Input label="Название лида" value={leadTitle} onChange={(e) => setLeadTitle(e.target.value)} />
-        <div>
-          <label className="text-sm font-medium text-slate-700 block mb-1">Ответственный</label>
-          <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}
-            className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-            <option value="">Текущий пользователь</option>
-            {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-          </select>
-        </div>
+        <Input label="Название" value={leadTitle} onChange={(e) => setLeadTitle(e.target.value)} />
+        <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2">
+          <option value="">Текущий пользователь</option>
+          {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+        </select>
       </div>
-
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex justify-end gap-2">
         <Button variant="secondary" size="sm" onClick={onCancel}>Отмена</Button>
-        <Button size="sm" onClick={handleSave} loading={saving}>
-          <Plus size={13} /> Создать лид + контакт + компанию
-        </Button>
+        <Button size="sm" onClick={handleSave} loading={saving}><Plus size={13} /> Создать</Button>
       </div>
     </div>
   );
