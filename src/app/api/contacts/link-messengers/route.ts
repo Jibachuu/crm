@@ -40,17 +40,13 @@ export async function POST(req: NextRequest) {
 
   const results: { telegram?: { id: string; username?: string; name?: string }; maks?: { id: string; name?: string }; error?: string } = {};
 
-  // --- Telegram: try username first, then phone ---
+  // --- Telegram: try username first, then phone (direct to TG proxy) ---
   if (!contact.telegram_id) {
-    // 1. By username (most reliable for TG)
+    const { tgProxy } = await import("@/lib/telegram/proxy");
+    // 1. By username
     if (tgUsername) {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_URL || ""}/api/telegram/add-contact`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Cookie: req.headers.get("cookie") || "" },
-          body: JSON.stringify({ username: tgUsername }),
-        });
-        const data = await res.json();
+        const data = await tgProxy<{ ok: boolean; user?: { id: string; username?: string; firstName?: string; lastName?: string } }>("/add-contact", { method: "POST", body: { username: tgUsername } });
         if (data.ok && data.user?.id) {
           results.telegram = {
             id: String(data.user.id),
@@ -66,12 +62,7 @@ export async function POST(req: NextRequest) {
         const variants = normalizePhone(rawPhone);
         for (const phone of variants) {
           try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_URL || ""}/api/telegram/add-contact`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Cookie: req.headers.get("cookie") || "" },
-              body: JSON.stringify({ phone }),
-            });
-            const data = await res.json();
+            const data = await tgProxy<{ ok: boolean; user?: { id: string; username?: string; firstName?: string; lastName?: string } }>("/add-contact", { method: "POST", body: { phone } });
             if (data.ok && data.user?.id) {
               results.telegram = {
                 id: String(data.user.id),
