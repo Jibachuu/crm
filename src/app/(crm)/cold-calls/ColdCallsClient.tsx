@@ -105,20 +105,41 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
 
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      let imported = 0;
 
+      // Map all rows
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toInsert: any[] = [];
+      let unmapped = 0;
       for (const raw of jsonRows) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const mapped: any = { status: "waiting", created_by: user?.id };
         for (const [key, val] of Object.entries(raw)) {
           const dbField = IMPORT_MAP[key.toLowerCase().trim()];
           if (dbField) mapped[dbField] = String(val).trim();
+          else unmapped++;
         }
-        if (!mapped.company_name && !mapped.inn) continue;
-        const { data } = await supabase.from("cold_calls").insert(mapped).select("*").single();
-        if (data) { setRows((prev) => [...prev, data]); imported++; }
+        if (!mapped.company_name && !mapped.inn && !mapped.main_phone) continue;
+        toInsert.push(mapped);
       }
-      alert(`Импортировано: ${imported} записей`);
+
+      if (toInsert.length === 0) {
+        alert(`Не удалось замаппить столбцы.\nСтолбцы в файле: ${Object.keys(jsonRows[0] || {}).join(", ")}\n\nУбедитесь что названия столбцов на русском.`);
+        setImporting(false);
+        return;
+      }
+
+      // Batch insert (100 per batch)
+      let imported = 0;
+      for (let i = 0; i < toInsert.length; i += 100) {
+        const batch = toInsert.slice(i, i + 100);
+        const { data, error } = await supabase.from("cold_calls").insert(batch).select("*");
+        if (data) {
+          setRows((prev) => [...prev, ...data]);
+          imported += data.length;
+        }
+        if (error) { alert(`Ошибка батча ${Math.floor(i/100)+1}: ${error.message}`); break; }
+      }
+      alert(`Импортировано: ${imported} из ${toInsert.length} записей${unmapped > 0 ? `\n(${unmapped} полей не замаппились)` : ""}`);
     } catch (e) { alert("Ошибка импорта: " + String(e)); }
     setImporting(false);
   }
