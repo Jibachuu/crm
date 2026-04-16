@@ -49,16 +49,16 @@ export default function ContactDetail({ contact: initialContact, communications:
 
   async function callPhone(phone: string) {
     setCalling(true);
-    const res = await fetch("/api/zadarma/call", {
+    const res = await fetch("/api/novofon/call", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone }),
     });
     const data = await res.json();
-    if (data.status === "calling") {
-      alert(`Звонок инициирован на ${phone}. Ответьте на входящий звонок Zadarma.`);
+    if (data.status === "success") {
+      alert(`Звонок инициирован на ${phone}. Ответьте на входящий звонок.`);
     } else {
-      alert(`Ошибка: ${data.error ?? "Не удалось инициировать звонок"}`);
+      alert(`Ошибка: ${data.error ?? data.message ?? "Не удалось инициировать звонок"}`);
     }
     setCalling(false);
   }

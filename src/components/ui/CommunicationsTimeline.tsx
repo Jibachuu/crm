@@ -202,6 +202,18 @@ export default function CommunicationsTimeline({ entityType, entityId, refreshKe
                           {isExpanded ? "Свернуть" : "Показать полностью"}
                         </button>
                       )}
+                      {(c as { recording_url?: string }).recording_url && !(c as { recording_url?: string }).recording_url!.startsWith("pending:") && (
+                        <div className="mt-2">
+                          <audio controls preload="none" className="h-8" style={{ maxWidth: 280 }}>
+                            <source src={(c as { recording_url?: string }).recording_url!} />
+                          </audio>
+                        </div>
+                      )}
+                      {(c as { duration_seconds?: number }).duration_seconds != null && (
+                        <span className="text-xs mt-1 inline-block" style={{ color: "#888" }}>
+                          Длительность: {Math.floor(((c as { duration_seconds?: number }).duration_seconds ?? 0) / 60)}:{String(((c as { duration_seconds?: number }).duration_seconds ?? 0) % 60).padStart(2, "0")}
+                        </span>
+                      )}
                     </>
                   )}
                 </div>

@@ -5,7 +5,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip auth entirely for webhooks and external-access APIs (saves ~100ms per request)
-  if (pathname.startsWith("/api/webhooks") || pathname.startsWith("/api/auto-leads")) {
+  if (pathname.startsWith("/api/webhooks") || pathname.startsWith("/api/auto-leads") || pathname.startsWith("/api/novofon/webhook")) {
     return NextResponse.next({ request });
   }
 
