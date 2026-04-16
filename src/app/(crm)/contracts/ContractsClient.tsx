@@ -96,7 +96,7 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
         }
         alert("Реквизиты извлечены!");
       } else {
-        alert("Не удалось извлечь реквизиты. Попробуйте ввести вручную.");
+        alert(`Не удалось извлечь реквизиты.\nИзвлечено символов: ${data.rawTextLength || 0}\nТекст: ${(data.textPreview || "").slice(0, 200)}\n\nПопробуйте DOCX или введите вручную.`);
       }
     } catch (e) {
       alert("Ошибка: " + String(e));

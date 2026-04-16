@@ -85,19 +85,35 @@ export async function POST(req: NextRequest) {
 
     if (ext === "pdf") {
       try {
-        // Extract readable text from PDF binary using regex
-        // Works for most business PDFs with embedded text (not scanned images)
+        const zlib = await import("zlib");
         const buffer = Buffer.from(await file.arrayBuffer());
         const raw = buffer.toString("latin1");
-        // Extract text between BT...ET blocks (PDF text objects)
         const textBlocks: string[] = [];
+
+        // 1. Decompress FlateDecode streams and extract text
+        const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+        let match;
+        while ((match = streamRegex.exec(raw)) !== null) {
+          try {
+            const compressed = Buffer.from(match[1], "latin1");
+            const decompressed = zlib.inflateSync(compressed).toString("latin1");
+            // Extract text from BT..ET blocks in decompressed stream
+            const btEt = decompressed.match(/BT[\s\S]*?ET/g) || [];
+            for (const block of btEt) {
+              const strings = block.match(/\(([^)]*)\)/g);
+              if (strings) textBlocks.push(...strings.map((s) => s.slice(1, -1)));
+            }
+          } catch { /* not a zlib stream or not text — skip */ }
+        }
+
+        // 2. Also try uncompressed BT..ET blocks
         const btEt = raw.match(/BT[\s\S]*?ET/g) || [];
         for (const block of btEt) {
-          // Extract strings in parentheses: (text) Tj
           const strings = block.match(/\(([^)]*)\)/g);
           if (strings) textBlocks.push(...strings.map((s) => s.slice(1, -1)));
         }
-        // Also try to decode UTF-16BE hex strings: <FEFF...> Tj
+
+        // 3. UTF-16BE hex strings
         const hexStrings = raw.match(/<FEFF[0-9A-Fa-f]+>/g) || [];
         for (const hs of hexStrings) {
           const hex = hs.slice(5, -1);
@@ -108,14 +124,15 @@ export async function POST(req: NextRequest) {
           }
           if (decoded.trim()) textBlocks.push(decoded);
         }
-        // Decode common PDF escape sequences
+
         text = textBlocks.join(" ")
           .replace(/\\n/g, "\n").replace(/\\r/g, "")
           .replace(/\\(\(|\)|\\)/g, "$1")
           .replace(/\x00/g, "");
-        // If no text extracted via BT/ET, try raw string extraction
-        if (text.trim().length < 20) {
-          const rawStrings = raw.match(/[\x20-\x7EА-Яа-яЁё]{4,}/g) || [];
+
+        // 4. Fallback: extract any readable strings from raw binary
+        if (text.trim().length < 30) {
+          const rawStrings = raw.match(/[\x20-\x7EА-Яа-яЁё]{5,}/g) || [];
           text = rawStrings.join(" ");
         }
       } catch (e) {
@@ -139,7 +156,7 @@ export async function POST(req: NextRequest) {
     }
 
     const requisites = parseRequisites(text);
-    return NextResponse.json({ requisites, rawTextLength: text.length });
+    return NextResponse.json({ requisites, rawTextLength: text.length, textPreview: text.slice(0, 500) });
   }
 
   // JSON text (fallback)
