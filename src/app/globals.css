@@ -59,6 +59,24 @@ tbody tr:hover {
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
+/* Mobile: disable hover effects (touch devices) */
+@media (hover: none) {
+  button:hover:not(:disabled), [role="button"]:hover { opacity: 1; }
+  .sidebar-link:hover { padding-left: inherit !important; }
+}
+
+/* Mobile: add padding for hamburger button and bottom tab bar */
+@media (max-width: 767px) {
+  /* Space for hamburger */
+  header, .mobile-header-pad { padding-left: 52px !important; }
+  /* Space for bottom tab bar */
+  main { padding-bottom: 64px !important; }
+  /* Improve tap targets */
+  button, a, [role="button"] { min-height: 36px; }
+  /* Safe area for notched phones */
+  body { padding-bottom: env(safe-area-inset-bottom); }
+}
+
 /* Fix: Tailwind v4 "hidden" (display:none) breaks file inputs inside labels.
    Override to visually hidden but still clickable via label association. */
 @layer base {
