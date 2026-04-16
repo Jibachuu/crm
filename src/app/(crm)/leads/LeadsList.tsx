@@ -35,25 +35,21 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
   const { user: currentUser, isManager } = useCurrentUser();
   const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
   const funnelMap = Object.fromEntries(funnels.map((f) => [f.id, f]));
-  const savedL = typeof sessionStorage !== "undefined" ? JSON.parse(sessionStorage.getItem("leads_filters") || "{}") : {};
   const [leads, setLeads] = useState(initialLeads);
-  const [search, setSearch] = useState(savedL.search || "");
-  const [statusFilter, setStatusFilter] = useState(savedL.statusFilter || "all");
-  const [funnelFilter, setFunnelFilter] = useState(savedL.funnelFilter || "all");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [funnelFilter, setFunnelFilter] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkTaskOpen, setBulkTaskOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"list" | "kanban">(savedL.viewMode || "list");
+  const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
   const [kanbanLimits, setKanbanLimits] = useState<Record<string, number>>({});
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
 
-  useEffect(() => {
-    try { sessionStorage.setItem("leads_filters", JSON.stringify({ search, statusFilter, funnelFilter, viewMode, dateFrom, dateTo })); } catch {}
-  }, [search, statusFilter, funnelFilter, viewMode, dateFrom, dateTo]);
 
   useEffect(() => {
     const saved = localStorage.getItem("leads_view_mode");
