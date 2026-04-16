@@ -89,8 +89,7 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function updateField(id: string, field: string, value: any) {
-    const supabase = createClient();
-    await supabase.from("cold_calls").update({ [field]: value, updated_at: new Date().toISOString() }).eq("id", id);
+    fetch("/api/cold-calls", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", id, field, value }) }).catch(() => {});
     setRows((prev) => prev.map((r) => r.id === id ? { ...r, [field]: value } : r));
   }
 
