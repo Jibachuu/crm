@@ -4,63 +4,124 @@ import { createClient } from "@/lib/supabase/server";
 function parseRequisites(text: string) {
   const r: Record<string, string> = {};
 
-  const nameMatch = text.match(/(ООО|ОАО|ЗАО|АО|ПАО|ИП)\s*[«"""]([^»"""]+)[»"""]/i) ||
-    text.match(/(ООО|ОАО|ЗАО|АО|ПАО)\s+[«"""]?([^»"""\n,]{3,60})/i);
-  if (nameMatch) {
-    r.buyer_legal_form = nameMatch[1] === "ООО" ? "Общество с ограниченной ответственностью" :
-      nameMatch[1] === "АО" ? "Акционерное общество" :
-      nameMatch[1] === "ПАО" ? "Публичное акционерное общество" :
-      nameMatch[1] === "ИП" ? "Индивидуальный предприниматель" : nameMatch[1];
-    r.buyer_name = nameMatch[2].trim().replace(/[»"""]/g, "");
+  // Helper: find value after label (handles "Label    Value" and "Label: Value" and multi-line)
+  function findAfter(label: string | RegExp): string {
+    const re = typeof label === "string" ? new RegExp(label + "[:\\s]+(.+)", "i") : label;
+    const m = text.match(re);
+    return m?.[1]?.trim().replace(/[,.\s]+$/, "") || "";
   }
 
-  const innMatch = text.match(/ИНН\s*:?\s*(\d{10,12})/i);
-  if (innMatch) r.buyer_inn = innMatch[1];
-
-  const kppMatch = text.match(/КПП\s*:?\s*(\d{9})/i);
-  if (kppMatch) r.buyer_kpp = kppMatch[1];
-
-  const ogrnMatch = text.match(/ОГРН\s*:?\s*(\d{13,15})/i);
-  if (ogrnMatch) r.buyer_ogrn = ogrnMatch[1];
-
-  const addrMatch = text.match(/(?:Юр\.?\s*адрес|[Юю]ридический адрес|Адрес)\s*:?\s*(.+?)(?=\n|ИНН|ОГРН|Банк|Тел|e-?mail|КПП|$)/i);
-  if (addrMatch) r.buyer_address = addrMatch[1].trim().replace(/[,.\s]+$/, "");
-
-  const bankMatch = text.match(/(?:Банк|банк)\s*:?\s*(.+?)(?=\n|[рР]\/[сС]|БИК|$)/i);
-  if (bankMatch) r.buyer_bank_name = bankMatch[1].trim().replace(/[,.\s]+$/, "");
-
-  const accMatch = text.match(/[рР]\/[сС]\s*:?\s*(\d{20})/);
-  if (accMatch) r.buyer_account = accMatch[1];
-
-  const bikMatch = text.match(/БИК\s*:?\s*(\d{9})/i);
-  if (bikMatch) r.buyer_bik = bikMatch[1];
-
-  const corrMatch = text.match(/[кК]\/[сС]\s*:?\s*(\d{20})/);
-  if (corrMatch) r.buyer_corr_account = corrMatch[1];
-
-  const dirMatch = text.match(/(?:Генеральный директор|Директор|в лице)\s*:?\s*([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+)?)/i);
-  if (dirMatch) {
-    r.buyer_director_name = dirMatch[1].trim();
-    const parts = r.buyer_director_name.split(/\s+/);
+  // ── Company name & legal form ──
+  // Format: "Индивидуальный предприниматель Фамилия Имя Отчество"
+  const ipMatch = text.match(/Индивидуальный предприниматель\s+([А-ЯЁа-яё]+\s+[А-ЯЁа-яё]+(?:\s+[А-ЯЁа-яё]+)?)/i);
+  if (ipMatch) {
+    r.buyer_legal_form = "Индивидуальный предприниматель";
+    r.buyer_name = ipMatch[1].trim();
+    r.buyer_director_name = ipMatch[1].trim();
+    r.buyer_director_title = "";
+    r.buyer_director_basis = "ОГРНИП";
+    // Generate short name
+    const parts = r.buyer_name.split(/\s+/);
     if (parts.length >= 3) r.buyer_short_name = `${parts[0]} ${parts[1][0]}.${parts[2][0]}.`;
     else if (parts.length === 2) r.buyer_short_name = `${parts[0]} ${parts[1][0]}.`;
   }
+  // Format: ООО "Name" or ООО «Name»
+  if (!r.buyer_name) {
+    const oooMatch = text.match(/(ООО|ОАО|ЗАО|АО|ПАО)\s*[«"""]([^»"""]+)[»"""]/i) ||
+      text.match(/(ООО|ОАО|ЗАО|АО|ПАО)\s+([^\n,]{3,60})/i);
+    if (oooMatch) {
+      r.buyer_legal_form = oooMatch[1] === "ООО" ? "Общество с ограниченной ответственностью" :
+        oooMatch[1] === "АО" ? "Акционерное общество" :
+        oooMatch[1] === "ПАО" ? "Публичное акционерное общество" : oooMatch[1];
+      r.buyer_name = oooMatch[2].trim().replace(/[»"""]/g, "");
+    }
+  }
+  // Format: "Наименование    ИП/ООО Name"
+  if (!r.buyer_name) {
+    const nazvMatch = text.match(/Наименование\s+(.+?)(?=\n|ИНН)/i);
+    if (nazvMatch) {
+      const val = nazvMatch[1].trim();
+      const ipInner = val.match(/Индивидуальный предприниматель\s+(.*)/i);
+      if (ipInner) {
+        r.buyer_legal_form = "Индивидуальный предприниматель";
+        r.buyer_name = ipInner[1].trim();
+        r.buyer_director_name = ipInner[1].trim();
+        r.buyer_director_title = "";
+        r.buyer_director_basis = "ОГРНИП";
+        const parts = r.buyer_name.split(/\s+/);
+        if (parts.length >= 3) r.buyer_short_name = `${parts[0]} ${parts[1][0]}.${parts[2][0]}.`;
+      } else {
+        r.buyer_name = val;
+      }
+    }
+  }
 
+  // ── ИНН ── (exclude bank INN)
+  const innAll = [...text.matchAll(/ИНН(?:\s+банка)?\s*:?\s*(\d{10,12})/gi)];
+  // Take first non-bank INN
+  const innNonBank = innAll.find((m) => !m[0].toLowerCase().includes("банка"));
+  if (innNonBank) r.buyer_inn = innNonBank[1];
+  else if (innAll[0]) r.buyer_inn = innAll[0][1];
+
+  // ── КПП ──
+  const kppMatch = text.match(/КПП\s*:?\s*(\d{9})/i);
+  if (kppMatch) r.buyer_kpp = kppMatch[1];
+
+  // ── ОГРН / ОГРНИП ──
+  const ogrnMatch = text.match(/ОГРН(?:ИП)?\s*:?\s*(\d{13,15})/i);
+  if (ogrnMatch) r.buyer_ogrn = ogrnMatch[1];
+
+  // ── Address ──
+  const addr = findAfter(/(?:Юр\.?\s*адрес|Юридический адрес банка|Юридический адрес|Адрес)\s*:?\s*(.+?)(?=\n|$)/i);
+  if (addr && !addr.toLowerCase().includes("банка")) r.buyer_address = addr;
+
+  // ── Bank name ──
+  const bankName = findAfter(/(?:Наименование банка|Банк)\s*:?\s*(.+?)(?=\n|БИК|$)/i);
+  if (bankName) r.buyer_bank_name = bankName;
+
+  // ── Account (р/с, расчётный счёт) ──
+  const accMatch = text.match(/(?:Расчётный счёт|Расч[её]тный\s+сч[её]т|[рР]\/[сС])\s*:?\s*(\d{20})/i);
+  if (accMatch) r.buyer_account = accMatch[1];
+
+  // ── BIK ──
+  const bikMatch = text.match(/БИК(?:\s+банка)?\s*:?\s*(\d{9})/i);
+  if (bikMatch) r.buyer_bik = bikMatch[1];
+
+  // ── Corr account ──
+  const corrMatch = text.match(/(?:Корреспондентский\s+сч[её]т|[кК]\/[сС]|Корр\.?\s*сч[её]т)\s*:?\s*(\d{20})/i);
+  if (corrMatch) r.buyer_corr_account = corrMatch[1];
+
+  // ── Director (for non-IP) ──
+  if (!r.buyer_director_name) {
+    const dirMatch = text.match(/(?:Генеральный директор|Директор|в лице)\s*:?\s*([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+)?)/i);
+    if (dirMatch) {
+      r.buyer_director_name = dirMatch[1].trim();
+      const parts = r.buyer_director_name.split(/\s+/);
+      if (parts.length >= 3) r.buyer_short_name = `${parts[0]} ${parts[1][0]}.${parts[2][0]}.`;
+      else if (parts.length === 2) r.buyer_short_name = `${parts[0]} ${parts[1][0]}.`;
+    }
+  }
+
+  // ── Email ──
   const emailMatch = text.match(/e-?mail\s*:?\s*([^\s,\n]+@[^\s,\n]+)/i);
   if (emailMatch) r.buyer_email = emailMatch[1];
 
+  // ── Phone ──
   const phoneMatch = text.match(/Тел\.?\s*:?\s*([+\d\s\-()]{7,})/i);
   if (phoneMatch) r.buyer_phone = phoneMatch[1].trim();
 
-  // Also try to find 20-digit account numbers that weren't caught
+  // ── Fallback: find account numbers by pattern ──
   if (!r.buyer_account) {
-    const accounts = text.match(/40\d{18}/g);
-    if (accounts?.[0]) r.buyer_account = accounts[0];
-    if (accounts?.[1] && !r.buyer_corr_account) r.buyer_corr_account = accounts[1];
+    const acc = text.match(/40[0-9]{18}/g);
+    if (acc?.[0]) r.buyer_account = acc[0];
   }
   if (!r.buyer_corr_account) {
-    const corr = text.match(/30\d{18}/g);
+    const corr = text.match(/30[0-9]{18}/g);
     if (corr?.[0]) r.buyer_corr_account = corr[0];
+  }
+  if (!r.buyer_bik) {
+    const bik = text.match(/04\d{7}/g);
+    if (bik?.[0]) r.buyer_bik = bik[0];
   }
 
   return r;

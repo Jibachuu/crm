@@ -23,6 +23,9 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
   const [deals, setDeals] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [invoices, setInvoices] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [products, setProducts] = useState<any[]>([]);
+  const [productSearch, setProductSearch] = useState("");
   const [pdfParsing, setPdfParsing] = useState(false);
 
   // Combined form: contract + spec
@@ -42,6 +45,7 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
     supabase.from("companies").select("id, name, inn, kpp, ogrn, legal_address, director, phone, email").order("name").limit(2000).then(({ data }) => setCompanies(data ?? []));
     supabase.from("deals").select("id, title").order("created_at", { ascending: false }).limit(200).then(({ data }) => setDeals(data ?? []));
     supabase.from("invoices").select("id, invoice_number, buyer_name, total_amount").order("created_at", { ascending: false }).limit(100).then(({ data }) => setInvoices(data ?? []));
+    supabase.from("products").select("id, name, sku, base_price, category, subcategory").eq("is_active", true).order("name").then(({ data }) => setProducts(data ?? []));
   }, []);
 
   async function loadContracts() {
@@ -306,7 +310,27 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {invoices.map((inv: any) => <option key={inv.id} value={inv.id}>#{inv.invoice_number} · {inv.buyer_name}</option>)}
                 </select>
-                <button onClick={() => setForm((f: typeof form) => ({ ...f, items: [...f.items, { name: "", quantity: 1, price: 0, total: 0 }] }))} className="text-xs px-2 py-1 rounded" style={{ color: "#0067a5", border: "1px solid #0067a5" }}>+ Строка</button>
+                <div className="relative">
+                  <input value={productSearch} onChange={(e) => setProductSearch(e.target.value)}
+                    placeholder="Добавить товар из каталога..."
+                    className="text-xs px-2 py-1 rounded w-48" style={{ border: "1px solid #0067a5", color: "#0067a5" }} />
+                  {productSearch.length >= 2 && (
+                    <div className="absolute right-0 top-full mt-1 z-50 bg-white rounded shadow-lg border max-h-40 overflow-y-auto" style={{ minWidth: 280 }}>
+                      {products.filter((p) => {
+                        const q = productSearch.toLowerCase();
+                        return p.name.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q);
+                      }).slice(0, 10).map((p) => (
+                        <button key={p.id} onClick={() => {
+                          setForm((f: typeof form) => ({ ...f, items: [...f.items, { name: `${p.name}${p.sku ? ` (арт. ${p.sku})` : ""}`, quantity: 1, price: p.base_price, total: p.base_price, product_id: p.id }] }));
+                          setProductSearch("");
+                        }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 border-b border-gray-100">
+                          {p.name} {p.sku ? `· ${p.sku}` : ""} — {p.base_price} ₽
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => setForm((f: typeof form) => ({ ...f, items: [...f.items, { name: "", quantity: 1, price: 0, total: 0 }] }))} className="text-xs px-2 py-1 rounded" style={{ color: "#0067a5", border: "1px solid #0067a5" }}>+ Вручную</button>
               </div>
             </div>
 
