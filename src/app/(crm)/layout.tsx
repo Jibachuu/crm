@@ -13,7 +13,8 @@ export default async function CRMLayout({ children }: { children: React.ReactNod
 
   if (!authUser) redirect("/login");
 
-  const { data: profile } = await supabase.from("users").select("*").eq("id", authUser.id).single();
+  const admin = (await import("@/lib/supabase/admin")).createAdminClient();
+  const { data: profile } = await admin.from("users").select("*").eq("id", authUser.id).single();
   if (!profile) redirect("/login");
 
   // Load permissions for non-admin users
