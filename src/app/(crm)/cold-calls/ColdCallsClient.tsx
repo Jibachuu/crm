@@ -275,10 +275,7 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
         {rows.length > 0 && (
           <button onClick={async () => {
             if (!confirm(`Удалить ВСЕ ${rows.length} записей?`)) return;
-            for (let i = 0; i < rows.length; i += 100) {
-              const ids = rows.slice(i, i + 100).map((r) => r.id);
-              for (const id of ids) await fetch("/api/cold-calls", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", id }) });
-            }
+            await fetch("/api/cold-calls", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete_all" }) });
             setRows([]);
           }} className="text-xs px-2 py-1 rounded hover:bg-red-50" style={{ color: "#c62828", border: "1px solid #c62828" }}>
             <X size={12} className="inline mr-1" />Удалить все

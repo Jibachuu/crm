@@ -20,5 +20,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  if (action === "delete_all") {
+    await admin.from("cold_calls").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    return NextResponse.json({ ok: true });
+  }
+
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }
