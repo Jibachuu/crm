@@ -213,8 +213,8 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
 
       let totalImported = 0;
       const allErrors: string[] = [];
-      for (let i = 0; i < toInsert.length; i += 200) {
-        const batch = toInsert.slice(i, i + 200);
+      for (let i = 0; i < toInsert.length; i += 500) {
+        const batch = toInsert.slice(i, i + 500);
         try {
           const res = await fetch("/api/cold-calls/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: batch }) });
           if (!res.ok) { allErrors.push(`Batch ${Math.floor(i/200)+1}: HTTP ${res.status}`); continue; }

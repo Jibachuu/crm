@@ -16,11 +16,11 @@ export async function POST(req: NextRequest) {
   let imported = 0;
   const errors: string[] = [];
 
-  for (let i = 0; i < rows.length; i += 100) {
-    const batch = rows.slice(i, i + 100);
+  for (let i = 0; i < rows.length; i += 500) {
+    const batch = rows.slice(i, i + 500);
     const { data, error } = await admin.from("cold_calls").insert(batch).select("id");
     if (data) imported += data.length;
-    if (error) { errors.push(`Batch ${Math.floor(i/100)+1}: ${error.message}`); break; }
+    if (error) { errors.push(`Batch ${Math.floor(i/500)+1}: ${error.message}`); break; }
   }
 
   return NextResponse.json({ imported, total: rows.length, errors });
