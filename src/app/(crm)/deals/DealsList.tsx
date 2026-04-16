@@ -28,6 +28,8 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
   const { user: currentUser, isManager } = useCurrentUser();
   const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
   const hasFunnelStages = funnelStages.length > 0;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   const [deals, setDeals] = useState(initialDeals);
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
@@ -130,6 +132,8 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
   const filterOptions = hasFunnelStages
     ? funnelStages.map((s) => ({ value: s.id, label: s.name }))
     : Object.entries(OLD_STAGE_LABELS).map(([v, l]) => ({ value: v, label: l }));
+
+  if (!mounted) return <div className="text-center py-12 text-sm" style={{ color: "#aaa" }}>Загрузка...</div>;
 
   return (
     <div>
