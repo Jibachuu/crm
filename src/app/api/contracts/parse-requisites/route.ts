@@ -125,10 +125,22 @@ export async function POST(req: NextRequest) {
           if (decoded.trim()) textBlocks.push(decoded);
         }
 
-        text = textBlocks.join(" ")
+        // Decode text — PDF may use win-1251 encoding for Cyrillic
+        let joined = textBlocks.join(" ")
           .replace(/\\n/g, "\n").replace(/\\r/g, "")
           .replace(/\\(\(|\)|\\)/g, "$1")
           .replace(/\x00/g, "");
+
+        // Try win-1251 decode if text looks garbled (high bytes present)
+        if (/[\x80-\xFF]/.test(joined) && !/[А-Яа-яЁё]/.test(joined)) {
+          const win1251 = Buffer.from(joined, "latin1");
+          try {
+            const td = new TextDecoder("windows-1251");
+            joined = td.decode(win1251);
+          } catch { /* keep as is */ }
+        }
+
+        text = joined;
 
         // 4. Fallback: extract any readable strings from raw binary
         if (text.trim().length < 30) {
