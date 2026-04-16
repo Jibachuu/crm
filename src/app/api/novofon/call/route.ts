@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { initiateCall } from "@/lib/novofon";
 
 // Click-to-call: initiate callback from CRM
@@ -12,9 +13,15 @@ export async function POST(req: NextRequest) {
   if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });
 
   try {
-    // "from" is the manager's SIP/number, "to" is the client
-    // Novofon calls the manager first, then connects to client
-    const managerSip = sip || process.env.NOVOFON_DEFAULT_SIP || "";
+    // Get manager's SIP from user profile
+    const admin = createAdminClient();
+    const { data: profile } = await admin.from("users").select("sip_number").eq("id", user.id).single();
+    const managerSip = sip || profile?.sip_number || process.env.NOVOFON_DEFAULT_SIP || "";
+
+    if (!managerSip) {
+      return NextResponse.json({ error: "SIP номер не настроен. Укажите его в настройках профиля." }, { status: 400 });
+    }
+
     const result = await initiateCall(managerSip, phone);
     return NextResponse.json(result);
   } catch (err: unknown) {

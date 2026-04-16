@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import PageLoader from "@/components/layout/PageLoader";
 import AIChatPanel from "@/components/ui/AIChatPanel";
+import IncomingCallPopup from "@/components/ui/IncomingCallPopup";
 import type { User } from "@/types/database";
 
 export default async function CRMLayout({ children }: { children: React.ReactNode }) {
@@ -36,6 +37,7 @@ export default async function CRMLayout({ children }: { children: React.ReactNod
         {children}
       </div>
       <AIChatPanel />
+      <IncomingCallPopup />
     </div>
   );
 }
