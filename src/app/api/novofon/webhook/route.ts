@@ -94,38 +94,41 @@ export async function POST(req: NextRequest) {
     });
     if (commErr) console.error("[novofon] comm insert error:", commErr.message);
 
-    // If no contact — create contact + lead
+    // Create contact if new
     if (!contactId && cleanPhone.length >= 7) {
       const { data: newContact, error: contactErr } = await admin.from("contacts").insert({
         full_name: contactName || callerPhone,
         phone: callerPhone,
       }).select("id").single();
       if (contactErr) console.error("[novofon] contact insert error:", contactErr.message);
-
       if (newContact) {
         contactId = newContact.id;
         console.log("[novofon] created contact:", newContact.id, "for", callerPhone);
-        await admin.from("communications").update({ contact_id: newContact.id }).eq("external_id", `novofon_${callSessionId}`);
-
-        const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
-        console.log("[novofon] funnel:", funnel?.id ?? "NONE");
-        const { data: firstStage } = funnel
-          ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
-          : { data: null };
-        const assignee = await pickAutoLeadAssignee(admin);
-
-        const { data: newLead, error: leadErr } = await admin.from("leads").insert({
-          title: `Звонок: ${contactName || callerPhone}`,
-          source: "phone",
-          status: "new",
-          contact_id: newContact.id,
-          funnel_id: funnel?.id ?? null,
-          stage_id: firstStage?.id ?? null,
-          assigned_to: assignee ?? null,
-        }).select("id").single();
-        if (leadErr) console.error("[novofon] lead insert error:", leadErr.message);
-        else console.log("[novofon] created lead:", newLead?.id);
+        await admin.from("communications").update({ contact_id: newContact.id, entity_type: "contact", entity_id: newContact.id }).eq("external_id", `novofon_${callSessionId}`);
       }
+    }
+
+    // Always create lead for incoming calls
+    if (contactId) {
+      const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
+      const { data: firstStage } = funnel
+        ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
+        : { data: null };
+      const assignee = await pickAutoLeadAssignee(admin);
+      const leadTitle = `Звонок: ${dbContactName || contactName || callerPhone}`;
+
+      const { data: newLead, error: leadErr } = await admin.from("leads").insert({
+        title: leadTitle,
+        source: "phone",
+        status: "new",
+        contact_id: contactId,
+        company_id: companyId,
+        funnel_id: funnel?.id ?? null,
+        stage_id: firstStage?.id ?? null,
+        assigned_to: assignee ?? null,
+      }).select("id").single();
+      if (leadErr) console.error("[novofon] lead insert error:", leadErr.message);
+      else console.log("[novofon] created lead:", newLead?.id, "for contact:", contactId);
     }
 
     return NextResponse.json({ caller_name: dbContactName || undefined });
