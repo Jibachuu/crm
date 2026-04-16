@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action === "update") {
-    const { id, ...fields } = body;
+    const { id, action: _action, ...fields } = body;
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
     const { data, error } = await admin.from("contracts").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", id).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

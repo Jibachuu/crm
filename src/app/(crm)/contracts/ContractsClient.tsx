@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, FileText, Download, Trash2, Search, Upload } from "lucide-react";
+import { Plus, FileText, Download, Trash2, Search, Upload, Edit2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { createClient } from "@/lib/supabase/client";
@@ -27,6 +27,14 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
   const [products, setProducts] = useState<any[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [pdfParsing, setPdfParsing] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [editingContract, setEditingContract] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [editingSpec, setEditingSpec] = useState<any>(null);
+  const [specEditorOpen, setSpecEditorOpen] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [specForm, setSpecForm] = useState<any>({ delivery_method: "СДЭК", payment_terms: "предоплата 100%", shipment_days: 12, items: [{ name: "", quantity: 1, price: 0, total: 0 }] });
+  const [specSaving, setSpecSaving] = useState(false);
 
   // Combined form: contract + spec
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -119,52 +127,150 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function openEditContract(c: any) {
+    setEditingContract(c);
+    setForm({
+      buyer_company_id: c.buyer_company_id || "",
+      buyer_name: c.buyer_name || "",
+      buyer_legal_form: c.buyer_legal_form || "",
+      buyer_inn: c.buyer_inn || "",
+      buyer_kpp: c.buyer_kpp || "",
+      buyer_ogrn: c.buyer_ogrn || "",
+      buyer_address: c.buyer_address || "",
+      buyer_bank_name: c.buyer_bank_name || "",
+      buyer_account: c.buyer_account || "",
+      buyer_bik: c.buyer_bik || "",
+      buyer_corr_account: c.buyer_corr_account || "",
+      buyer_director_name: c.buyer_director_name || "",
+      buyer_director_title: c.buyer_director_title || "генерального директора",
+      buyer_director_basis: c.buyer_director_basis || "Устава",
+      buyer_email: c.buyer_email || "",
+      buyer_phone: c.buyer_phone || "",
+      buyer_short_name: c.buyer_short_name || "",
+      deal_id: c.deal_id || "",
+      delivery_method: "СДЭК",
+      payment_terms: "предоплата 100%",
+      shipment_days: 12,
+      items: [{ name: "", quantity: 1, price: 0, total: 0 }],
+    });
+    setCreateOpen(true);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function openEditSpec(contractId: string, spec: any) {
+    setEditingSpec({ ...spec, contract_id: contractId });
+    const supabase = createClient();
+    const { data: items } = await supabase.from("specification_items").select("*").eq("specification_id", spec.id).order("sort_order");
+    const { data: specData } = await supabase.from("specifications").select("*").eq("id", spec.id).single();
+    setSpecForm({
+      delivery_method: specData?.delivery_method || "СДЭК",
+      payment_terms: specData?.payment_terms || "предоплата 100%",
+      shipment_days: specData?.shipment_days || 12,
+      items: items?.length ? items.map((i: { name: string; quantity: number; price: number; total: number; product_id?: string }) => ({
+        name: i.name, quantity: i.quantity, price: i.price, total: i.total, product_id: i.product_id || "",
+      })) : [{ name: "", quantity: 1, price: 0, total: 0 }],
+    });
+    setSpecEditorOpen(true);
+  }
+
+  async function handleSaveSpec() {
+    if (!editingSpec) return;
+    setSpecSaving(true);
+    const validItems = specForm.items.filter((i: { name: string }) => i.name.trim());
+    const total = validItems.reduce((s: number, i: { total: number }) => s + (i.total || 0), 0);
+
+    const admin = createClient();
+    // Update specification
+    await admin.from("specifications").update({
+      delivery_method: specForm.delivery_method,
+      payment_terms: specForm.payment_terms,
+      shipment_days: specForm.shipment_days,
+      total_amount: total,
+    }).eq("id", editingSpec.id);
+
+    // Delete old items and insert new
+    await admin.from("specification_items").delete().eq("specification_id", editingSpec.id);
+    if (validItems.length > 0) {
+      await admin.from("specification_items").insert(
+        validItems.map((i: { name: string; quantity: number; price: number; total: number; product_id?: string }, idx: number) => ({
+          specification_id: editingSpec.id,
+          product_id: i.product_id || null,
+          name: i.name,
+          quantity: i.quantity || 1,
+          price: i.price || 0,
+          total: i.total || 0,
+          sort_order: idx,
+        }))
+      );
+    }
+
+    setSpecEditorOpen(false);
+    setEditingSpec(null);
+    loadContracts();
+    setSpecSaving(false);
+  }
+
   async function handleCreate() {
     if (!form.buyer_name) { alert("Укажите покупателя"); return; }
     setSaving(true);
 
-    // 1. Create contract
-    const contractRes = await fetch("/api/contracts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "create",
-        buyer_company_id: companyId || form.buyer_company_id || null,
-        buyer_name: form.buyer_name, buyer_legal_form: form.buyer_legal_form,
-        buyer_inn: form.buyer_inn, buyer_kpp: form.buyer_kpp, buyer_ogrn: form.buyer_ogrn,
-        buyer_address: form.buyer_address, buyer_bank_name: form.buyer_bank_name,
-        buyer_account: form.buyer_account, buyer_bik: form.buyer_bik,
-        buyer_corr_account: form.buyer_corr_account,
-        buyer_director_name: form.buyer_director_name,
-        buyer_director_title: form.buyer_director_title,
-        buyer_director_basis: form.buyer_director_basis,
-        buyer_email: form.buyer_email, buyer_phone: form.buyer_phone,
-        buyer_short_name: form.buyer_short_name,
-        deal_id: dealId || form.deal_id || null,
-      }),
-    });
-    if (!contractRes.ok) { const d = await contractRes.json(); alert(d.error); setSaving(false); return; }
-    const contract = await contractRes.json();
+    const contractPayload = {
+      buyer_company_id: companyId || form.buyer_company_id || null,
+      buyer_name: form.buyer_name, buyer_legal_form: form.buyer_legal_form,
+      buyer_inn: form.buyer_inn, buyer_kpp: form.buyer_kpp, buyer_ogrn: form.buyer_ogrn,
+      buyer_address: form.buyer_address, buyer_bank_name: form.buyer_bank_name,
+      buyer_account: form.buyer_account, buyer_bik: form.buyer_bik,
+      buyer_corr_account: form.buyer_corr_account,
+      buyer_director_name: form.buyer_director_name,
+      buyer_director_title: form.buyer_director_title,
+      buyer_director_basis: form.buyer_director_basis,
+      buyer_email: form.buyer_email, buyer_phone: form.buyer_phone,
+      buyer_short_name: form.buyer_short_name,
+      deal_id: dealId || form.deal_id || null,
+    };
 
-    // 2. Create specification with items
-    const validItems = form.items.filter((i: { name: string }) => i.name.trim());
-    if (validItems.length > 0) {
-      await fetch("/api/contracts", {
+    let contract;
+    if (editingContract) {
+      // Update existing contract
+      const contractRes = await fetch("/api/contracts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create_spec",
-          contract_id: contract.id,
-          items: validItems,
-          delivery_method: form.delivery_method,
-          payment_terms: form.payment_terms,
-          shipment_days: form.shipment_days,
-          invoice_id: form.invoice_id || null,
-        }),
+        body: JSON.stringify({ action: "update", id: editingContract.id, ...contractPayload }),
       });
+      if (!contractRes.ok) { const d = await contractRes.json(); alert(d.error); setSaving(false); return; }
+      contract = await contractRes.json();
+    } else {
+      // Create new contract
+      const contractRes = await fetch("/api/contracts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create", ...contractPayload }),
+      });
+      if (!contractRes.ok) { const d = await contractRes.json(); alert(d.error); setSaving(false); return; }
+      contract = await contractRes.json();
+
+      // Only create specification for new contracts
+      const validItems = form.items.filter((i: { name: string }) => i.name.trim());
+      if (validItems.length > 0) {
+        await fetch("/api/contracts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "create_spec",
+            contract_id: contract.id,
+            items: validItems,
+            delivery_method: form.delivery_method,
+            payment_terms: form.payment_terms,
+            shipment_days: form.shipment_days,
+            invoice_id: form.invoice_id || null,
+          }),
+        });
+      }
     }
 
     setCreateOpen(false);
+    setEditingContract(null);
     setForm({ buyer_director_title: "генерального директора", buyer_director_basis: "Устава", delivery_method: "СДЭК", payment_terms: "предоплата 100%", shipment_days: 12, items: [{ name: "", quantity: 1, price: 0, total: 0 }] });
     loadContracts();
     setSaving(false);
@@ -219,14 +325,20 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
                     <div className="flex gap-1 flex-wrap">
                       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                       {(c.specifications ?? []).map((s: any) => (
-                        <button key={s.id} onClick={() => openPdf(c.id, "spec", s.id)} className="text-xs px-2 py-0.5 rounded hover:bg-blue-50" style={{ color: "#0067a5", border: "1px solid #d0e8f5" }}>
-                          Спец. №{s.spec_number} ({formatCurrency(s.total_amount)})
-                        </button>
+                        <span key={s.id} className="inline-flex items-center gap-0.5">
+                          <button onClick={() => openPdf(c.id, "spec", s.id)} className="text-xs px-2 py-0.5 rounded-l hover:bg-blue-50" style={{ color: "#0067a5", border: "1px solid #d0e8f5", borderRight: "none" }}>
+                            Спец. №{s.spec_number} ({formatCurrency(s.total_amount)})
+                          </button>
+                          <button onClick={() => openEditSpec(c.id, s)} className="text-xs px-1 py-0.5 rounded-r hover:bg-blue-50" style={{ color: "#0067a5", border: "1px solid #d0e8f5" }} title="Редактировать спецификацию">
+                            <Edit2 size={10} />
+                          </button>
+                        </span>
                       ))}
                     </div>
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-1">
+                      <button onClick={() => openEditContract(c)} className="p-1 rounded hover:bg-blue-50" title="Редактировать"><Edit2 size={13} style={{ color: "#0067a5" }} /></button>
                       <button onClick={() => openPdf(c.id, "contract")} className="p-1 rounded hover:bg-blue-50" title="Скачать договор"><Download size={13} style={{ color: "#0067a5" }} /></button>
                       <button onClick={async () => { if (!confirm("Удалить?")) return; await fetch("/api/contracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", id: c.id }) }); loadContracts(); }} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: "#c62828" }} /></button>
                     </div>
@@ -238,8 +350,8 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
         )}
       </div>
 
-      {/* Create Contract + Spec Modal */}
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Новый договор + спецификация" size="xl">
+      {/* Create/Edit Contract + Spec Modal */}
+      <Modal open={createOpen} onClose={() => { setCreateOpen(false); setEditingContract(null); }} title={editingContract ? "Редактировать договор" : "Новый договор + спецификация"} size="xl">
         <div className="p-5 space-y-4 max-h-[85vh] overflow-y-auto">
 
           {/* Section: Buyer requisites */}
@@ -299,7 +411,8 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
             </div>
           </div>
 
-          {/* Section: Specification items */}
+          {/* Section: Specification items (only for new contracts) */}
+          {!editingContract && (<>
           <div className="p-4 rounded-lg" style={{ background: "#f0f7ff", border: "1px solid #d0e8f5" }}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold" style={{ color: "#0067a5" }}>Спецификация (товары)</h3>
@@ -355,11 +468,73 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
             <div><label style={lblStyle}>Условия оплаты</label><input value={form.payment_terms || ""} onChange={(e) => setForm({ ...form, payment_terms: e.target.value })} style={inputStyle} /></div>
             <div><label style={lblStyle}>Срок отгрузки (дней)</label><input type="number" value={form.shipment_days || 3} onChange={(e) => setForm({ ...form, shipment_days: Number(e.target.value) })} style={inputStyle} /></div>
           </div>
+          </>)}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" size="sm" onClick={() => setCreateOpen(false)}>Отмена</Button>
+            <Button variant="secondary" size="sm" onClick={() => { setCreateOpen(false); setEditingContract(null); }}>Отмена</Button>
             <Button size="sm" onClick={handleCreate} loading={saving} disabled={!form.buyer_name}>
-              <FileText size={13} /> Создать договор + спецификацию
+              <FileText size={13} /> {editingContract ? "Сохранить договор" : "Создать договор + спецификацию"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Specification Modal */}
+      <Modal open={specEditorOpen} onClose={() => { setSpecEditorOpen(false); setEditingSpec(null); }} title={`Редактировать спецификацию №${editingSpec?.spec_number ?? ""}`} size="lg">
+        <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+          <div className="p-4 rounded-lg" style={{ background: "#f0f7ff", border: "1px solid #d0e8f5" }}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold" style={{ color: "#0067a5" }}>Товары</h3>
+              <div className="flex gap-2">
+                <div className="relative">
+                  <input value={productSearch} onChange={(e) => setProductSearch(e.target.value)}
+                    placeholder="Добавить товар из каталога..."
+                    className="text-xs px-2 py-1 rounded w-48" style={{ border: "1px solid #0067a5", color: "#0067a5" }} />
+                  {productSearch.length >= 2 && (
+                    <div className="absolute right-0 top-full mt-1 z-50 bg-white rounded shadow-lg border max-h-40 overflow-y-auto" style={{ minWidth: 280 }}>
+                      {products.filter((p) => {
+                        const q = productSearch.toLowerCase();
+                        return p.name.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q) || p.subcategory?.toLowerCase().includes(q);
+                      }).slice(0, 10).map((p) => (
+                        <button key={p.id} onClick={() => {
+                          setSpecForm((f: typeof specForm) => ({ ...f, items: [...f.items, { name: `${p.name}${p.sku ? ` (арт. ${p.sku})` : ""}`, quantity: 1, price: p.base_price, total: p.base_price, product_id: p.id }] }));
+                          setProductSearch("");
+                        }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 border-b border-gray-100">
+                          {p.name} {p.sku ? `· ${p.sku}` : ""} — {p.base_price} ₽
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => setSpecForm((f: typeof specForm) => ({ ...f, items: [...f.items, { name: "", quantity: 1, price: 0, total: 0 }] }))} className="text-xs px-2 py-1 rounded" style={{ color: "#0067a5", border: "1px solid #0067a5" }}>+ Вручную</button>
+              </div>
+            </div>
+
+            {specForm.items.map((item: { name: string; quantity: number; price: number; total: number }, i: number) => (
+              <div key={i} className="grid grid-cols-12 gap-2 mb-1 items-end">
+                <div className="col-span-5"><input value={item.name} onChange={(e) => { const items = [...specForm.items]; items[i] = { ...items[i], name: e.target.value }; setSpecForm({ ...specForm, items }); }} style={{ ...inputStyle, fontSize: 12 }} placeholder="Наименование" /></div>
+                <div className="col-span-2"><input type="number" value={item.quantity} onChange={(e) => { const items = [...specForm.items]; const q = Number(e.target.value); items[i] = { ...items[i], quantity: q, total: q * items[i].price }; setSpecForm({ ...specForm, items }); }} style={{ ...inputStyle, fontSize: 12 }} /></div>
+                <div className="col-span-2"><input type="number" value={item.price} onChange={(e) => { const items = [...specForm.items]; const p = Number(e.target.value); items[i] = { ...items[i], price: p, total: items[i].quantity * p }; setSpecForm({ ...specForm, items }); }} style={{ ...inputStyle, fontSize: 12 }} /></div>
+                <div className="col-span-2 text-sm font-medium" style={{ color: "#2e7d32", paddingTop: 6 }}>{formatCurrency(item.total)}</div>
+                <div className="col-span-1">{specForm.items.length > 1 && <button onClick={() => setSpecForm({ ...specForm, items: specForm.items.filter((_: unknown, idx: number) => idx !== i) })} className="text-xs text-red-500">✕</button>}</div>
+              </div>
+            ))}
+
+            <div className="flex justify-end mt-2">
+              <span className="text-sm font-bold" style={{ color: "#2e7d32" }}>Итого: {formatCurrency(specForm.items.reduce((s: number, i: { total: number }) => s + (i.total || 0), 0))}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div><label style={lblStyle}>Доставка</label><input value={specForm.delivery_method || ""} onChange={(e) => setSpecForm({ ...specForm, delivery_method: e.target.value })} style={inputStyle} /></div>
+            <div><label style={lblStyle}>Условия оплаты</label><input value={specForm.payment_terms || ""} onChange={(e) => setSpecForm({ ...specForm, payment_terms: e.target.value })} style={inputStyle} /></div>
+            <div><label style={lblStyle}>Срок отгрузки (дней)</label><input type="number" value={specForm.shipment_days || 3} onChange={(e) => setSpecForm({ ...specForm, shipment_days: Number(e.target.value) })} style={inputStyle} /></div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" size="sm" onClick={() => { setSpecEditorOpen(false); setEditingSpec(null); }}>Отмена</Button>
+            <Button size="sm" onClick={handleSaveSpec} loading={specSaving}>
+              <FileText size={13} /> Сохранить спецификацию
             </Button>
           </div>
         </div>
