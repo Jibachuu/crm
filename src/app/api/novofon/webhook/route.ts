@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Store call for popup
-    await admin.from("communications").insert({
+    const { error: commErr } = await admin.from("communications").insert({
       channel: "phone",
       direction: "inbound",
       subject: `Входящий звонок ${callerPhone}`,
@@ -90,25 +90,29 @@ export async function POST(req: NextRequest) {
       company_id: companyId,
       sender_name: dbContactName || contactName || callerPhone,
     });
+    if (commErr) console.error("[novofon] comm insert error:", commErr.message);
 
     // If no contact — create contact + lead
     if (!contactId && cleanPhone.length >= 7) {
-      const { data: newContact } = await admin.from("contacts").insert({
+      const { data: newContact, error: contactErr } = await admin.from("contacts").insert({
         full_name: contactName || callerPhone,
         phone: callerPhone,
       }).select("id").single();
+      if (contactErr) console.error("[novofon] contact insert error:", contactErr.message);
 
       if (newContact) {
         contactId = newContact.id;
+        console.log("[novofon] created contact:", newContact.id, "for", callerPhone);
         await admin.from("communications").update({ contact_id: newContact.id }).eq("external_id", `novofon_${callSessionId}`);
 
         const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
+        console.log("[novofon] funnel:", funnel?.id ?? "NONE");
         const { data: firstStage } = funnel
           ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
           : { data: null };
         const assignee = await pickAutoLeadAssignee(admin);
 
-        await admin.from("leads").insert({
+        const { data: newLead, error: leadErr } = await admin.from("leads").insert({
           title: `Звонок: ${contactName || callerPhone}`,
           source: "phone",
           status: "new",
@@ -116,7 +120,9 @@ export async function POST(req: NextRequest) {
           funnel_id: funnel?.id ?? null,
           stage_id: firstStage?.id ?? null,
           assigned_to: assignee ?? null,
-        });
+        }).select("id").single();
+        if (leadErr) console.error("[novofon] lead insert error:", leadErr.message);
+        else console.log("[novofon] created lead:", newLead?.id);
       }
     }
 
