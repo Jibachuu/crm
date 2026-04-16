@@ -35,7 +35,7 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
     buyer_director_basis: "Устава",
     delivery_method: "СДЭК",
     payment_terms: "предоплата 100%",
-    shipment_days: 3,
+    shipment_days: 12,
     items: [{ name: "", quantity: 1, price: 0, total: 0 }],
   });
 
@@ -165,7 +165,7 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
     }
 
     setCreateOpen(false);
-    setForm({ buyer_director_title: "генерального директора", buyer_director_basis: "Устава", delivery_method: "СДЭК", payment_terms: "предоплата 100%", shipment_days: 3, items: [{ name: "", quantity: 1, price: 0, total: 0 }] });
+    setForm({ buyer_director_title: "генерального директора", buyer_director_basis: "Устава", delivery_method: "СДЭК", payment_terms: "предоплата 100%", shipment_days: 12, items: [{ name: "", quantity: 1, price: 0, total: 0 }] });
     loadContracts();
     setSaving(false);
   }
@@ -318,7 +318,7 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
                     <div className="absolute right-0 top-full mt-1 z-50 bg-white rounded shadow-lg border max-h-40 overflow-y-auto" style={{ minWidth: 280 }}>
                       {products.filter((p) => {
                         const q = productSearch.toLowerCase();
-                        return p.name.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q);
+                        return p.name.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q) || p.subcategory?.toLowerCase().includes(q);
                       }).slice(0, 10).map((p) => (
                         <button key={p.id} onClick={() => {
                           setForm((f: typeof form) => ({ ...f, items: [...f.items, { name: `${p.name}${p.sku ? ` (арт. ${p.sku})` : ""}`, quantity: 1, price: p.base_price, total: p.base_price, product_id: p.id }] }));

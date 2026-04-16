@@ -93,9 +93,26 @@ function parseRequisites(text: string) {
 
   // ── Director (for non-IP) ──
   if (!r.buyer_director_name) {
-    const dirMatch = text.match(/(?:Генеральный директор|Директор|в лице)\s*:?\s*([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+)?)/i);
-    if (dirMatch) {
-      r.buyer_director_name = dirMatch[1].trim();
+    // Multiple formats:
+    // "Генеральный директор: Фамилия Имя Отчество"
+    // "Генеральный директор, действующий на основании Устава: Фамилия Имя Отчество"
+    // "в лице генерального директора Фамилия Имя Отчество"
+    const dirPatterns = [
+      /Генеральный\s+директор[^:]*:\s*([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+)?)/i,
+      /в\s+лице\s+(?:генерального\s+)?директора\s+([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+)?)/i,
+      /Директор\s*:?\s*([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+)?)/i,
+      /(?:Ильина|Питаева|Качанов[а]?|Иванов[а]?)\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+/i,
+    ];
+    for (const pat of dirPatterns) {
+      const m = text.match(pat);
+      if (m) {
+        r.buyer_director_name = m[1]?.trim() || m[0]?.trim();
+        break;
+      }
+    }
+    if (r.buyer_director_name) {
+      // Clean extra spaces from PDF
+      r.buyer_director_name = r.buyer_director_name.replace(/\s{2,}/g, " ").trim();
       const parts = r.buyer_director_name.split(/\s+/);
       if (parts.length >= 3) r.buyer_short_name = `${parts[0]} ${parts[1][0]}.${parts[2][0]}.`;
       else if (parts.length === 2) r.buyer_short_name = `${parts[0]} ${parts[1][0]}.`;
@@ -122,6 +139,11 @@ function parseRequisites(text: string) {
   if (!r.buyer_bik) {
     const bik = text.match(/04\d{7}/g);
     if (bik?.[0]) r.buyer_bik = bik[0];
+  }
+
+  // Clean all values — remove excessive spaces from PDF layout
+  for (const [k, v] of Object.entries(r)) {
+    r[k] = v.replace(/\s{2,}/g, " ").trim();
   }
 
   return r;
@@ -152,7 +174,7 @@ export async function POST(req: NextRequest) {
         const tmpPdf = `/tmp/crm_pdf_${Date.now()}.pdf`;
         const tmpTxt = `/tmp/crm_pdf_${Date.now()}.txt`;
         writeFileSync(tmpPdf, Buffer.from(await file.arrayBuffer()));
-        execSync(`pdftotext -layout "${tmpPdf}" "${tmpTxt}"`, { timeout: 15000 });
+        execSync(`pdftotext "${tmpPdf}" "${tmpTxt}"`, { timeout: 15000 });
         text = readFileSync(tmpTxt, "utf-8");
         try { unlinkSync(tmpPdf); unlinkSync(tmpTxt); } catch {}
       } catch (e) {
