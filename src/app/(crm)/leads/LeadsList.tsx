@@ -78,7 +78,7 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
     return matchesSearch && matchesStatus && matchesFunnel && matchesDate && matchesOwner;
   });
 
-  const { visible: paginatedLeads, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);
+  const { visible: paginatedLeads, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 100);
 
   const filteredIds = filtered.map((l) => l.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));

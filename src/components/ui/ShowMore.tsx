@@ -22,9 +22,9 @@ export default function ShowMore({ hasMore, remaining, total, visibleCount, onSh
         style={{ color: "#0067a5", border: "1px solid #d0e8f5" }}
       >
         <ChevronDown size={14} />
-        Показать ещё {Math.min(remaining, 40)}
+        Показать ещё {Math.min(remaining, 100)}
       </button>
-      {remaining > 40 && (
+      {remaining > 100 && (
         <button
           onClick={onShowAll}
           className="text-xs hover:underline"

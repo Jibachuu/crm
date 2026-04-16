@@ -37,7 +37,7 @@ export default function ContactsList({ initialContacts, companies, users }: any)
     return matchesSearch && matchesDate && matchesOwner;
   });
 
-  const { visible: paginatedContacts, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);
+  const { visible: paginatedContacts, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 100);
 
   const filteredIds = filtered.map((c: { id: string }) => c.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id: string) => selected.has(id));

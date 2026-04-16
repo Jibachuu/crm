@@ -49,7 +49,7 @@ export default function CompaniesList({ initialCompanies, users }: any) {
     return matchSearch && matchContract && matchesDate && matchesOwner;
   });
 
-  const { visible: paginatedCompanies, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 40);
+  const { visible: paginatedCompanies, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 100);
 
   const filteredIds = filtered.map((c: { id: string }) => c.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id: string) => selected.has(id));
