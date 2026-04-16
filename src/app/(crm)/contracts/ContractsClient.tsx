@@ -69,35 +69,16 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
     }
   }
 
-  async function parsePdf(file: File) {
+  async function parseFile(file: File) {
     setPdfParsing(true);
     try {
-      let readable = "";
-      const ext = file.name.split(".").pop()?.toLowerCase();
-
-      if (ext === "docx") {
-        // DOCX = ZIP with XML. Extract text from word/document.xml
-        const JSZip = (await import("jszip")).default;
-        const zip = await JSZip.loadAsync(await file.arrayBuffer());
-        const docXml = await zip.file("word/document.xml")?.async("string");
-        if (docXml) {
-          // Strip XML tags, keep text
-          readable = docXml.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/\s{2,}/g, " ");
-        }
-      } else if (ext === "txt") {
-        readable = await file.text();
-      } else {
-        // PDF — extract readable strings
-        const text = await file.text();
-        readable = text.replace(/[^\x20-\x7EА-Яа-яЁё0-9.,;:!?@/\\()\-\s]/g, " ").replace(/\s{3,}/g, "\n");
-      }
-
-      const res = await fetch("/api/contracts/parse-requisites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: readable }),
-      });
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/contracts/parse-requisites", { method: "POST", body: fd });
       const data = await res.json();
+
+      if (!res.ok) { alert(data.error || "Ошибка парсинга"); setPdfParsing(false); return; }
+
       if (data.requisites && Object.keys(data.requisites).length > 0) {
         setForm((f: typeof form) => ({ ...f, ...data.requisites }));
 
@@ -113,7 +94,7 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
             await createClient().from("companies").update(updates).eq("id", form.buyer_company_id);
           }
         }
-        alert("Реквизиты извлечены из PDF");
+        alert("Реквизиты извлечены!");
       } else {
         alert("Не удалось извлечь реквизиты. Попробуйте ввести вручную.");
       }
@@ -265,7 +246,7 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
                 <button onClick={() => {
                   const input = document.createElement("input");
                   input.type = "file"; input.accept = ".pdf,.docx,.doc,.txt";
-                  input.onchange = () => { if (input.files?.[0]) parsePdf(input.files[0]); };
+                  input.onchange = () => { if (input.files?.[0]) parseFile(input.files[0]); };
                   input.click();
                 }} disabled={pdfParsing}
                   className="flex items-center gap-1 text-xs px-3 py-1.5 rounded" style={{ color: "#e65c00", border: "1px solid #e65c00" }}>
