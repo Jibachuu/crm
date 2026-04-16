@@ -20,8 +20,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru" className="h-full">
-      <body className="min-h-full bg-slate-50 antialiased">
+    <html lang="ru" className="h-full" suppressHydrationWarning>
+      <body className="min-h-full bg-slate-50 antialiased" suppressHydrationWarning>
           {children}
           <script dangerouslySetInnerHTML={{ __html: `if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}))}` }} />
         </body>

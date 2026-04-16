@@ -181,11 +181,6 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
         <span>Выиграно: <strong style={{ color: "#2e7d32" }}>{formatCurrency(wonAmount)}</strong></span>
       </div>
 
-      {/* DEBUG */}
-      <div className="text-xs mb-2 p-2 rounded" style={{ background: "#fff3e0", color: "#e65c00" }}>
-        DEBUG: deals={deals.length} filtered={filtered.length} paginatedDeals={paginatedDeals.length} visibleCount={visibleCount} hasMore={String(hasMore)} view={view} search=&quot;{search}&quot; stage={stageFilter}
-      </div>
-
       {view === "table" ? (
         <><div className="bg-white" style={{ border: "1px solid #e4e4e4", borderRadius: 6 }}>
           {filtered.length === 0 ? (
