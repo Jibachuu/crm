@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, RefreshCw, MessageSquare, Link2 } from "lucide-react";
+import { Search, RefreshCw, MessageSquare, Link2, ArrowLeft } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
 import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
 import { createClient } from "@/lib/supabase/client";
@@ -50,6 +50,19 @@ export default function InboxClient() {
   const [selected, setSelected] = useState<Dialog | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [linkedOpen, setLinkedOpen] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState("");
+
+  // Get current user name for message attribution
+  useEffect(() => {
+    (async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase.from("users").select("full_name").eq("id", user.id).single();
+        if (data) setCurrentUserName(data.full_name);
+      }
+    })();
+  }, []);
 
   async function loadDialogs(silent = false) {
     if (!silent) setLoading(true);
@@ -262,7 +275,7 @@ export default function InboxClient() {
 
             {/* Chat component */}
             <div className="flex-1 min-h-0">
-              <TelegramChat peer={selectedPeer} compact={false} readOnly={selected!.isChannel} phone={selected!.phone || undefined} />
+              <TelegramChat peer={selectedPeer} compact={false} readOnly={selected!.isChannel} phone={selected!.phone || undefined} senderName={currentUserName} />
             </div>
           </>
         )}

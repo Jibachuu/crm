@@ -200,7 +200,7 @@ export default function Header({ title }: HeaderProps) {
 
   return (
     <header
-      className="h-12 bg-white flex items-center justify-between px-6 sticky top-0 z-10"
+      className="h-12 bg-white flex items-center justify-between px-6 md:px-6 pl-14 sticky top-0 z-10"
       style={{ borderBottom: "1px solid #e4e4e4" }}
     >
       <h1 className="text-sm font-semibold" style={{ color: "#333" }}>{title}</h1>
@@ -242,7 +242,7 @@ export default function Header({ title }: HeaderProps) {
         {open && (
           <div
             className="absolute right-0 top-full mt-2 bg-white rounded-lg shadow-xl overflow-hidden"
-            style={{ width: 380, border: "1px solid #e4e4e4", maxHeight: "70vh", zIndex: 50 }}
+            style={{ width: "min(380px, calc(100vw - 20px))", border: "1px solid #e4e4e4", maxHeight: "70vh", zIndex: 50 }}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid #f0f0f0" }}>

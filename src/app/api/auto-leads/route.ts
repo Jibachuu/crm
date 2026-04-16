@@ -218,42 +218,67 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, results, created: results.filter((r) => r.startsWith("Lead")).length });
 }
 
-// ── GET: cron trigger (MAX only — lightweight) ──
+// ── GET: cron trigger (Telegram + MAX) ──
 export async function GET() {
   const admin = createAdminClient();
   const results: string[] = [];
   const adminId = (await admin.from("users").select("id").eq("role", "admin").limit(1).single()).data?.id;
 
+  // ── TELEGRAM ──
   try {
-    const maxProxy = process.env.MAX_PROXY_URL;
-    const maxKey = process.env.MAX_PROXY_KEY;
-    if (!maxProxy || !maxKey) return NextResponse.json({ ok: true, results: ["MAX not configured"], created: 0 });
+    const { tgProxy } = await import("@/lib/telegram/proxy");
+    const dialogsData = await tgProxy<{ dialogs: Array<{ id: string; name: string; username: string | null; phone: string | null; isUser: boolean }> }>("/dialogs");
 
-    const res = await fetch(`${maxProxy}/chats`, { headers: { Authorization: maxKey } });
-    if (!res.ok) return NextResponse.json({ error: "MAX proxy error" }, { status: 502 });
-
-    const data = await res.json();
-    for (const chat of data.chats ?? []) {
-      const chatId = String(chat.chatId ?? "");
-      if (!chatId || Number(chatId) < 0) continue;
-      const chatPhone = chat.phone ? String(chat.phone) : undefined;
-      const rawName = chat.title ?? "";
-      const chatName = rawName && !/^\d+$/.test(rawName.trim()) && rawName.trim().length >= 2 ? rawName : undefined;
-
+    for (const dialog of dialogsData.dialogs ?? []) {
+      if (!dialog.isUser) continue;
       const { contactId, isNew } = await findOrCreateContact(admin, {
-        maks_id: chatId,
-        phone: chatPhone,
-        full_name: chatName,
+        telegram_id: String(dialog.id),
+        telegram_username: dialog.username || undefined,
+        phone: dialog.phone ? String(dialog.phone) : undefined,
+        full_name: dialog.name || undefined,
       }, adminId);
       if (!contactId) continue;
 
       if (isNew) {
-        const lead = await createLeadForContact(admin, contactId, `МАКС: ${chatName || chatId}`, "maks", adminId);
-        if (lead) results.push(`Lead: MAX ${chatName || chatId}`);
+        const lead = await createLeadForContact(admin, contactId, `Telegram: ${dialog.name || dialog.id}`, "telegram", adminId);
+        if (lead) results.push(`Lead: TG ${dialog.name}`);
       }
     }
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    results.push(`Telegram error: ${e}`);
+  }
+
+  // ── MAX ──
+  try {
+    const maxProxy = process.env.MAX_PROXY_URL;
+    const maxKey = process.env.MAX_PROXY_KEY;
+    if (maxProxy && maxKey) {
+      const res = await fetch(`${maxProxy}/chats`, { headers: { Authorization: maxKey } });
+      if (res.ok) {
+        const data = await res.json();
+        for (const chat of data.chats ?? []) {
+          const chatId = String(chat.chatId ?? "");
+          if (!chatId || Number(chatId) < 0) continue;
+          const chatPhone = chat.phone ? String(chat.phone) : undefined;
+          const rawName = chat.title ?? "";
+          const chatName = rawName && !/^\d+$/.test(rawName.trim()) && rawName.trim().length >= 2 ? rawName : undefined;
+
+          const { contactId, isNew } = await findOrCreateContact(admin, {
+            maks_id: chatId,
+            phone: chatPhone,
+            full_name: chatName,
+          }, adminId);
+          if (!contactId) continue;
+
+          if (isNew) {
+            const lead = await createLeadForContact(admin, contactId, `МАКС: ${chatName || chatId}`, "maks", adminId);
+            if (lead) results.push(`Lead: MAX ${chatName || chatId}`);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    results.push(`MAX error: ${e}`);
   }
 
   return NextResponse.json({ ok: true, results, created: results.filter((r) => r.startsWith("Lead")).length });

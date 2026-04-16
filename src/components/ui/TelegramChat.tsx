@@ -31,6 +31,7 @@ interface Props {
   compact?: boolean; // inline in deal/contact vs fullscreen inbox
   pollInterval?: number; // ms, default 8000
   readOnly?: boolean; // hide input for channels
+  senderName?: string; // current CRM user name, shown on outgoing messages
 }
 
 function formatMsgTime(unix: number) {
@@ -146,7 +147,7 @@ function MediaBubble({ media, peer, msgId, onLightbox }: { media: NonNullable<Tg
   return null;
 }
 
-export default function TelegramChat({ peer, compact = false, pollInterval = 8000, readOnly = false, entityType, entityId, phone }: Props & { entityType?: string; entityId?: string; phone?: string }) {
+export default function TelegramChat({ peer, compact = false, pollInterval = 8000, readOnly = false, senderName, entityType, entityId, phone }: Props & { entityType?: string; entityId?: string; phone?: string }) {
   const [messages, setMessages] = useState<TgMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -156,6 +157,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   const [recordingTime, setRecordingTime] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const sentByRef = useRef<Map<string, string>>(new Map()); // msgText+time → senderName
 
   // Auto-resolve entity for sync when not provided (inbox context)
   const resolvedEntityRef = useRef<{ type: string; id: string } | null>(null);
@@ -285,6 +287,8 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ to: peer, message: body }),
       });
+      // Track who sent this message
+      if (senderName) sentByRef.current.set(body, senderName);
       await fetchMessages(true);
     } catch {
       setText(body);
@@ -389,6 +393,9 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                 >
                   {!msg.out && msg.fromName && (
                     <p className="text-xs font-semibold mb-0.5" style={{ color: "#0067a5" }}>{msg.fromName}</p>
+                  )}
+                  {msg.out && senderName && (sentByRef.current.has(msg.text) || !msg.fromName) && (
+                    <p className="text-xs font-semibold mb-0.5" style={{ color: "#2e7d32" }}>{sentByRef.current.get(msg.text) || senderName}</p>
                   )}
                   {msg.forwardedFrom && (
                     <div className="mb-1 pl-2 text-xs" style={{ borderLeft: "2px solid #0067a5", opacity: 0.85 }}>
