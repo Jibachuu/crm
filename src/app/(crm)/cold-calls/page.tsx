@@ -9,12 +9,20 @@ export default async function ColdCallsPage() {
 
   let rows: Record<string, unknown>[] = [];
   try {
-    const { data } = await admin
-      .from("cold_calls")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(3000);
-    rows = data ?? [];
+    // Paginate to bypass Supabase 1000-row limit
+    let offset = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data } = await admin
+        .from("cold_calls")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .range(offset, offset + PAGE - 1);
+      if (!data?.length) break;
+      rows.push(...data);
+      if (data.length < PAGE) break;
+      offset += PAGE;
+    }
   } catch { /* table may not exist yet */ }
 
   const { data: users } = await supabase
