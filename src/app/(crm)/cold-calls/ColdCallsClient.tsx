@@ -45,7 +45,7 @@ const COLUMNS: { key: string; label: string; width?: number; editable?: boolean 
 // Map spreadsheet column names → DB field names
 const IMPORT_MAP: Record<string, string> = {
   "наименование": "company_name", "инн": "inn", "кпп": "kpp", "огрн": "ogrn",
-  "город": "city", "регион": "region", "статус": "status",
+  "город": "city", "регион": "region",
   "email": "main_email", "основная почта": "main_email",
   "основной телефон": "main_phone", "основной сайт": "main_website",
   "фио директора": "director_name", "должность руководителя": "director_position",
