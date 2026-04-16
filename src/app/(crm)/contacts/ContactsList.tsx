@@ -8,7 +8,7 @@ import ExportImportButtons from "@/components/ui/ExportImportButtons";
 import BulkTaskModal from "@/components/ui/BulkTaskModal";
 import { formatDate, getInitials } from "@/lib/utils";
 import PurgeButton from "@/components/ui/PurgeButton";
-import { usePagination } from "@/hooks/usePagination";
+
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -37,7 +37,12 @@ export default function ContactsList({ initialContacts, companies, users }: any)
     return matchesSearch && matchesDate && matchesOwner;
   });
 
-  const { visible: paginatedContacts, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 100);
+  const [showCount, setShowCount] = useState(100);
+  const paginatedContacts = filtered.slice(0, showCount);
+  const hasMore = showCount < filtered.length;
+  const remaining = Math.max(0, filtered.length - showCount);
+  const totalFiltered = filtered.length;
+  const visibleCount = Math.min(showCount, filtered.length);
 
   const filteredIds = filtered.map((c: { id: string }) => c.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id: string) => selected.has(id));
@@ -175,7 +180,7 @@ export default function ContactsList({ initialContacts, companies, users }: any)
           </div>
         )}
       </div>
-      <ShowMore hasMore={hasMore} remaining={remaining} total={totalFiltered} visibleCount={visibleCount} onShowMore={showMore} onShowAll={showAll} />
+      <ShowMore hasMore={hasMore} remaining={remaining} total={totalFiltered} visibleCount={visibleCount} onShowMore={() => setShowCount((c) => c + 100)} onShowAll={() => setShowCount(999999)} />
 
       <CreateContactModal
         open={showCreate}

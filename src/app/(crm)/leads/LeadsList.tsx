@@ -11,7 +11,7 @@ import { formatDate, getInitials, formatCurrency } from "@/lib/utils";
 import PurgeButton from "@/components/ui/PurgeButton";
 import CreateLeadModal from "./CreateLeadModal";
 import { createClient } from "@/lib/supabase/client";
-import { usePagination } from "@/hooks/usePagination";
+
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
@@ -74,7 +74,12 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
     return matchesSearch && matchesStatus && matchesFunnel && matchesDate && matchesOwner;
   });
 
-  const { visible: paginatedLeads, hasMore, remaining, total: totalFiltered, visibleCount, showMore, showAll } = usePagination(filtered, 100);
+  const [showCount, setShowCount] = useState(100);
+  const paginatedLeads = filtered.slice(0, showCount);
+  const hasMore = showCount < filtered.length;
+  const remaining = Math.max(0, filtered.length - showCount);
+  const totalFiltered = filtered.length;
+  const visibleCount = Math.min(showCount, filtered.length);
 
   const filteredIds = filtered.map((l) => l.id);
   const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
@@ -342,7 +347,7 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
         </div>
       )}
       {viewMode === "list" && (
-        <ShowMore hasMore={hasMore} remaining={remaining} total={totalFiltered} visibleCount={visibleCount} onShowMore={showMore} onShowAll={showAll} />
+        <ShowMore hasMore={hasMore} remaining={remaining} total={totalFiltered} visibleCount={visibleCount} onShowMore={() => setShowCount((c) => c + 100)} onShowAll={() => setShowCount(999999)} />
       )}
 
       {/* KANBAN VIEW */}
