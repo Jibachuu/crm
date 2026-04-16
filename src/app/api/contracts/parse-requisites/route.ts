@@ -85,11 +85,10 @@ export async function POST(req: NextRequest) {
 
     if (ext === "pdf") {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const pdfParse = require("pdf-parse");
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const result = await pdfParse(buffer);
-        text = result.text;
+        const { extractText } = await import("unpdf");
+        const buffer = new Uint8Array(await file.arrayBuffer());
+        const result = await extractText(buffer);
+        text = Array.isArray(result.text) ? result.text.join("\n") : String(result.text);
       } catch (e) {
         return NextResponse.json({ error: "PDF parse error: " + String(e) }, { status: 500 });
       }
