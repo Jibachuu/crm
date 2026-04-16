@@ -337,8 +337,9 @@ table{border-collapse:collapse}
 }
 </style></head><body>
 
-<!-- Bank header table -->
-<table class="bank-header">
+<!-- Bank header with QR -->
+<div style="display:flex;align-items:flex-start;gap:12px">
+<table class="bank-header" style="flex:1">
 <tr>
 <td rowspan="2" style="width:55%">
 ${supplier?.bank_name ?? ""}<br><span class="label">Банк получателя</span>
@@ -359,6 +360,11 @@ ${supplier?.bank_name ?? ""}<br><span class="label">Банк получател�
 <td>${supplier?.account_number ?? ""}</td>
 </tr>
 </table>
+${qrDataUrl ? `<div style="text-align:center;flex-shrink:0">
+<img src="${qrDataUrl}" style="width:120px;height:120px" />
+<p style="font-size:8px;color:#555;margin-top:2px">Отсканируйте для<br>оплаты</p>
+</div>` : ""}
+</div>
 
 <div class="title">Счет на оплату № ${inv.invoice_number} от ${dateStr}</div>
 
@@ -396,16 +402,10 @@ ${dueDateStr ? `<p style="margin-top:10px">Оплатить не позднее 
 Товар отпускается по факту прихода денег на р/с Поставщика, самовывозом, при наличии доверенности и паспорта.
 </div>
 
-<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:25px">
-<div class="sign-block" style="position:relative;flex:1">
+<div class="sign-block">
 ${stampSrc ? `<img class="stamp" src="${stampSrc}" />` : ""}
 ${sigSrc ? `<img class="signature" src="${sigSrc}" />` : ""}
 <p><strong>Предприниматель</strong> <span class="sign-line"></span> / ${supplier?.director ?? ""} /</p>
-</div>
-${qrDataUrl ? `<div style="text-align:center">
-<img src="${qrDataUrl}" style="width:150px;height:150px" />
-<p style="font-size:9px;color:#555;margin-top:4px">Отсканируйте для оплаты</p>
-</div>` : ""}
 </div>
 
 <script>
