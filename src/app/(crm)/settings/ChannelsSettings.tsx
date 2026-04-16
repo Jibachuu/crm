@@ -5,7 +5,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 
-type Channel = "telegram" | "email" | "zadarma" | "max";
+type Channel = "telegram" | "email" | "novofon" | "max";
 
 export default function ChannelsSettings() {
   const [activeChannel, setActiveChannel] = useState<Channel>("telegram");
@@ -16,7 +16,7 @@ export default function ChannelsSettings() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 rounded-lg p-1 mb-6 w-fit">
-        {(["telegram", "email", "max", "zadarma"] as Channel[]).map((ch) => (
+        {(["telegram", "email", "max", "novofon"] as Channel[]).map((ch) => (
           <button
             key={ch}
             onClick={() => setActiveChannel(ch)}
@@ -24,7 +24,7 @@ export default function ChannelsSettings() {
               activeChannel === ch ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            {ch === "telegram" ? "💬 Telegram" : ch === "email" ? "✉️ Email" : ch === "max" ? "🔵 МАКС" : "📞 Zadarma"}
+            {ch === "telegram" ? "💬 Telegram" : ch === "email" ? "✉️ Email" : ch === "max" ? "🔵 МАКС" : "📞 Novofon"}
           </button>
         ))}
       </div>
@@ -32,7 +32,7 @@ export default function ChannelsSettings() {
       {activeChannel === "telegram" && <TelegramSettings />}
       {activeChannel === "email" && <EmailSettings />}
       {activeChannel === "max" && <MaxSettings />}
-      {activeChannel === "zadarma" && <ZadarmaSettings />}
+      {activeChannel === "novofon" && <NovofonSettings />}
     </div>
   );
 }
@@ -218,7 +218,7 @@ function EmailSettings() {
   );
 }
 
-function ZadarmaSettings() {
+function NovofonSettings() {
   const [phone, setPhone] = useState("");
   const [calling, setCalling] = useState(false);
   const [result, setResult] = useState("");
@@ -226,13 +226,13 @@ function ZadarmaSettings() {
   async function testCall() {
     setCalling(true);
     setResult("");
-    const res = await fetch("/api/zadarma/call", {
+    const res = await fetch("/api/novofon/call", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone }),
     });
     const data = await res.json();
-    setResult(data.status === "calling" ? `✅ Звонок инициирован на ${phone}` : `❌ ${data.error}`);
+    setResult(data.status === "calling" ? `Звонок инициирован на ${phone}` : `Ошибка: ${data.error}`);
     setCalling(false);
   }
 
@@ -240,16 +240,14 @@ function ZadarmaSettings() {
     <Card>
       <CardBody className="space-y-4">
         <div>
-          <h3 className="font-semibold text-slate-900 mb-1">Zadarma — телефония</h3>
-          <p className="text-sm text-slate-500">Звонки, запись разговоров, транскрипция через Яндекс SpeechKit.</p>
+          <h3 className="font-semibold text-slate-900 mb-1">Novofon — телефония</h3>
+          <p className="text-sm text-slate-500">Звонки, запись разговоров, входящие уведомления.</p>
         </div>
 
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm font-mono space-y-1 text-slate-700">
-          <p>ZADARMA_API_KEY=ваш_ключ</p>
-          <p>ZADARMA_SECRET_KEY=ваш_секрет</p>
-          <p>ZADARMA_SIP=100 # внутренний номер SIP</p>
-          <p className="mt-2"># Webhook URL для настройки в личном кабинете Zadarma:</p>
-          <p className="text-blue-600">https://ваш-домен.com/api/zadarma/webhook</p>
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm space-y-2 text-slate-700">
+          <p>Номера: +7 (843) 212-69-69, +7 (843) 212-67-77</p>
+          <p className="mt-2 font-mono text-xs">Webhook URL:</p>
+          <p className="font-mono text-xs text-blue-600">https://artevo-crm.ru/api/novofon/webhook</p>
         </div>
 
         <div className="flex gap-3 items-end">
@@ -257,7 +255,7 @@ function ZadarmaSettings() {
             <Input label="Номер для теста" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+79001234567" />
           </div>
           <Button size="sm" onClick={testCall} loading={calling} disabled={!phone}>
-            📞 Позвонить
+            Позвонить
           </Button>
         </div>
 
