@@ -85,68 +85,15 @@ export async function POST(req: NextRequest) {
 
     if (ext === "pdf") {
       try {
-        const zlib = await import("zlib");
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const raw = buffer.toString("latin1");
-        const textBlocks: string[] = [];
-
-        // 1. Decompress FlateDecode streams and extract text
-        const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-        let match;
-        while ((match = streamRegex.exec(raw)) !== null) {
-          try {
-            const compressed = Buffer.from(match[1], "latin1");
-            const decompressed = zlib.inflateSync(compressed).toString("latin1");
-            // Extract text from BT..ET blocks in decompressed stream
-            const btEt = decompressed.match(/BT[\s\S]*?ET/g) || [];
-            for (const block of btEt) {
-              const strings = block.match(/\(([^)]*)\)/g);
-              if (strings) textBlocks.push(...strings.map((s) => s.slice(1, -1)));
-            }
-          } catch { /* not a zlib stream or not text — skip */ }
-        }
-
-        // 2. Also try uncompressed BT..ET blocks
-        const btEt = raw.match(/BT[\s\S]*?ET/g) || [];
-        for (const block of btEt) {
-          const strings = block.match(/\(([^)]*)\)/g);
-          if (strings) textBlocks.push(...strings.map((s) => s.slice(1, -1)));
-        }
-
-        // 3. UTF-16BE hex strings
-        const hexStrings = raw.match(/<FEFF[0-9A-Fa-f]+>/g) || [];
-        for (const hs of hexStrings) {
-          const hex = hs.slice(5, -1);
-          let decoded = "";
-          for (let i = 0; i < hex.length; i += 4) {
-            const code = parseInt(hex.slice(i, i + 4), 16);
-            if (code > 0) decoded += String.fromCharCode(code);
-          }
-          if (decoded.trim()) textBlocks.push(decoded);
-        }
-
-        // Decode text — PDF may use win-1251 encoding for Cyrillic
-        let joined = textBlocks.join(" ")
-          .replace(/\\n/g, "\n").replace(/\\r/g, "")
-          .replace(/\\(\(|\)|\\)/g, "$1")
-          .replace(/\x00/g, "");
-
-        // Try win-1251 decode if text looks garbled (high bytes present)
-        if (/[\x80-\xFF]/.test(joined) && !/[А-Яа-яЁё]/.test(joined)) {
-          const win1251 = Buffer.from(joined, "latin1");
-          try {
-            const td = new TextDecoder("windows-1251");
-            joined = td.decode(win1251);
-          } catch { /* keep as is */ }
-        }
-
-        text = joined;
-
-        // 4. Fallback: extract any readable strings from raw binary
-        if (text.trim().length < 30) {
-          const rawStrings = raw.match(/[\x20-\x7EА-Яа-яЁё]{5,}/g) || [];
-          text = rawStrings.join(" ");
-        }
+        // Use pdftotext (poppler-utils) — most reliable PDF text extraction
+        const { writeFileSync, readFileSync, unlinkSync } = await import("fs");
+        const { execSync } = await import("child_process");
+        const tmpPdf = `/tmp/crm_pdf_${Date.now()}.pdf`;
+        const tmpTxt = `/tmp/crm_pdf_${Date.now()}.txt`;
+        writeFileSync(tmpPdf, Buffer.from(await file.arrayBuffer()));
+        execSync(`pdftotext -layout "${tmpPdf}" "${tmpTxt}"`, { timeout: 15000 });
+        text = readFileSync(tmpTxt, "utf-8");
+        try { unlinkSync(tmpPdf); unlinkSync(tmpTxt); } catch {}
       } catch (e) {
         return NextResponse.json({ error: "PDF parse error: " + String(e) }, { status: 500 });
       }
