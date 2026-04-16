@@ -25,6 +25,10 @@ function flatten(body: any): Record<string, string> {
 export async function POST(req: NextRequest) {
   const admin = createAdminClient();
 
+  // Get admin user ID for created_by fields
+  const { data: adminUser } = await admin.from("users").select("id").eq("role", "admin").limit(1).single();
+  const adminId = adminUser?.id ?? null;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let rawBody: any;
   const contentType = req.headers.get("content-type") ?? "";
@@ -99,6 +103,7 @@ export async function POST(req: NextRequest) {
       const { data: newContact, error: contactErr } = await admin.from("contacts").insert({
         full_name: contactName || callerPhone,
         phone: callerPhone,
+        created_by: adminId,
       }).select("id").single();
       if (contactErr) console.error("[novofon] contact insert error:", contactErr.message);
       if (newContact) {
@@ -126,6 +131,7 @@ export async function POST(req: NextRequest) {
         funnel_id: funnel?.id ?? null,
         stage_id: firstStage?.id ?? null,
         assigned_to: assignee ?? null,
+        created_by: adminId,
       }).select("id").single();
       if (leadErr) console.error("[novofon] lead insert error:", leadErr.message);
       else console.log("[novofon] created lead:", newLead?.id, "for contact:", contactId);

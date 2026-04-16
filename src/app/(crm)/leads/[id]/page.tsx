@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import Header from "@/components/layout/Header";
 import LeadDetail from "./LeadDetail";
@@ -6,8 +7,12 @@ import LeadDetail from "./LeadDetail";
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
+  // Ensure auth
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) notFound();
 
-  const { data: lead } = await supabase
+  const admin = createAdminClient();
+  const { data: lead } = await admin
     .from("leads")
     .select(`
       *,
