@@ -81,6 +81,8 @@ export async function POST(req: NextRequest) {
     const { error: commErr } = await admin.from("communications").insert({
       channel: "phone",
       direction: "inbound",
+      entity_type: contactId ? "contact" : "lead",
+      entity_id: contactId || "00000000-0000-0000-0000-000000000000",
       subject: `Входящий звонок ${callerPhone}`,
       body: dbContactName ? `Входящий от ${dbContactName}` : `Входящий от ${callerPhone}`,
       from_address: callerPhone,
@@ -151,6 +153,8 @@ export async function POST(req: NextRequest) {
     await admin.from("communications").insert({
       channel: "phone",
       direction: "outbound",
+      entity_type: contactId ? "contact" : "lead",
+      entity_id: contactId || "00000000-0000-0000-0000-000000000000",
       subject: `Исходящий звонок ${callerPhone}`,
       body: dbContactName ? `Исходящий: ${dbContactName}` : `Исходящий: ${callerPhone}`,
       from_address: calledNumber,
