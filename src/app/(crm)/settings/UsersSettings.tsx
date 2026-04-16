@@ -57,7 +57,7 @@ export default function UsersSettings({ users: initialUsers, permissions: initia
   }
 
   // ── Edit user ────────────────────────────────────────────────────────────────
-  async function handleEdit(id: string, form: { full_name?: string; email?: string; password?: string; role?: string }) {
+  async function handleEdit(id: string, form: Record<string, string | undefined>) {
     const res = await fetch(`/api/admin/users/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
