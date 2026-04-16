@@ -70,6 +70,34 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   const [saving, setSaving] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(false);
   const [editItems, setEditItems] = useState<InvoiceItem[]>([]);
+  const [qrDataUrl, setQrDataUrl] = useState("");
+
+  // Pre-generate QR code when preview invoice changes
+  useEffect(() => {
+    if (!previewInvoice || !supplier) { setQrDataUrl(""); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const QRCode = (await import("qrcode")).default;
+        const total = previewItems.reduce((s: number, i: { total: number }) => s + i.total, 0);
+        const qrParts = [
+          "ST00012",
+          `Name=${supplier?.company_name ?? ""}`,
+          `PersonalAcc=${supplier?.account_number ?? ""}`,
+          `BankName=${supplier?.bank_name ?? ""}`,
+          `BIC=${supplier?.bik ?? ""}`,
+          `CorrespAcc=${supplier?.corr_account ?? ""}`,
+          `PayeeINN=${supplier?.inn ?? ""}`,
+          supplier?.kpp ? `KPP=${supplier.kpp}` : "",
+          `Sum=${Math.round(total * 100)}`,
+          `Purpose=Оплата по счёту №${previewInvoice.invoice_number} от ${new Date(previewInvoice.invoice_date).toLocaleDateString("ru-RU")}`,
+        ].filter(Boolean);
+        const url = await QRCode.toDataURL(qrParts.join("|"), { width: 200, margin: 1 });
+        if (!cancelled) setQrDataUrl(url);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [previewInvoice, previewItems, supplier]);
 
   // Create form state
   const [form, setForm] = useState({
@@ -266,31 +294,11 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     return `/api/image-proxy?url=${encodeURIComponent(url)}`;
   }
 
-  async function printInvoice() {
+  function printInvoice() {
     if (!previewInvoice) return;
 
     const stampSrc = supplier?.stamp_url ? proxyUrl(supplier.stamp_url) : "";
     const sigSrc = supplier?.signature_url ? proxyUrl(supplier.signature_url) : "";
-
-    // Generate QR code (CBR standard ST00012)
-    let qrDataUrl = "";
-    try {
-      const QRCode = (await import("qrcode")).default;
-      const total = previewItems.reduce((s: number, i: { total: number }) => s + i.total, 0);
-      const qrParts = [
-        "ST00012",
-        `Name=${supplier?.company_name ?? ""}`,
-        `PersonalAcc=${supplier?.account_number ?? ""}`,
-        `BankName=${supplier?.bank_name ?? ""}`,
-        `BIC=${supplier?.bik ?? ""}`,
-        `CorrespAcc=${supplier?.corr_account ?? ""}`,
-        `PayeeINN=${supplier?.inn ?? ""}`,
-        supplier?.kpp ? `KPP=${supplier.kpp}` : "",
-        `Sum=${Math.round(total * 100)}`,
-        `Purpose=Оплата по счёту №${previewInvoice.invoice_number} от ${new Date(previewInvoice.invoice_date).toLocaleDateString("ru-RU")}`,
-      ].filter(Boolean);
-      qrDataUrl = await QRCode.toDataURL(qrParts.join("|"), { width: 200, margin: 1 });
-    } catch { /* QR generation failed, skip */ }
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) { alert("Браузер заблокировал окно"); return; }
