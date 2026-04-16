@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { pickAutoLeadAssignee } from "@/lib/auto-lead-assigner";
 
 // Novofon webhook handler — receives call events
 // Configure in Novofon: Settings → API → Webhook URL: https://artevo-crm.ru/api/novofon/webhook
@@ -76,11 +77,12 @@ export async function POST(req: NextRequest) {
         // Update communication with contact_id
         await admin.from("communications").update({ contact_id: newContact.id }).eq("external_id", `novofon_${pbxCallId}`);
 
-        // Create lead for first-time caller
+        // Create lead for first-time caller with round-robin assignment
         const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
         const { data: firstStage } = funnel
           ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
           : { data: null };
+        const assignee = await pickAutoLeadAssignee(admin);
 
         await admin.from("leads").insert({
           title: `Звонок: ${callerNumber}`,
@@ -89,6 +91,7 @@ export async function POST(req: NextRequest) {
           contact_id: newContact.id,
           funnel_id: funnel?.id ?? null,
           stage_id: firstStage?.id ?? null,
+          assigned_to: assignee ?? null,
         });
       }
     }

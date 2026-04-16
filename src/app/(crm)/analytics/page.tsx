@@ -7,13 +7,16 @@ import { formatCurrency } from "@/lib/utils";
 export default async function AnalyticsPage() {
   const supabase = await createClient();
 
-  const [leadsResult, dealsResult, companiesResult, wonDealsResult, productsResult] =
+  const admin = (await import("@/lib/supabase/admin")).createAdminClient();
+  const [leadsResult, dealsResult, companiesResult, wonDealsResult, productsResult, callsResult, coldCallsResult] =
     await Promise.all([
       supabase.from("leads").select("status, source"),
       supabase.from("deals").select("stage, amount, source, company_id"),
       supabase.from("companies").select("id, name"),
       supabase.from("deals").select("company_id, amount").eq("stage", "won"),
       supabase.from("deal_products").select("product_id, quantity, base_price, unit_price, discount_percent, total_price, products(name, sku)"),
+      admin.from("communications").select("direction, duration_seconds, body, created_at").eq("channel", "phone"),
+      admin.from("cold_calls").select("status, call_reached, converted_lead_id"),
     ]);
 
   const leads = (leadsResult.data ?? []) as { status: string; source: string | null }[];
@@ -111,12 +114,38 @@ export default async function AnalyticsPage() {
     .sort((a, b) => b.avgDiscount - a.avgDiscount)
     .slice(0, 15);
 
+  // ── Call analytics ──
+  const calls = (callsResult.data ?? []) as { direction: string; duration_seconds: number | null; body: string | null; created_at: string }[];
+  const inboundCalls = calls.filter((c) => c.direction === "inbound");
+  const outboundCalls = calls.filter((c) => c.direction === "outbound");
+  const answeredCalls = calls.filter((c) => (c.duration_seconds ?? 0) > 0);
+  const avgDuration = answeredCalls.length ? Math.round(answeredCalls.reduce((s, c) => s + (c.duration_seconds ?? 0), 0) / answeredCalls.length) : 0;
+
+  const coldCalls = (coldCallsResult.data ?? []) as { status: string; call_reached: boolean | null; converted_lead_id: string | null }[];
+  const coldCallsTotal = coldCalls.length;
+  const coldCallsReached = coldCalls.filter((c) => c.call_reached).length;
+  const coldCallsConverted = coldCalls.filter((c) => c.converted_lead_id).length;
+
+  const callStats = {
+    totalCalls: calls.length,
+    inbound: inboundCalls.length,
+    outbound: outboundCalls.length,
+    answered: answeredCalls.length,
+    missed: calls.length - answeredCalls.length,
+    avgDuration,
+    coldCallsTotal,
+    coldCallsReached,
+    coldCallsConverted,
+    coldCallsReachedPct: coldCallsTotal ? Math.round((coldCallsReached / coldCallsTotal) * 100) : 0,
+    coldCallsConvertedPct: coldCallsTotal ? Math.round((coldCallsConverted / coldCallsTotal) * 100) : 0,
+  };
+
   return (
     <>
       <Header title="Аналитика" />
       <main className="p-5">
         <AnalyticsTabs
-          dashboard={<AnalyticsDashboard kpis={kpis} stages={stages} sources={sources} companyLTV={companyLTV} topProducts={topProducts} discountAnalytics={discountAnalytics} />}
+          dashboard={<AnalyticsDashboard kpis={kpis} stages={stages} sources={sources} companyLTV={companyLTV} topProducts={topProducts} discountAnalytics={discountAnalytics} callStats={callStats} />}
           datasets={<AnalyticsDataSets />}
         />
       </main>

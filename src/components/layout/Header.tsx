@@ -181,7 +181,9 @@ export default function Header({ title }: HeaderProps) {
     const updated = new Set(readIds);
     notifications.forEach((n) => updated.add(n.id));
     setReadIds(updated);
+    setCount(0);
     localStorage.setItem("read_notifications", JSON.stringify([...updated]));
+    setOpen(false);
   }
 
   function timeAgo(dateStr: string) {

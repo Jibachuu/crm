@@ -404,6 +404,15 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
                           style={{ border: "1px solid transparent", background: isPrimary ? "#e3f2fd" : "transparent" }}
                           onFocus={(e) => { (e.target as HTMLInputElement).style.borderColor = "#d0d0d0"; }}
                           onBlur={(e) => { (e.target as HTMLInputElement).style.borderColor = "transparent"; }} />
+                        {isPhoneCol && row[col.key] && (
+                          <button title="Позвонить" onClick={async () => {
+                            const res = await fetch("/api/novofon/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: row[col.key] }) });
+                            const data = await res.json();
+                            if (data.error) alert("Ошибка: " + data.error);
+                          }} className="shrink-0 p-0.5 rounded hover:bg-green-50">
+                            <Phone size={11} style={{ color: "#2e7d32" }} />
+                          </button>
+                        )}
                         {row[col.key] && (
                           <button title="Сделать основным для конвертации" onClick={() => {
                             const field = isPhoneCol ? "primary_phone" : "primary_email";

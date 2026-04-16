@@ -114,9 +114,38 @@ export default function CallsClient({ calls }: { calls: any[] }) {
                     </td>
                     <td className="px-4 py-2.5">
                       {recording ? (
-                        <audio controls preload="none" className="h-7" style={{ maxWidth: 180 }}>
-                          <source src={call.recording_url} />
-                        </audio>
+                        <div className="flex items-center gap-2">
+                          <audio controls preload="none" className="h-7" style={{ maxWidth: 180 }}>
+                            <source src={call.recording_url} />
+                          </audio>
+                          <button
+                            onClick={async (e) => {
+                              const btn = e.currentTarget;
+                              btn.disabled = true;
+                              btn.textContent = "...";
+                              const res = await fetch("/api/transcribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ communicationId: call.id, recordingUrl: call.recording_url }) });
+                              const data = await res.json();
+                              if (data.transcript) {
+                                btn.textContent = "OK";
+                                const row = btn.closest("tr");
+                                if (row) {
+                                  const td = document.createElement("div");
+                                  td.className = "text-xs mt-1 p-2 rounded";
+                                  td.style.cssText = "background:#f5f5f5;color:#333;max-width:300px;white-space:pre-wrap";
+                                  td.textContent = data.transcript;
+                                  btn.parentElement?.appendChild(td);
+                                }
+                              } else {
+                                btn.textContent = "Err";
+                                alert(data.error || "Ошибка транскрипции");
+                              }
+                              setTimeout(() => { btn.disabled = false; btn.textContent = "STT"; }, 3000);
+                            }}
+                            className="text-xs px-1.5 py-0.5 rounded hover:bg-blue-50 shrink-0"
+                            style={{ color: "#0067a5", border: "1px solid #b3d9f2" }}
+                            title="Транскрибировать (Whisper)"
+                          >STT</button>
+                        </div>
                       ) : (
                         <span className="text-xs" style={{ color: "#ccc" }}>—</span>
                       )}

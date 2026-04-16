@@ -359,9 +359,10 @@ export default function AnalyticsDataSets() {
 }
 
 // Also export a simple KPI dashboard component
-export function AnalyticsDashboard({ kpis, stages, sources, companyLTV, topProducts, discountAnalytics = [] }: {
+export function AnalyticsDashboard({ kpis, stages, sources, companyLTV, topProducts, discountAnalytics = [], callStats }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  kpis: any[]; stages: any[]; sources: any[]; companyLTV: any[]; topProducts: any[]; discountAnalytics?: any[]
+  kpis: any[]; stages: any[]; sources: any[]; companyLTV: any[]; topProducts: any[]; discountAnalytics?: any[];
+  callStats?: { totalCalls: number; inbound: number; outbound: number; answered: number; missed: number; avgDuration: number; coldCallsTotal: number; coldCallsReached: number; coldCallsConverted: number; coldCallsReachedPct: number; coldCallsConvertedPct: number };
 }) {
   return (
     <div>
@@ -502,6 +503,58 @@ export function AnalyticsDashboard({ kpis, stages, sources, companyLTV, topProdu
                 </tbody>
               </table>
             </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Call Analytics */}
+      {callStats && (
+        <Card>
+          <CardBody>
+            <h3 className="text-sm font-semibold mb-4" style={{ color: "#333" }}>Аналитика звонков</h3>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+              <div className="p-3 rounded" style={{ background: "#f8f9fa" }}>
+                <p className="text-xs" style={{ color: "#888" }}>Всего звонков</p>
+                <p className="text-lg font-bold" style={{ color: "#333" }}>{callStats.totalCalls}</p>
+                <p className="text-xs" style={{ color: "#888" }}>Входящих: {callStats.inbound} · Исходящих: {callStats.outbound}</p>
+              </div>
+              <div className="p-3 rounded" style={{ background: "#e8f5e9" }}>
+                <p className="text-xs" style={{ color: "#888" }}>Отвечено</p>
+                <p className="text-lg font-bold" style={{ color: "#2e7d32" }}>{callStats.answered}</p>
+                <p className="text-xs" style={{ color: "#888" }}>Пропущено: {callStats.missed}</p>
+              </div>
+              <div className="p-3 rounded" style={{ background: "#e8f4fd" }}>
+                <p className="text-xs" style={{ color: "#888" }}>Средняя длительность</p>
+                <p className="text-lg font-bold" style={{ color: "#0067a5" }}>{Math.floor(callStats.avgDuration / 60)}:{String(callStats.avgDuration % 60).padStart(2, "0")}</p>
+              </div>
+            </div>
+            {callStats.coldCallsTotal > 0 && (
+              <>
+                <h4 className="text-xs font-semibold mb-3 mt-4" style={{ color: "#888" }}>ПРОЗВОН</h4>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="p-3 rounded" style={{ background: "#f8f9fa" }}>
+                    <p className="text-xs" style={{ color: "#888" }}>Всего в базе</p>
+                    <p className="text-lg font-bold">{callStats.coldCallsTotal}</p>
+                  </div>
+                  <div className="p-3 rounded" style={{ background: "#e8f5e9" }}>
+                    <p className="text-xs" style={{ color: "#888" }}>Дозвонились</p>
+                    <p className="text-lg font-bold" style={{ color: "#2e7d32" }}>{callStats.coldCallsReached}</p>
+                    <p className="text-xs" style={{ color: "#888" }}>{callStats.coldCallsReachedPct}%</p>
+                  </div>
+                  <div className="p-3 rounded" style={{ background: "#e8f4fd" }}>
+                    <p className="text-xs" style={{ color: "#888" }}>Сконвертировано в лид</p>
+                    <p className="text-lg font-bold" style={{ color: "#0067a5" }}>{callStats.coldCallsConverted}</p>
+                    <p className="text-xs" style={{ color: "#888" }}>{callStats.coldCallsConvertedPct}%</p>
+                  </div>
+                  <div className="p-3 rounded" style={{ background: "#fff3e0" }}>
+                    <p className="text-xs" style={{ color: "#888" }}>Конверсия дозвон→лид</p>
+                    <p className="text-lg font-bold" style={{ color: "#e65c00" }}>
+                      {callStats.coldCallsReached ? Math.round((callStats.coldCallsConverted / callStats.coldCallsReached) * 100) : 0}%
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
           </CardBody>
         </Card>
       )}
