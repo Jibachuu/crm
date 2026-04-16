@@ -573,6 +573,28 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
 
         {/* Sidebar */}
         <div className="space-y-3">
+          {/* Survey discount badge */}
+          {lead.contacts && (
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer select-none"
+              style={{
+                background: lead.contacts.survey_discount ? "#e8f5e9" : "#f8f9fa",
+                border: `1px solid ${lead.contacts.survey_discount ? "#a5d6a7" : "#e4e4e4"}`,
+              }}
+              onClick={async () => {
+                const newVal = !lead.contacts.survey_discount;
+                const supabase = (await import("@/lib/supabase/client")).createClient();
+                await supabase.from("contacts").update({ survey_discount: newVal }).eq("id", lead.contacts.id);
+                setLead({ ...lead, contacts: { ...lead.contacts, survey_discount: newVal } });
+              }}
+            >
+              <input type="checkbox" checked={lead.contacts?.survey_discount ?? false} readOnly style={{ accentColor: "#2e7d32", width: 16, height: 16 }} />
+              <span className="text-xs font-medium" style={{ color: lead.contacts.survey_discount ? "#2e7d32" : "#888" }}>
+                Прошёл опрос — скидка 20% на след. заказ
+              </span>
+            </div>
+          )}
+
           {lead.contacts && (
             <Card>
               <CardBody>

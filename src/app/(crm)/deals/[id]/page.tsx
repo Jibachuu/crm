@@ -11,7 +11,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     .from("deals")
     .select(`
       *,
-      contacts(id, full_name, phone, email, telegram_id, telegram_username, maks_id),
+      contacts(id, full_name, phone, email, telegram_id, telegram_username, maks_id, survey_discount),
       companies(id, name, city, region, timezone, legal_address),
       users!deals_assigned_to_fkey(id, full_name)
     `)
