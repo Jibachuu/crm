@@ -187,7 +187,7 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
       </div>
 
       {view === "table" ? (
-        <><div className="bg-white overflow-hidden" style={{ border: "1px solid #e4e4e4", borderRadius: 6 }}>
+        <><div className="bg-white" style={{ border: "1px solid #e4e4e4", borderRadius: 6 }}>
           {filtered.length === 0 ? (
             <div className="text-center py-12 text-sm" style={{ color: "#aaa" }}>Сделки не найдены</div>
           ) : (
