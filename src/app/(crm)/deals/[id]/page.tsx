@@ -1,13 +1,13 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import Header from "@/components/layout/Header";
 import DealDetail from "./DealDetail";
 
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
+  const admin = createAdminClient();
 
-  const { data: deal } = await supabase
+  const { data: deal } = await admin
     .from("deals")
     .select(`
       *,
@@ -22,27 +22,27 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
 
   // Load funnel stages for this deal's funnel
   const { data: funnelStages } = deal.funnel_id
-    ? await supabase
+    ? await admin
         .from("funnel_stages")
         .select("*")
         .eq("funnel_id", deal.funnel_id)
         .order("sort_order")
     : { data: [] };
 
-  const { data: communications } = await supabase
+  const { data: communications } = await admin
     .from("communications")
     .select("*, users!communications_created_by_fkey(full_name)")
     .or(`deal_id.eq.${id},and(entity_type.eq.deal,entity_id.eq.${id})`)
     .order("created_at", { ascending: false });
 
-  const { data: tasks } = await supabase
+  const { data: tasks } = await admin
     .from("tasks")
     .select("*, users!tasks_assigned_to_fkey(full_name)")
     .eq("entity_type", "deal")
     .eq("entity_id", id)
     .order("created_at", { ascending: false });
 
-  const { data: dealProducts } = await supabase
+  const { data: dealProducts } = await admin
     .from("deal_products")
     .select("*, products(name, sku)")
     .eq("deal_id", id);

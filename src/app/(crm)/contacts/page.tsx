@@ -1,17 +1,17 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAll } from "@/lib/supabase/fetchAll";
 import Header from "@/components/layout/Header";
 import ContactsList from "./ContactsList";
 
 export default async function ContactsPage() {
-  const supabase = await createClient();
+  const admin = createAdminClient();
 
   const [contacts, companies, users] = await Promise.all([
-    fetchAll(supabase, "contacts", `*, companies(id, name), users!contacts_assigned_to_fkey(id, full_name)`, {
+    fetchAll(admin, "contacts", `*, companies(id, name), users!contacts_assigned_to_fkey(id, full_name)`, {
       order: { column: "created_at", ascending: false },
     }),
-    fetchAll(supabase, "companies", "id, name", { order: { column: "name" } }),
-    fetchAll(supabase, "users", "id, full_name", {
+    fetchAll(admin, "companies", "id, name", { order: { column: "name" } }),
+    fetchAll(admin, "users", "id, full_name", {
       eq: { is_active: true },
       order: { column: "full_name" },
     }),
