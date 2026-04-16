@@ -16,28 +16,54 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 };
 
 const COLUMNS: { key: string; label: string; width?: number; editable?: boolean }[] = [
-  { key: "status", label: "Статус", width: 120 },
-  { key: "company_name", label: "Наименование", width: 200, editable: true },
+  { key: "main_email", label: "email", width: 160, editable: true },
   { key: "inn", label: "ИНН", width: 110, editable: true },
-  { key: "main_phone", label: "Осн. телефон", width: 130, editable: true },
-  { key: "main_email", label: "Осн. почта", width: 160, editable: true },
+  { key: "kpp", label: "КПП", width: 110, editable: true },
+  { key: "ogrn", label: "ОГРН", width: 130, editable: true },
   { key: "city", label: "Город", width: 120, editable: true },
   { key: "region", label: "Регион", width: 120, editable: true },
+  { key: "company_status", label: "Статус", width: 120, editable: true },
+  { key: "additional_website_1", label: "Доп. сайт 1", width: 150, editable: true },
+  { key: "additional_website_2", label: "Доп. сайт 2", width: 150, editable: true },
+  { key: "additional_website_3", label: "Доп. сайт 3", width: 150, editable: true },
+  { key: "additional_email_1", label: "Доп. почта 1", width: 150, editable: true },
+  { key: "additional_email_2", label: "Доп. почта 2", width: 150, editable: true },
+  { key: "additional_email_3", label: "Доп. почта 3", width: 150, editable: true },
+  { key: "founders", label: "Учредители", width: 200, editable: true },
+  { key: "company_type", label: "Тип компании", width: 130, editable: true },
+  { key: "additional_phone_1", label: "Доп. телефон 1", width: 130, editable: true },
+  { key: "additional_phone_2", label: "Доп. телефон 2", width: 130, editable: true },
+  { key: "additional_phone_3", label: "Доп. телефон 3", width: 130, editable: true },
+  { key: "company_name", label: "Наименование", width: 200, editable: true },
+  { key: "main_website", label: "Основной сайт", width: 150, editable: true },
   { key: "director_name", label: "ФИО директора", width: 180, editable: true },
-  { key: "director_position", label: "Должность рук.", width: 140, editable: true },
-  { key: "main_website", label: "Осн. сайт", width: 150, editable: true },
-  { key: "revenue_2024", label: "Выручка 2024", width: 120, editable: true },
-  { key: "revenue_2025", label: "Выручка 2025", width: 120, editable: true },
-  { key: "call_reached", label: "Дозвон", width: 70 },
-  { key: "discovered_name", label: "Узн. имя", width: 150, editable: true },
-  { key: "discovered_phone", label: "Узн. телефон", width: 130, editable: true },
-  { key: "discovered_email", label: "Узн. email", width: 150, editable: true },
-  { key: "discovered_position", label: "Узн. должность", width: 140, editable: true },
+  { key: "main_okved", label: "Основной ОКВЭД", width: 120, editable: true },
+  { key: "postal_code", label: "Почтовый индекс", width: 110, editable: true },
+  { key: "registration_date", label: "Дата регистрации", width: 130, editable: true },
+  { key: "director_inn", label: "ИНН руководителя", width: 130, editable: true },
+  { key: "main_phone", label: "Основной телефон", width: 130, editable: true },
+  { key: "director_gender", label: "Пол руководителя", width: 120, editable: true },
+  { key: "years_since_registration", label: "Лет с регистрации", width: 120, editable: true },
+  { key: "legal_address", label: "Юридический адрес", width: 200, editable: true },
+  { key: "additional_okveds", label: "Дополнительные ОКВЭД", width: 170, editable: true },
+  { key: "sro_nopriz", label: "Членство в СРО (НОПРИЗ)", width: 170, editable: true },
+  { key: "revenue_2022", label: "Выручка, тыс. руб. (2022)", width: 150, editable: true },
+  { key: "revenue_2023", label: "Выручка, тыс. руб. (2023)", width: 150, editable: true },
+  { key: "revenue_2024", label: "Выручка, тыс. руб. (2024)", width: 150, editable: true },
+  { key: "revenue_2025", label: "Выручка, тыс. руб. (2025)", width: 150, editable: true },
+  { key: "director_position", label: "Должность руководителя", width: 170, editable: true },
+  { key: "sro_nostroy", label: "Членство в СРО (НОСТРОЙ)", width: 170, editable: true },
+  { key: "director_since", label: "Дата вступления в должность", width: 170, editable: true },
+  { key: "profit_2022", label: "Чистая прибыль, тыс. руб. (2022)", width: 180, editable: true },
+  { key: "profit_2023", label: "Чистая прибыль, тыс. руб. (2023)", width: 180, editable: true },
+  { key: "profit_2024", label: "Чистая прибыль, тыс. руб. (2024)", width: 180, editable: true },
+  { key: "profit_2025", label: "Чистая прибыль, тыс. руб. (2025)", width: 180, editable: true },
+  { key: "call_reached", label: "Дозвон/нет", width: 90 },
   { key: "comment", label: "Комментарий", width: 200, editable: true },
 ];
 
 const DB_FIELDS = [
-  "company_name", "inn", "kpp", "ogrn", "city", "region", "legal_address", "postal_code",
+  "company_name", "inn", "kpp", "ogrn", "city", "region", "company_status", "legal_address", "postal_code",
   "company_type", "registration_date", "main_okved", "additional_okveds",
   "director_name", "director_inn", "director_gender", "director_position", "director_since",
   "years_since_registration", "main_phone", "additional_phone_1", "additional_phone_2", "additional_phone_3",
@@ -47,11 +73,12 @@ const DB_FIELDS = [
   "revenue_2022", "revenue_2023", "revenue_2024", "revenue_2025",
   "profit_2022", "profit_2023", "profit_2024", "profit_2025",
   "discovered_phone", "discovered_email", "discovered_name", "discovered_position", "comment",
+  "call_reached",
 ];
 
 const IMPORT_MAP: Record<string, string> = {
   "наименование": "company_name", "инн": "inn", "кпп": "kpp", "огрн": "ogrn",
-  "город": "city", "регион": "region",
+  "город": "city", "регион": "region", "статус": "company_status",
   "email": "main_email", "основная почта": "main_email",
   "основной телефон": "main_phone", "основной сайт": "main_website",
   "фио директора": "director_name", "должность руководителя": "director_position",
@@ -201,6 +228,24 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
             mapped[dbField] = String(raw[header]).trim();
           }
         }
+        // Convert call_reached to boolean (from "Да"/"Нет"/etc.)
+        if (mapped.call_reached !== undefined) {
+          const v = String(mapped.call_reached).toLowerCase().trim();
+          mapped.call_reached = ["да", "yes", "1", "true", "дозвон"].includes(v);
+        }
+        // Convert integer fields
+        if (mapped.years_since_registration !== undefined) {
+          const n = parseInt(mapped.years_since_registration);
+          mapped.years_since_registration = isNaN(n) ? null : n;
+        }
+        // Convert numeric fields (revenue/profit) — strip spaces, replace comma with dot
+        for (const nf of ["revenue_2022","revenue_2023","revenue_2024","revenue_2025","profit_2022","profit_2023","profit_2024","profit_2025"]) {
+          if (mapped[nf] !== undefined) {
+            const cleaned = String(mapped[nf]).replace(/\s/g, "").replace(",", ".");
+            const num = parseFloat(cleaned);
+            mapped[nf] = isNaN(num) ? null : num;
+          }
+        }
         // Green phone → discovered_phone
         if (greenPhones.has(i) && !mapped.discovered_phone) {
           mapped.discovered_phone = greenPhones.get(i);
@@ -213,17 +258,22 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
 
       let totalImported = 0;
       const allErrors: string[] = [];
-      for (let i = 0; i < toInsert.length; i += 500) {
-        const batch = toInsert.slice(i, i + 500);
+      const BATCH = 100;
+      for (let i = 0; i < toInsert.length; i += BATCH) {
+        const batch = toInsert.slice(i, i + BATCH);
         try {
           const res = await fetch("/api/cold-calls/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: batch }) });
-          if (!res.ok) { allErrors.push(`Batch ${Math.floor(i/200)+1}: HTTP ${res.status}`); continue; }
+          if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            allErrors.push(`Batch ${Math.floor(i/BATCH)+1}: HTTP ${res.status} ${text.slice(0, 200)}`);
+            continue;
+          }
           const result = await res.json();
           totalImported += result.imported ?? 0;
           if (result.errors?.length) allErrors.push(...result.errors);
-        } catch (e) { allErrors.push(`Batch ${Math.floor(i/200)+1}: ${e}`); }
+        } catch (e) { allErrors.push(`Batch ${Math.floor(i/BATCH)+1}: ${e}`); }
       }
-      if (allErrors.length) alert(`Импортировано: ${totalImported}\nОшибки: ${allErrors.slice(0,3).join("\n")}`);
+      if (allErrors.length) alert(`Импортировано: ${totalImported} из ${toInsert.length}\nОшибки (${allErrors.length}):\n${allErrors.join("\n")}`);
       else alert(`Импортировано: ${totalImported} из ${toInsert.length}`);
       window.location.reload();
     } catch (e) { alert("Ошибка: " + String(e)); }
