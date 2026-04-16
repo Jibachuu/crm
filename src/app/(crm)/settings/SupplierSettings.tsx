@@ -12,6 +12,7 @@ export default function SupplierSettings() {
     id: "", company_name: "", inn: "", kpp: "", address: "",
     bank_name: "", bik: "", account_number: "", corr_account: "", director: "",
     stamp_url: "", signature_url: "", logo_url: "",
+    legal_name: "", ogrnip: "", director_short: "", phone: "", email: "",
   });
   const [uploadingStamp, setUploadingStamp] = useState(false);
   const [uploadingSig, setUploadingSig] = useState(false);
@@ -85,6 +86,17 @@ export default function SupplierSettings() {
           <div><label style={lblStyle}>Расчётный счёт</label><input value={form.account_number ?? ""} onChange={(e) => setForm({ ...form, account_number: e.target.value })} style={inputStyle} /></div>
           <div><label style={lblStyle}>Корр. счёт</label><input value={form.corr_account ?? ""} onChange={(e) => setForm({ ...form, corr_account: e.target.value })} style={inputStyle} /></div>
         </div>
+        {/* Additional supplier fields */}
+        <div className="grid grid-cols-2 gap-3">
+          <div><label style={lblStyle}>Полное наименование ИП</label><input value={form.legal_name ?? ""} onChange={(e) => setForm({ ...form, legal_name: e.target.value })} style={inputStyle} placeholder="Индивидуальный предприниматель Иванов И.И." /></div>
+          <div><label style={lblStyle}>ОГРНИП</label><input value={form.ogrnip ?? ""} onChange={(e) => setForm({ ...form, ogrnip: e.target.value })} style={inputStyle} placeholder="312345678901234" /></div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div><label style={lblStyle}>Сокращённое ФИО для подписи</label><input value={form.director_short ?? ""} onChange={(e) => setForm({ ...form, director_short: e.target.value })} style={inputStyle} placeholder="Иванов И.И." /></div>
+          <div><label style={lblStyle}>Телефон</label><input value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} style={inputStyle} placeholder="+7 (999) 123-45-67" /></div>
+          <div><label style={lblStyle}>Email</label><input value={form.email ?? ""} onChange={(e) => setForm({ ...form, email: e.target.value })} style={inputStyle} placeholder="info@example.com" /></div>
+        </div>
+
         {/* Logo */}
         <div className="pt-2" style={{ borderTop: "1px solid #f0f0f0" }}>
           <label style={lblStyle}>Логотип (для КП и счетов)</label>

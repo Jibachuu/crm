@@ -16,6 +16,7 @@ import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
 import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import AddProductModal from "@/components/ui/AddProductModal";
+import ContractsClient from "@/app/(crm)/contracts/ContractsClient";
 import EditDealModal from "../EditDealModal";
 import AddressList from "@/components/ui/AddressList";
 import { formatDate, formatDateTime, formatCurrency, getInitials } from "@/lib/utils";
@@ -47,7 +48,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
   const [dealProducts, setDealProducts] = useState(initialDealProducts ?? []);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram" | "maks" | "quotes" | "production" | "files" | "invoices">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "products" | "email" | "telegram" | "maks" | "quotes" | "production" | "files" | "invoices" | "contracts">("info");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [dealFiles, setDealFiles] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -348,6 +349,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                 { id: "products", label: `Товары (${dealProducts.length})` },
                 { id: "files", label: `📎 Файлы (${dealFiles.length})` },
                 { id: "invoices", label: `🧾 Счета (${dealInvoices.length})` },
+                { id: "contracts", label: "📄 Договоры" },
                 { id: "quotes", label: "📋 КП" },
                 { id: "production", label: "🏭 Производство" },
                 { id: "email", label: "📧 Почта" },
@@ -554,6 +556,10 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   ))
                 )}
               </div>
+            )}
+
+            {activeTab === "contracts" && (
+              <ContractsClient dealId={deal.id} />
             )}
 
             {activeTab === "products" && (

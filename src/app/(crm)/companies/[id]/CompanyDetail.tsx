@@ -17,6 +17,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
+import ContractsClient from "@/app/(crm)/contracts/ContractsClient";
 import EditCompanyModal from "../EditCompanyModal";
 import AddressList from "@/components/ui/AddressList";
 import { formatDate, formatDateTime } from "@/lib/utils";
@@ -39,7 +40,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
   const [company, setCompany] = useState(initialCompany);
   const [communications, setCommunications] = useState(initialComms);
   const [tasks, setTasks] = useState(initialTasks);
-  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "email" | "telegram" | "maks">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "communications" | "tasks" | "contracts" | "email" | "telegram" | "maks">("info");
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -152,6 +153,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
     { id: "info", label: "Информация" },
     { id: "communications", label: `Коммуникации (${communications.length})` },
     { id: "tasks", label: `Задачи (${tasks.length})` },
+    { id: "contracts", label: "Договоры" },
     ...(company.email ? [{ id: "email", label: "📧 Почта" }] : []),
     ...(tgContact ? [{ id: "telegram", label: "💬 Telegram" }] : []),
     ...(maksContact ? [{ id: "maks", label: "🔵 МАКС" }] : []),
@@ -424,6 +426,10 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                   ))
                 )}
               </div>
+            )}
+
+            {activeTab === "contracts" && (
+              <ContractsClient companyId={company.id} />
             )}
 
             {activeTab === "email" && company.email && (
