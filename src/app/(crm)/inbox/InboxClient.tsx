@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, RefreshCw, MessageSquare, Link2, ArrowLeft } from "lucide-react";
+import { Search, RefreshCw, MessageSquare, Link2, ArrowLeft, UserPlus, X } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
 import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
 import { createClient } from "@/lib/supabase/client";
@@ -51,6 +51,7 @@ export default function InboxClient() {
   const [refreshing, setRefreshing] = useState(false);
   const [linkedOpen, setLinkedOpen] = useState(false);
   const [currentUserName, setCurrentUserName] = useState("");
+  const [newChatOpen, setNewChatOpen] = useState(false);
 
   // Get current user name for message attribution
   useEffect(() => {
@@ -156,9 +157,18 @@ export default function InboxClient() {
         {/* Header row */}
         <div className="flex items-center justify-between px-3 py-2">
           <span className="text-xs font-semibold" style={{ color: "#888" }}>TELEGRAM · {filtered.length}</span>
-          <button onClick={() => loadDialogs(true)} disabled={refreshing} className="p-1 rounded hover:bg-slate-100 disabled:opacity-40">
-            <RefreshCw size={13} style={{ color: "#888" }} className={refreshing ? "animate-spin" : ""} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setNewChatOpen(true)}
+              title="Новый чат по номеру или username"
+              className="p-1 rounded hover:bg-slate-100"
+            >
+              <UserPlus size={13} style={{ color: "#0067a5" }} />
+            </button>
+            <button onClick={() => loadDialogs(true)} disabled={refreshing} className="p-1 rounded hover:bg-slate-100 disabled:opacity-40">
+              <RefreshCw size={13} style={{ color: "#888" }} className={refreshing ? "animate-spin" : ""} />
+            </button>
+          </div>
         </div>
 
         {/* List */}
@@ -292,6 +302,149 @@ export default function InboxClient() {
             />
           </div>
         )}
+      </div>
+
+      {newChatOpen && (
+        <NewChatModal
+          onClose={() => setNewChatOpen(false)}
+          onFound={(dialog) => {
+            setDialogs((prev) => prev.some((d) => d.id === dialog.id) ? prev : [dialog, ...prev]);
+            setSelected(dialog);
+            setNewChatOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function NewChatModal({ onClose, onFound }: { onClose: () => void; onFound: (d: Dialog) => void }) {
+  const [mode, setMode] = useState<"phone" | "username">("phone");
+  const [value, setValue] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setError(null);
+    const v = value.trim();
+    if (!v) { setError(mode === "phone" ? "Введите номер телефона" : "Введите username"); return; }
+    setLoading(true);
+    try {
+      const body = mode === "phone"
+        ? { phone: v, firstName: firstName.trim() || v, lastName: lastName.trim() }
+        : { username: v };
+      const res = await fetch("/api/telegram/add-contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        const err = data.error || "Не удалось найти пользователя";
+        if (mode === "phone") {
+          setError(`${err}\n\nВозможные причины:\n• Номер не зарегистрирован в Telegram\n• Пользователь скрыл номер в настройках приватности\n• Номер указан без международного кода (попробуйте +7…)`);
+        } else {
+          setError(err);
+        }
+        return;
+      }
+      const u = data.user;
+      const name = [u.firstName, u.lastName].filter(Boolean).join(" ") || u.username || u.phone || "Контакт";
+      const dialog: Dialog = {
+        id: String(u.id),
+        name,
+        username: u.username ?? null,
+        phone: u.phone ?? null,
+        photoUrl: null,
+        unreadCount: 0,
+        lastMessage: "",
+        lastDate: null,
+        isUser: true,
+        isGroup: false,
+        isChannel: false,
+      };
+      onFound(dialog);
+    } catch (e) {
+      setError("Ошибка сети: " + String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "#fff", borderRadius: 8, padding: 20, width: 400, maxWidth: "90vw", boxShadow: "0 4px 20px rgba(0,0,0,0.2)" }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-semibold" style={{ color: "#222" }}>Новый чат в Telegram</h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100"><X size={16} /></button>
+        </div>
+        <div className="flex gap-2 mb-3">
+          <button
+            onClick={() => setMode("phone")}
+            className="flex-1 text-sm py-1.5 rounded"
+            style={{ background: mode === "phone" ? "#0067a5" : "#f0f0f0", color: mode === "phone" ? "#fff" : "#555" }}
+          >
+            По номеру
+          </button>
+          <button
+            onClick={() => setMode("username")}
+            className="flex-1 text-sm py-1.5 rounded"
+            style={{ background: mode === "username" ? "#0067a5" : "#f0f0f0", color: mode === "username" ? "#fff" : "#555" }}
+          >
+            По username
+          </button>
+        </div>
+        {mode === "phone" ? (
+          <div className="space-y-2">
+            <input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="+79991234567"
+              className="w-full px-3 py-2 text-sm focus:outline-none"
+              style={{ border: "1px solid #d0d0d0", borderRadius: 4 }}
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Имя (для контакта)" className="flex-1 px-3 py-2 text-sm focus:outline-none" style={{ border: "1px solid #d0d0d0", borderRadius: 4 }} />
+              <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Фамилия" className="flex-1 px-3 py-2 text-sm focus:outline-none" style={{ border: "1px solid #d0d0d0", borderRadius: 4 }} />
+            </div>
+          </div>
+        ) : (
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="@username или username"
+            className="w-full px-3 py-2 text-sm focus:outline-none"
+            style={{ border: "1px solid #d0d0d0", borderRadius: 4 }}
+            autoFocus
+          />
+        )}
+        {error && (
+          <div className="mt-3 p-2 text-xs whitespace-pre-line rounded" style={{ background: "#fff3e0", color: "#c62828", border: "1px solid #ffcdd2" }}>
+            {error}
+          </div>
+        )}
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="text-sm px-3 py-1.5 rounded" style={{ border: "1px solid #d0d0d0", background: "#fff", color: "#555" }}>
+            Отмена
+          </button>
+          <button
+            onClick={submit}
+            disabled={loading}
+            className="text-sm px-3 py-1.5 rounded text-white disabled:opacity-50"
+            style={{ background: "#0067a5" }}
+          >
+            {loading ? "Поиск..." : "Найти и открыть"}
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Paperclip, Mic, MicOff, Download, FileText, Image, Music, Video, X } from "lucide-react";
+import { Send, Paperclip, Mic, MicOff, Download, FileText, Image, Music, Video, X, MoreVertical, Pencil, Trash2, Check } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import ImageLightbox from "./ImageLightbox";
 
@@ -157,6 +157,9 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   const [recordingTime, setRecordingTime] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState("");
   const sentByRef = useRef<Map<string, string>>(new Map()); // msgText+time → senderName
 
   // Auto-resolve entity for sync when not provided (inbox context)
@@ -317,6 +320,50 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
     }
   }
 
+  async function saveEdit() {
+    if (editingId === null) return;
+    const newText = editingText.trim();
+    if (!newText) return;
+    const id = editingId;
+    setEditingId(null);
+    try {
+      const res = await fetch("/api/telegram/message", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ peer, messageId: id, text: newText }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert("Не удалось отредактировать: " + (data.error ?? "неизвестная ошибка"));
+        return;
+      }
+      setMessages((prev) => prev.map((m) => m.id === id ? { ...m, text: newText } : m));
+      await fetchMessages(true);
+    } catch (e) {
+      alert("Ошибка сети: " + String(e));
+    }
+  }
+
+  async function deleteMessage(id: number) {
+    if (!confirm("Удалить сообщение? Оно будет удалено у обеих сторон.")) return;
+    setOpenMenuId(null);
+    try {
+      const res = await fetch("/api/telegram/message", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ peer, messageId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert("Не удалось удалить: " + (data.error ?? "неизвестная ошибка"));
+        return;
+      }
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+    } catch (e) {
+      alert("Ошибка сети: " + String(e));
+    }
+  }
+
   async function sendFile(file: File) {
     setUploading(true);
     const fd = new FormData();
@@ -402,15 +449,49 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                   </span>
                 </div>
               )}
-              <div className={`flex mb-1 ${msg.out ? "justify-end" : "justify-start"}`}>
+              <div className={`flex mb-1 group ${msg.out ? "justify-end" : "justify-start"}`}>
                 <div
-                  className="max-w-[70%] px-3 py-2 rounded-2xl"
+                  className="max-w-[70%] px-3 py-2 rounded-2xl relative"
                   style={{
                     background: msg.out ? "#dcf8c6" : "#fff",
                     boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
                     borderRadius: msg.out ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
                   }}
                 >
+                  {msg.out && editingId !== msg.id && (
+                    <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity" style={{ top: 2, right: -24 }}>
+                      <button
+                        onClick={() => setOpenMenuId(openMenuId === msg.id ? null : msg.id)}
+                        className="p-1 rounded hover:bg-slate-200"
+                        style={{ background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}
+                        title="Действия"
+                      >
+                        <MoreVertical size={12} style={{ color: "#666" }} />
+                      </button>
+                      {openMenuId === msg.id && (
+                        <div
+                          className="absolute right-0 mt-1 py-1 rounded shadow-md"
+                          style={{ background: "#fff", border: "1px solid #e0e0e0", zIndex: 20, minWidth: 140 }}
+                          onMouseLeave={() => setOpenMenuId(null)}
+                        >
+                          <button
+                            onClick={() => { setEditingId(msg.id); setEditingText(msg.text); setOpenMenuId(null); }}
+                            className="w-full text-left text-xs px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2"
+                            style={{ color: "#333" }}
+                          >
+                            <Pencil size={11} /> Редактировать
+                          </button>
+                          <button
+                            onClick={() => deleteMessage(msg.id)}
+                            className="w-full text-left text-xs px-3 py-1.5 hover:bg-red-50 flex items-center gap-2"
+                            style={{ color: "#c62828" }}
+                          >
+                            <Trash2 size={11} /> Удалить
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {!msg.out && msg.fromName && (
                     <p className="text-xs font-semibold mb-0.5" style={{ color: "#0067a5" }}>{msg.fromName}</p>
                   )}
@@ -425,7 +506,27 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                     </div>
                   )}
                   {msg.media && <MediaBubble media={msg.media} peer={peer} msgId={msg.id} onLightbox={setLightbox} />}
-                  {msg.text && (
+                  {editingId === msg.id ? (
+                    <div>
+                      <textarea
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+                          if (e.key === "Escape") { setEditingId(null); }
+                        }}
+                        className="w-full text-sm resize-none focus:outline-none"
+                        style={{ background: "transparent", color: "#222", minHeight: 40, border: "1px solid #b3d4f0", borderRadius: 4, padding: 4 }}
+                        autoFocus
+                      />
+                      <div className="flex gap-1 mt-1 justify-end">
+                        <button onClick={() => setEditingId(null)} className="text-xs px-2 py-0.5 rounded" style={{ color: "#666" }}>Отмена</button>
+                        <button onClick={saveEdit} className="text-xs px-2 py-0.5 rounded flex items-center gap-1" style={{ background: "#0067a5", color: "#fff" }}>
+                          <Check size={10} /> Сохранить
+                        </button>
+                      </div>
+                    </div>
+                  ) : msg.text && (
                     <p className="text-sm whitespace-pre-wrap leading-snug" style={{ color: "#222" }}>{linkifyText(msg.text)}</p>
                   )}
                   {msg.reactions && msg.reactions.length > 0 && (

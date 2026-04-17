@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, RefreshCw, Paperclip, Mic, MicOff } from "lucide-react";
+import { Send, RefreshCw, Paperclip, Mic, MicOff, MoreVertical, Pencil, Trash2, Check } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import ImageLightbox from "./ImageLightbox";
 
@@ -31,6 +31,9 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   const [uploading, setUploading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -183,6 +186,50 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
     setSending(false);
   }
 
+  async function saveEdit() {
+    if (!editingId) return;
+    const newText = editingText.trim();
+    if (!newText) return;
+    const id = editingId;
+    setEditingId(null);
+    try {
+      const res = await fetch("/api/max", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "edit_message", chat_id: chatId, message_id: id, text: newText }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        alert("Не удалось отредактировать: " + (data.error ?? "неизвестная ошибка"));
+        return;
+      }
+      setMessages((prev) => prev.map((m) => m.id === id ? { ...m, text: newText } : m));
+      setTimeout(loadMessages, 800);
+    } catch (e) {
+      alert("Ошибка сети: " + String(e));
+    }
+  }
+
+  async function deleteMessage(id: string) {
+    if (!confirm("Удалить сообщение? Оно будет удалено у обеих сторон.")) return;
+    setOpenMenuId(null);
+    try {
+      const res = await fetch("/api/max", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete_message", chat_id: chatId, message_id: id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        alert("Не удалось удалить: " + (data.error ?? "неизвестная ошибка"));
+        return;
+      }
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+    } catch (e) {
+      alert("Ошибка сети: " + String(e));
+    }
+  }
+
   // Upload file natively to MAX servers
   async function sendFile(file: File) {
     setUploading(true);
@@ -277,14 +324,48 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
           </div>
         )}
         {messages.map((msg) => (
-          <div key={msg.id} className="flex" style={{ justifyContent: msg.isMe ? "flex-end" : "flex-start" }}>
-            <div style={{
+          <div key={msg.id} className="flex group" style={{ justifyContent: msg.isMe ? "flex-end" : "flex-start" }}>
+            <div className="relative" style={{
               maxWidth: "75%", padding: "8px 12px",
               borderRadius: msg.isMe ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
               background: msg.isMe ? "#0067a5" : "#fff",
               color: msg.isMe ? "#fff" : "#333",
               boxShadow: "0 1px 2px rgba(0,0,0,0.06)", fontSize: 13,
             }}>
+              {msg.isMe && editingId !== msg.id && (
+                <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity" style={{ top: 2, right: -24 }}>
+                  <button
+                    onClick={() => setOpenMenuId(openMenuId === msg.id ? null : msg.id)}
+                    className="p-1 rounded hover:bg-slate-200"
+                    style={{ background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}
+                    title="Действия"
+                  >
+                    <MoreVertical size={12} style={{ color: "#666" }} />
+                  </button>
+                  {openMenuId === msg.id && (
+                    <div
+                      className="absolute right-0 mt-1 py-1 rounded shadow-md"
+                      style={{ background: "#fff", border: "1px solid #e0e0e0", zIndex: 20, minWidth: 140 }}
+                      onMouseLeave={() => setOpenMenuId(null)}
+                    >
+                      <button
+                        onClick={() => { setEditingId(msg.id); setEditingText(msg.text); setOpenMenuId(null); }}
+                        className="w-full text-left text-xs px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2"
+                        style={{ color: "#333" }}
+                      >
+                        <Pencil size={11} /> Редактировать
+                      </button>
+                      <button
+                        onClick={() => deleteMessage(msg.id)}
+                        className="w-full text-left text-xs px-3 py-1.5 hover:bg-red-50 flex items-center gap-2"
+                        style={{ color: "#c62828" }}
+                      >
+                        <Trash2 size={11} /> Удалить
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               {!msg.isMe && <p className="text-xs font-medium mb-0.5" style={{ color: "#0067a5" }}>{msg.sender}</p>}
 
               {/* Forwarded badge */}
@@ -350,8 +431,28 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
                 </div>
                 );
               })}
-              {/* Text */}
-              {msg.text && <p className="whitespace-pre-wrap">{linkifyText(msg.text)}</p>}
+              {/* Text or edit mode */}
+              {editingId === msg.id ? (
+                <div>
+                  <textarea
+                    value={editingText}
+                    onChange={(e) => setEditingText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+                      if (e.key === "Escape") { setEditingId(null); }
+                    }}
+                    className="w-full text-sm resize-none focus:outline-none"
+                    style={{ background: "rgba(255,255,255,0.15)", color: msg.isMe ? "#fff" : "#222", minHeight: 40, border: "1px solid rgba(255,255,255,0.3)", borderRadius: 4, padding: 4 }}
+                    autoFocus
+                  />
+                  <div className="flex gap-1 mt-1 justify-end">
+                    <button onClick={() => setEditingId(null)} className="text-xs px-2 py-0.5 rounded" style={{ color: msg.isMe ? "rgba(255,255,255,0.8)" : "#666" }}>Отмена</button>
+                    <button onClick={saveEdit} className="text-xs px-2 py-0.5 rounded flex items-center gap-1" style={{ background: msg.isMe ? "#fff" : "#0067a5", color: msg.isMe ? "#0067a5" : "#fff" }}>
+                      <Check size={10} /> Сохранить
+                    </button>
+                  </div>
+                </div>
+              ) : msg.text && <p className="whitespace-pre-wrap">{linkifyText(msg.text)}</p>}
               {/* Empty message without attaches */}
               {!msg.text && (!msg.attaches || msg.attaches.length === 0) && !msg.forwardedFrom && !msg.replyTo && (
                 <p className="text-xs italic" style={{ color: msg.isMe ? "rgba(255,255,255,0.7)" : "#888" }}>📎 Вложение</p>

@@ -262,6 +262,36 @@ const srv = http.createServer(async (req, res) => {
     }); return;
   }
 
+  // Edit own message — opcode 67 (EDIT_MESSAGE)
+  if (u.pathname === "/edit-message" && req.method === "POST") {
+    if (!connected) { res.writeHead(503); res.end('{"error":"Not connected"}'); return; }
+    let b = ""; req.on("data", c => b += c); req.on("end", async () => {
+      try {
+        const { chatId, messageId, text } = JSON.parse(b);
+        if (!chatId || !messageId || typeof text !== "string") { res.writeHead(400); res.end(JSON.stringify({ error: "chatId, messageId, text required" })); return; }
+        const r = await request(67, { chatId: Number(chatId), messageId: String(messageId), text, elements: [], attaches: [] }, 10000);
+        if (!r) { res.writeHead(504); res.end(JSON.stringify({ error: "MAX не ответил. Редактирование может не поддерживаться прокси." })); return; }
+        if (r.cmd === 3) { res.writeHead(400); res.end(JSON.stringify({ error: r.payload?.message || "Редактирование отклонено MAX" })); return; }
+        res.writeHead(200, {"Content-Type":"application/json"}); res.end(JSON.stringify({ ok: true }));
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })); }
+    }); return;
+  }
+
+  // Delete own message — opcode 66 (DELETE_MESSAGE)
+  if (u.pathname === "/delete-message" && req.method === "POST") {
+    if (!connected) { res.writeHead(503); res.end('{"error":"Not connected"}'); return; }
+    let b = ""; req.on("data", c => b += c); req.on("end", async () => {
+      try {
+        const { chatId, messageId } = JSON.parse(b);
+        if (!chatId || !messageId) { res.writeHead(400); res.end(JSON.stringify({ error: "chatId and messageId required" })); return; }
+        const r = await request(66, { chatId: Number(chatId), messageIds: [String(messageId)], forMe: false }, 10000);
+        if (!r) { res.writeHead(504); res.end(JSON.stringify({ error: "MAX не ответил. Удаление может не поддерживаться прокси." })); return; }
+        if (r.cmd === 3) { res.writeHead(400); res.end(JSON.stringify({ error: r.payload?.message || "Удаление отклонено MAX" })); return; }
+        res.writeHead(200, {"Content-Type":"application/json"}); res.end(JSON.stringify({ ok: true }));
+      } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })); }
+    }); return;
+  }
+
   // Send message
   if (u.pathname === "/send" && req.method === "POST") {
     if (!connected) { res.writeHead(503); res.end('{"error":"Not connected"}'); return; }

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Plus, Search, Filter, Trash2, CheckSquare, List, LayoutGrid } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Search, Filter, Trash2, CheckSquare, List, LayoutGrid, ArrowRightCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
@@ -32,6 +33,8 @@ interface Funnel { id: string; name: string; type: string; is_default: boolean; 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function LeadsList({ initialLeads, users, funnelStages = [], funnels = [] }: { initialLeads: any[]; users: any[]; funnelStages?: FunnelStage[]; funnels?: Funnel[] }) {
+  const router = useRouter();
+  const [convertingId, setConvertingId] = useState<string | null>(null);
   const { user: currentUser, isManager } = useCurrentUser();
   const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
   const funnelMap = Object.fromEntries(funnels.map((f) => [f.id, f]));
@@ -114,6 +117,31 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
       alert("Ошибка: " + (d.error ?? "не удалось удалить"));
     }
     setBulkDeleting(false);
+  }
+
+  async function convertLead(leadId: string, leadTitle: string) {
+    if (!confirm(`Перевести лид «${leadTitle}» в сделку?\n\nВсе товары, задачи и комментарии будут скопированы.`)) return;
+    setConvertingId(leadId);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/convert`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert("Ошибка: " + (data.error ?? "не удалось конвертировать"));
+        return;
+      }
+      setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, status: "converted" } : l));
+      const parts = [
+        `товаров: ${data.products ?? 0}`,
+        `задач: ${data.tasks ?? 0}`,
+        `комментариев: ${data.comments ?? 0}`,
+      ];
+      alert(`Сделка создана.\nСкопировано — ${parts.join(", ")}.`);
+      router.push(`/deals/${data.dealId}`);
+    } catch (err) {
+      alert("Ошибка сети: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setConvertingId(null);
+    }
   }
 
   // Drag-and-drop for kanban
@@ -291,6 +319,7 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
                     <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>Стадия</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>Ответственный</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>Дата</th>
+                    <th className="px-3 py-2.5 w-24"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -337,6 +366,20 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
                           ) : <span style={{ color: "#ccc" }}>—</span>}
                         </td>
                         <td className="px-4 py-2.5 text-xs" style={{ color: "#aaa" }}>{formatDate(lead.created_at)}</td>
+                        <td className="px-3 py-2.5 text-right">
+                          {lead.status !== "converted" && (
+                            <button
+                              onClick={() => convertLead(lead.id, lead.title)}
+                              disabled={convertingId === lead.id}
+                              title="В сделку"
+                              className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-blue-50"
+                              style={{ color: "#0067a5", border: "1px solid #d0e8f5", opacity: convertingId === lead.id ? 0.5 : 1 }}
+                            >
+                              <ArrowRightCircle size={12} />
+                              {convertingId === lead.id ? "..." : "В сделку"}
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -401,6 +444,8 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
                             isDragging={draggingId === lead.id}
                             onDragStart={(e) => handleDragStart(e, lead.id)}
                             onDragEnd={() => setDraggingId(null)}
+                            onConvert={() => convertLead(lead.id, lead.title)}
+                            converting={convertingId === lead.id}
                           />
                         ))}
                         {hasMore && (
@@ -443,7 +488,7 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function KanbanCard({ lead, color = "#0067a5", isDragging, onDragStart, onDragEnd }: { lead: any; color?: string; isDragging: boolean; onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void }) {
+function KanbanCard({ lead, color = "#0067a5", isDragging, onDragStart, onDragEnd, onConvert, converting }: { lead: any; color?: string; isDragging: boolean; onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void; onConvert: () => void; converting: boolean }) {
   return (
     <div
       draggable
@@ -483,7 +528,23 @@ function KanbanCard({ lead, color = "#0067a5", isDragging, onDragStart, onDragEn
           <span className="text-xs" style={{ color: "#aaa" }}>{lead.users.full_name}</span>
         </div>
       )}
-      <p className="text-xs mt-1.5" style={{ color: "#ccc" }}>{formatDate(lead.created_at)}</p>
+      <div className="flex items-center justify-between mt-1.5">
+        <p className="text-xs" style={{ color: "#ccc" }}>{formatDate(lead.created_at)}</p>
+        {lead.status !== "converted" && (
+          <button
+            onClick={(e) => { e.stopPropagation(); e.preventDefault(); onConvert(); }}
+            onMouseDown={(e) => e.stopPropagation()}
+            draggable={false}
+            disabled={converting}
+            title="В сделку"
+            className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded hover:bg-blue-50"
+            style={{ color: "#0067a5", border: "1px solid #d0e8f5", opacity: converting ? 0.5 : 1 }}
+          >
+            <ArrowRightCircle size={10} />
+            {converting ? "..." : "В сделку"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

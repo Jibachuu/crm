@@ -75,20 +75,19 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Не удалось создать сделку: " + dealError?.message }, { status: 500 });
   }
 
-  // Copy lead_products (block=request) to deal_products
-  const requestProducts = (lead.lead_products ?? []).filter(
-    (lp: { product_block: string }) => lp.product_block !== "order"
-  );
-
-  if (requestProducts.length > 0) {
-    await supabase.from("deal_products").insert(
-      requestProducts.map((lp: {
+  // Copy ALL lead_products (both 'request' and 'order' blocks) to deal_products
+  const allProducts = lead.lead_products ?? [];
+  let productsCopied = 0;
+  if (allProducts.length > 0) {
+    const { error: prodErr } = await supabase.from("deal_products").insert(
+      allProducts.map((lp: {
         product_id: string;
         variant_id: string | null;
         quantity: number;
         unit_price: number;
         discount_percent: number;
         total_price: number;
+        product_block: string | null;
       }) => ({
         deal_id: deal.id,
         product_id: lp.product_id,
@@ -97,13 +96,49 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         unit_price: lp.unit_price,
         discount_percent: lp.discount_percent,
         total_price: lp.total_price,
-        product_block: "request",
+        product_block: lp.product_block ?? "request",
       }))
     );
+    if (!prodErr) productsCopied = allProducts.length;
+  }
+
+  // Copy communications (COPY, not MOVE — keep originals on lead)
+  const { data: leadComms } = await supabase
+    .from("communications")
+    .select("channel, direction, subject, body, from_address, to_address, duration_seconds, recording_url, transcript, external_id, created_by")
+    .eq("entity_type", "lead")
+    .eq("entity_id", leadId);
+
+  let commsCopied = 0;
+  if (leadComms && leadComms.length > 0) {
+    const { error: commErr } = await supabase.from("communications").insert(
+      leadComms.map((c) => ({ ...c, entity_type: "deal", entity_id: deal.id }))
+    );
+    if (!commErr) commsCopied = leadComms.length;
+  }
+
+  // Copy tasks (COPY, not MOVE)
+  const { data: leadTasks } = await supabase
+    .from("tasks")
+    .select("title, description, status, priority, assigned_to, created_by, due_date, completed_at")
+    .eq("entity_type", "lead")
+    .eq("entity_id", leadId);
+
+  let tasksCopied = 0;
+  if (leadTasks && leadTasks.length > 0) {
+    const { error: taskErr } = await supabase.from("tasks").insert(
+      leadTasks.map((t) => ({ ...t, entity_type: "deal", entity_id: deal.id }))
+    );
+    if (!taskErr) tasksCopied = leadTasks.length;
   }
 
   // Mark lead as converted
   await supabase.from("leads").update({ status: "converted" }).eq("id", leadId);
 
-  return NextResponse.json({ dealId: deal.id });
+  return NextResponse.json({
+    dealId: deal.id,
+    products: productsCopied,
+    comments: commsCopied,
+    tasks: tasksCopied,
+  });
 }

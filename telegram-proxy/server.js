@@ -393,6 +393,40 @@ const routes = {
     };
   },
 
+  "POST /edit-message": async (body) => {
+    await ensureConnected();
+    const { peer, messageId, text } = body;
+    if (!peer || !messageId || typeof text !== "string") throw new Error("peer, messageId, text required");
+    const entity = await resolvePeer(peer);
+    await client.invoke(new Api.messages.EditMessage({
+      peer: entity,
+      id: Number(messageId),
+      message: text,
+    }));
+    return { ok: true };
+  },
+
+  "POST /delete-message": async (body) => {
+    await ensureConnected();
+    const { peer, messageId, revoke = true } = body;
+    if (!peer || !messageId) throw new Error("peer and messageId required");
+    const entity = await resolvePeer(peer);
+    // For channels/supergroups, must use channels.DeleteMessages — detect via className
+    const isChannel = entity.className === "Channel" || entity.className === "ChannelForbidden";
+    if (isChannel) {
+      await client.invoke(new Api.channels.DeleteMessages({
+        channel: entity,
+        id: [Number(messageId)],
+      }));
+    } else {
+      await client.invoke(new Api.messages.DeleteMessages({
+        id: [Number(messageId)],
+        revoke: !!revoke,
+      }));
+    }
+    return { ok: true };
+  },
+
   "POST /mark-unread": async (body) => {
     await ensureConnected();
     const { peer } = body;

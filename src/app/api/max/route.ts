@@ -128,6 +128,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(data);
     }
 
+    if (action === "edit_message") {
+      const { chat_id, message_id, text } = body;
+      if (!chat_id || !message_id || typeof text !== "string") return NextResponse.json({ error: "chat_id, message_id, text required" }, { status: 400 });
+      const data = await maxProxy("/edit-message", {
+        method: "POST",
+        body: JSON.stringify({ chatId: chat_id, messageId: message_id, text }),
+      });
+      return NextResponse.json(data);
+    }
+
+    if (action === "delete_message") {
+      const { chat_id, message_id } = body;
+      if (!chat_id || !message_id) return NextResponse.json({ error: "chat_id and message_id required" }, { status: 400 });
+      const data = await maxProxy("/delete-message", {
+        method: "POST",
+        body: JSON.stringify({ chatId: chat_id, messageId: message_id }),
+      });
+      return NextResponse.json(data);
+    }
+
     if (action === "send") {
       const { chat_id, text, fileId } = body;
       if (!chat_id || (!text && !fileId)) return NextResponse.json({ error: "chat_id and (text or fileId) required" }, { status: 400 });
