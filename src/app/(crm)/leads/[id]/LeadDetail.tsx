@@ -237,11 +237,9 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
           <ChevronLeft size={14} /> Все лиды
         </Link>
         <div className="flex items-center gap-2">
-          {!isConverted && (
-            <Button variant="secondary" size="sm" onClick={convertToDeal} loading={convertLoading}>
-              <ArrowRightCircle size={13} /> В сделку
-            </Button>
-          )}
+          <Button variant="secondary" size="sm" onClick={convertToDeal} loading={convertLoading}>
+            <ArrowRightCircle size={13} /> В сделку
+          </Button>
           <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
             <Edit2 size={13} /> Редактировать
           </Button>
