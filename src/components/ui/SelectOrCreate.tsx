@@ -13,9 +13,10 @@ interface SelectOrCreateProps {
   placeholder?: string;
   entityType: "contact" | "company";
   onCreated: (item: { id: string; label: string }) => void;
+  onChange?: (value: string, option?: { value: string; label: string }) => void;
 }
 
-export default function SelectOrCreate({ label, name, options, defaultValue, placeholder, entityType, onCreated }: SelectOrCreateProps) {
+export default function SelectOrCreate({ label, name, options, defaultValue, placeholder, entityType, onCreated, onChange }: SelectOrCreateProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
@@ -31,23 +32,24 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
 
   // Server-side search when query is typed (handles 1000+ records)
   useEffect(() => {
-    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
-      setSearchResults(null);
-      return;
-    }
+    const trimmed = searchQuery.trim();
     const timeout = setTimeout(async () => {
+      if (trimmed.length < 2) {
+        setSearchResults(null);
+        return;
+      }
       setSearching(true);
       try {
         const table = entityType === "contact" ? "contacts" : "companies";
         const field = entityType === "contact" ? "full_name" : "name";
-        const res = await fetch(`/api/search?table=${table}&field=${field}&q=${encodeURIComponent(searchQuery.trim())}&limit=30`);
+        const res = await fetch(`/api/search?table=${table}&field=${field}&q=${encodeURIComponent(trimmed)}&limit=30`);
         if (res.ok) {
           const data = await res.json();
           setSearchResults(data.results ?? []);
         }
       } catch { /* */ }
       setSearching(false);
-    }, 300);
+    }, trimmed.length < 2 ? 0 : 300);
     return () => clearTimeout(timeout);
   }, [searchQuery, entityType]);
 
@@ -71,6 +73,7 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
         if (res.ok && data.id) {
           onCreated({ id: data.id, label: data.full_name });
           setSelectedValue(data.id);
+          onChange?.(data.id, { value: data.id, label: data.full_name });
           setShowCreate(false);
           setNewName(""); setNewPhone(""); setNewEmail("");
         } else { alert(data.error || "Ошибка"); }
@@ -84,6 +87,7 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
         if (res.ok && data.id) {
           onCreated({ id: data.id, label: data.name });
           setSelectedValue(data.id);
+          onChange?.(data.id, { value: data.id, label: data.name });
           setShowCreate(false);
           setNewName("");
         } else { alert(data.error || "Ошибка"); }
@@ -149,7 +153,7 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
           {selectedLabel || placeholder || "Выберите..."}
         </span>
         {selectedValue && (
-          <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedValue(""); }} className="ml-1 hover:text-red-500">
+          <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedValue(""); onChange?.(""); }} className="ml-1 hover:text-red-500">
             <X size={12} style={{ color: "#aaa" }} />
           </button>
         )}
@@ -176,7 +180,7 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
               type="button"
               className="w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50"
               style={{ color: "#aaa" }}
-              onClick={() => { setSelectedValue(""); setDropdownOpen(false); setSearchQuery(""); }}
+              onClick={() => { setSelectedValue(""); onChange?.(""); setDropdownOpen(false); setSearchQuery(""); }}
             >
               {placeholder || "Очистить"}
             </button>
@@ -186,7 +190,7 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
                 type="button"
                 className="w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50"
                 style={{ background: opt.value === selectedValue ? "#e8f4fd" : "transparent", color: "#333" }}
-                onClick={() => { setSelectedValue(opt.value); setDropdownOpen(false); setSearchQuery(""); }}
+                onClick={() => { setSelectedValue(opt.value); onChange?.(opt.value, opt); setDropdownOpen(false); setSearchQuery(""); }}
               >
                 {opt.label}
               </button>

@@ -256,25 +256,45 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   }, [fetchMessages, pollInterval]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const wasAtBottomRef = useRef(true);
+  const lastMsgIdRef = useRef<number | null>(null);
+  const didInitialScrollRef = useRef(false);
+  const [showJumpBtn, setShowJumpBtn] = useState(false);
 
-  // Track whether user is at bottom before new messages arrive
-  useEffect(() => {
+  const isNearBottom = useCallback(() => {
     const container = scrollContainerRef.current;
-    if (!container) return;
-    const handleScroll = () => {
-      const threshold = 80;
-      wasAtBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
-    };
-    container.addEventListener("scroll", handleScroll);
-    return () => container.removeEventListener("scroll", handleScroll);
+    if (!container) return true;
+    return container.scrollHeight - container.scrollTop - container.clientHeight < 150;
   }, []);
 
   useEffect(() => {
-    if (wasAtBottomRef.current) {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const onScroll = () => setShowJumpBtn(!isNearBottom());
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onScroll);
+  }, [isNearBottom]);
+
+  // Scroll only when: (a) first render with messages, (b) genuinely new last-message id AND user was at bottom.
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const lastId = messages[messages.length - 1].id;
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      lastMsgIdRef.current = lastId;
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
+    if (lastId === lastMsgIdRef.current) return; // no new message — do not touch scroll
+    const wasAtBottom = isNearBottom();
+    lastMsgIdRef.current = lastId;
+    if (wasAtBottom) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, isNearBottom]);
+
+  const jumpToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   async function sendMessage() {
     if (!text.trim() || sending) return;
@@ -363,7 +383,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   }
 
   return (
-    <div className="flex flex-col" style={{ height, border: compact ? "1px solid #e4e4e4" : "none", borderRadius: compact ? 6 : 0, overflow: "hidden", background: "#fff" }}>
+    <div className="flex flex-col relative" style={{ height, border: compact ? "1px solid #e4e4e4" : "none", borderRadius: compact ? 6 : 0, overflow: "hidden", background: "#fff" }}>
       {/* Messages */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-3" style={{ background: "#f5f5f5" }}>
         {messages.length === 0 && (
@@ -434,6 +454,17 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
         })}
         <div ref={bottomRef} />
       </div>
+
+      {showJumpBtn && (
+        <button
+          onClick={jumpToBottom}
+          className="absolute right-4 rounded-full shadow-md flex items-center justify-center"
+          style={{ bottom: readOnly ? 72 : 80, width: 36, height: 36, background: "#0067a5", color: "#fff", zIndex: 5 }}
+          title="К новым сообщениям"
+        >
+          ↓
+        </button>
+      )}
 
       {/* Status bar */}
       {(uploading || recording) && (

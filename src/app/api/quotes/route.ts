@@ -12,9 +12,10 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
 
   if (action === "create" || action === "update") {
-    const { id, company_id, contact_id, deal_id, manager_id, payment_terms, delivery_terms, comment, status, items, hide_total } = body;
+    const { id, company_id, contact_id, deal_id, manager_id, payment_terms, delivery_terms, comment, status, items, hide_total, vat_enabled } = body;
 
     const totalAmount = (items ?? []).reduce((s: number, i: { sum: number }) => s + (i.sum ?? 0), 0);
+    const vatAmount = vat_enabled ? Math.round(totalAmount * 0.2 * 100) / 100 : 0;
 
     const payload = {
       company_id: company_id || null,
@@ -26,6 +27,8 @@ export async function POST(req: NextRequest) {
       comment: comment || null,
       status: status || "draft",
       total_amount: totalAmount,
+      vat_enabled: vat_enabled ?? false,
+      vat_amount: vatAmount,
       hide_total: hide_total ?? false,
       updated_at: new Date().toISOString(),
     };

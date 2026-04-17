@@ -68,6 +68,7 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
         assigned_to: (fd.get("assigned_to") as string) || null,
         telegram_username: (fd.get("telegram_username") as string) || null,
         description: (fd.get("description") as string) || null,
+        survey_discount: fd.get("survey_discount") === "on",
       })
       .eq("id", lead.id)
       .select(`*, contacts(id, full_name, phone, email), companies(id, name), users!leads_assigned_to_fkey(id, full_name)`)
@@ -118,6 +119,10 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
           defaultValue={lead?.assigned_to ?? ""}
         />
         <Input label="Telegram контакта" name="telegram_username" defaultValue={lead?.telegram_username ?? ""} placeholder="@username" />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="survey_discount" defaultChecked={!!lead?.survey_discount} style={{ accentColor: "#0067a5" }} />
+          Прошёл опрос — скидка 20% на следующий заказ
+        </label>
         <Textarea label="Описание" name="description" defaultValue={lead?.description ?? ""} />
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Отмена</Button>

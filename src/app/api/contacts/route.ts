@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
       company_id: body.company_id || null,
       assigned_to: body.assigned_to || null,
       description: body.description || null,
+      survey_discount: body.survey_discount ?? false,
       created_by: user.id,
     })
     .select("*, companies(id, name), users!contacts_assigned_to_fkey(id, full_name)")
@@ -49,25 +50,28 @@ export async function PUT(req: NextRequest) {
 
   const admin = createAdminClient();
 
+  const updatePayload: Record<string, unknown> = {
+    full_name: body.full_name,
+    last_name: body.last_name || null,
+    middle_name: body.middle_name || null,
+    position: body.position || null,
+    phone: body.phone || null,
+    phone_mobile: body.phone_mobile || null,
+    phone_other: body.phone_other || null,
+    email: body.email || null,
+    email_other: body.email_other || null,
+    telegram_id: body.telegram_id || null,
+    telegram_username: body.telegram_username || null,
+    maks_id: body.maks_id || null,
+    company_id: body.company_id || null,
+    assigned_to: body.assigned_to || null,
+    description: body.description || null,
+  };
+  if (body.survey_discount !== undefined) updatePayload.survey_discount = !!body.survey_discount;
+
   const { data, error } = await admin
     .from("contacts")
-    .update({
-      full_name: body.full_name,
-      last_name: body.last_name || null,
-      middle_name: body.middle_name || null,
-      position: body.position || null,
-      phone: body.phone || null,
-      phone_mobile: body.phone_mobile || null,
-      phone_other: body.phone_other || null,
-      email: body.email || null,
-      email_other: body.email_other || null,
-      telegram_id: body.telegram_id || null,
-      telegram_username: body.telegram_username || null,
-      maks_id: body.maks_id || null,
-      company_id: body.company_id || null,
-      assigned_to: body.assigned_to || null,
-      description: body.description || null,
-    })
+    .update(updatePayload)
     .eq("id", body.id)
     .select("*, companies(id, name), users!contacts_assigned_to_fkey(id, full_name)")
     .single();

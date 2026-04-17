@@ -80,7 +80,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   const [copied, setCopied] = useState(false);
 
   // Editor state
-  const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
+  const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean; vat_enabled?: boolean }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "", vat_enabled: false });
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -88,7 +88,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
 
   function openCreate() {
     setEditing(null);
-    setForm({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
+    setForm({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "", vat_enabled: false });
     setItems([]);
     setEditorOpen(true);
   }
@@ -97,7 +97,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setEditing({ id: quoteId });
     const q = quotes.find((qq: { id: string }) => qq.id === quoteId);
     if (q) {
-      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "", hide_total: q.hide_total ?? false });
+      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "", hide_total: q.hide_total ?? false, vat_enabled: q.vat_enabled ?? false });
     }
     // Load items from DB
     const supabase = (await import("@/lib/supabase/client")).createClient();
@@ -197,6 +197,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   function removeItem(idx: number) { setItems(items.filter((_, i) => i !== idx)); }
 
   const totalAmount = items.reduce((s, i) => s + i.sum, 0);
+  const vatAmount = form.vat_enabled ? Math.round(totalAmount * 0.2 * 100) / 100 : 0;
+  const totalWithVat = totalAmount + vatAmount;
   const avgDiscount = items.length > 0 ? Math.round(items.reduce((s, i) => s + i.discount_pct, 0) / items.length * 10) / 10 : 0;
 
   async function handleSave(status = "draft") {
@@ -220,7 +222,11 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     for (const item of items) {
       lines.push(`${item.name}${item.article ? ", арт. " + item.article : ""} — ${item.qty} шт. × ${Number(item.client_price).toLocaleString("ru-RU")} ₽ = ${Number(item.sum).toLocaleString("ru-RU")} ₽`);
     }
-    lines.push("", `Итого: ${totalAmount.toLocaleString("ru-RU")} ₽`);
+    if (form.vat_enabled) {
+      lines.push("", `Сумма без НДС: ${totalAmount.toLocaleString("ru-RU")} ₽`, `НДС (20%): ${vatAmount.toLocaleString("ru-RU")} ₽`, `Итого с НДС: ${totalWithVat.toLocaleString("ru-RU")} ₽`);
+    } else {
+      lines.push("", `Итого: ${totalAmount.toLocaleString("ru-RU")} ₽`);
+    }
     if (form.payment_terms) lines.push(`Условия оплаты: ${form.payment_terms}`);
     if (form.delivery_terms) lines.push(`Срок доставки: ${form.delivery_terms}`);
     lines.push("", `По всем вопросам: ${manager?.full_name ?? ""}${manager?.phone ? ", " + manager.phone : ""}`, "", "С уважением,", "Команда Artevo");
@@ -568,6 +574,12 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                 <div className="text-xs" style={{ color: "#888" }}>
                   Средняя скидка: <strong style={{ color: "#e65c00" }}>{avgDiscount}%</strong>
                 </div>
+                <label className="flex items-center gap-2 text-xs" style={{ color: "#888" }}>
+                  <input type="checkbox" checked={form.vat_enabled ?? false}
+                    onChange={(e) => setForm({ ...form, vat_enabled: e.target.checked })}
+                    style={{ accentColor: "#0067a5" }} />
+                  НДС 20%
+                </label>
                 {items.some((i) => i.price_tiers?.length) && (
                   <label className="flex items-center gap-2 text-xs" style={{ color: "#888" }}>
                     <input type="checkbox" checked={form.hide_total ?? false}
@@ -578,8 +590,19 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                 )}
               </div>
               <div className="text-right">
-                <p className="text-xs" style={{ color: "#888" }}>Итого:</p>
-                <p className="text-lg font-bold" style={{ color: "#2e7d32" }}>{formatCurrency(totalAmount)}</p>
+                {form.vat_enabled ? (
+                  <>
+                    <p className="text-xs" style={{ color: "#888" }}>Сумма без НДС: <span style={{ color: "#555" }}>{formatCurrency(totalAmount)}</span></p>
+                    <p className="text-xs" style={{ color: "#888" }}>НДС (20%): <span style={{ color: "#555" }}>{formatCurrency(vatAmount)}</span></p>
+                    <p className="text-xs mt-1" style={{ color: "#888" }}>Итого с НДС:</p>
+                    <p className="text-lg font-bold" style={{ color: "#2e7d32" }}>{formatCurrency(totalWithVat)}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs" style={{ color: "#888" }}>Итого:</p>
+                    <p className="text-lg font-bold" style={{ color: "#2e7d32" }}>{formatCurrency(totalAmount)}</p>
+                  </>
+                )}
               </div>
             </div>
           )}

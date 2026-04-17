@@ -127,31 +127,43 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   }
 
   useEffect(() => { if (chatId && myId !== null) refreshAndLoad(); }, [chatId, myId]);
-  // Only scroll when last message ID changes AND user was at bottom
   const lastMsgIdRef = useRef("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const wasAtBottomRef = useRef(true);
+  const didInitialScrollRef = useRef(false);
+  const [showJumpBtn, setShowJumpBtn] = useState(false);
+
+  const isNearBottom = () => {
+    const c = scrollContainerRef.current;
+    if (!c) return true;
+    return c.scrollHeight - c.scrollTop - c.clientHeight < 150;
+  };
 
   useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    const handleScroll = () => {
-      const threshold = 80;
-      wasAtBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
-    };
-    container.addEventListener("scroll", handleScroll);
-    return () => container.removeEventListener("scroll", handleScroll);
+    const c = scrollContainerRef.current;
+    if (!c) return;
+    const onScroll = () => setShowJumpBtn(!isNearBottom());
+    c.addEventListener("scroll", onScroll, { passive: true });
+    return () => c.removeEventListener("scroll", onScroll);
   }, []);
 
   useEffect(() => {
+    if (messages.length === 0) return;
     const lastId = messages[messages.length - 1]?.id ?? "";
-    if (lastId && lastId !== lastMsgIdRef.current) {
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
       lastMsgIdRef.current = lastId;
-      if (wasAtBottomRef.current) {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      }
+      bottomRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
+    if (lastId === lastMsgIdRef.current) return;
+    const wasAtBottom = isNearBottom();
+    lastMsgIdRef.current = lastId;
+    if (wasAtBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
+
+  const jumpToBottom = () => bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   useEffect(() => {
     if (!chatId) return;
     const interval = setInterval(refreshAndLoad, 15000);
@@ -246,7 +258,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   if (error) return <div className="text-xs p-3 rounded" style={{ background: "#fdecea", color: "#c62828" }}>{error}</div>;
 
   return (
-    <div className="flex flex-col" style={{ height: compact ? 500 : "100%" }}>
+    <div className="flex flex-col relative" style={{ height: compact ? 500 : "100%" }}>
       <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid #f0f0f0" }}>
         <span className="text-xs font-semibold" style={{ color: "#888" }}>МАКС</span>
         <button onClick={refreshAndLoad} className="p-1 rounded hover:bg-gray-100" title="Обновить"><RefreshCw size={12} style={{ color: "#888" }} /></button>
@@ -371,6 +383,17 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
         ))}
         <div ref={bottomRef} />
       </div>
+
+      {showJumpBtn && (
+        <button
+          onClick={jumpToBottom}
+          className="absolute right-4 rounded-full shadow-md flex items-center justify-center"
+          style={{ bottom: 80, width: 36, height: 36, background: "#0067a5", color: "#fff", zIndex: 5 }}
+          title="К новым сообщениям"
+        >
+          ↓
+        </button>
+      )}
 
       {/* Recording indicator */}
       {recording && (

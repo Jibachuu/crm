@@ -117,7 +117,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
     // Stock management: deduct on "won", restore if moving back from "won"
     const orderProducts = dealProducts.filter((p: { product_block: string }) => p.product_block === "order");
     if (newStage === "won" && oldStage !== "won" && orderProducts.length > 0) {
-      let warnings: string[] = [];
+      const warnings: string[] = [];
       for (const dp of orderProducts) {
         if (!dp.product_id) continue;
         const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
@@ -165,7 +165,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
     // Stock management same as before
     const orderProds = dealProducts.filter((p: { product_block: string }) => p.product_block === "order");
     if (stage.slug === "won" && oldStageSlug !== "won" && orderProds.length > 0) {
-      let warnings: string[] = [];
+      const warnings: string[] = [];
       for (const dp of orderProds) {
         if (!dp.product_id) continue;
         const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
@@ -491,17 +491,25 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                         const files = input.files;
                         if (!files) return;
                         setFileUploading(true);
+                        const errors: string[] = [];
                         for (let i = 0; i < files.length; i++) {
                           const fd = new FormData();
                           fd.append("file", files[i]);
                           fd.append("deal_id", deal.id);
-                          const res = await fetch("/api/deals/files", { method: "POST", body: fd });
-                          if (res.ok) {
-                            const f = await res.json();
-                            setDealFiles((prev) => [f, ...prev]);
+                          try {
+                            const res = await fetch("/api/deals/files", { method: "POST", body: fd });
+                            const body = await res.json().catch(() => ({}));
+                            if (res.ok) {
+                              setDealFiles((prev) => [body, ...prev]);
+                            } else {
+                              errors.push(`${files[i].name}: ${body.error || `HTTP ${res.status}`}`);
+                            }
+                          } catch (e) {
+                            errors.push(`${files[i].name}: ${e instanceof Error ? e.message : "сетевая ошибка"}`);
                           }
                         }
                         setFileUploading(false);
+                        if (errors.length) alert("Не удалось загрузить:\n" + errors.join("\n"));
                       };
                       input.click();
                     }}

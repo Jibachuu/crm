@@ -23,6 +23,8 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
     : { data: null };
 
   const totalAmount = (items ?? []).reduce((s, i) => s + (i.sum ?? 0), 0);
+  const vatAmount = quote.vat_enabled ? Math.round(totalAmount * 0.2 * 100) / 100 : 0;
+  const totalWithVat = totalAmount + vatAmount;
   const manager = quote.users as { full_name: string; email?: string } | null;
 
   // Group items by category (extract from name "Category / Subcategory / Name")
@@ -131,10 +133,27 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
         {/* Total */}
         {!quote.hide_total && (
           <div style={{ padding: "24px 40px", background: "#f5f0e8", borderTop: "2px solid #e8e0d4" }}>
-            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12 }}>
-              <span style={{ fontSize: 14, color: "#8c7e6a" }}>Итого:</span>
-              <span style={{ fontSize: 28, fontWeight: 700, color: "#3d3325", fontFamily: "Georgia, serif" }}>{formatCurrency(totalAmount)}</span>
-            </div>
+            {quote.vat_enabled ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12 }}>
+                  <span style={{ fontSize: 13, color: "#8c7e6a" }}>Сумма без НДС:</span>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: "#6b5e4f" }}>{formatCurrency(totalAmount)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12 }}>
+                  <span style={{ fontSize: 13, color: "#8c7e6a" }}>НДС (20%):</span>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: "#6b5e4f" }}>{formatCurrency(vatAmount)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12, marginTop: 6, paddingTop: 8, borderTop: "1px solid #d4c9b8" }}>
+                  <span style={{ fontSize: 14, color: "#8c7e6a" }}>Итого с НДС:</span>
+                  <span style={{ fontSize: 28, fontWeight: 700, color: "#3d3325", fontFamily: "Georgia, serif" }}>{formatCurrency(totalWithVat)}</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12 }}>
+                <span style={{ fontSize: 14, color: "#8c7e6a" }}>Итого:</span>
+                <span style={{ fontSize: 28, fontWeight: 700, color: "#3d3325", fontFamily: "Georgia, serif" }}>{formatCurrency(totalAmount)}</span>
+              </div>
+            )}
           </div>
         )}
 

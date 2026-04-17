@@ -48,6 +48,7 @@ export default function EditContactModal({ open, onClose, contact, onSaved }: { 
           company_id: fd.get("company_id"),
           assigned_to: fd.get("assigned_to"),
           description: fd.get("description"),
+          survey_discount: fd.get("survey_discount") === "on",
         }),
       });
       const data = await res.json();
@@ -99,6 +100,10 @@ export default function EditContactModal({ open, onClose, contact, onSaved }: { 
           placeholder="Выберите сотрудника"
           defaultValue={contact?.assigned_to ?? ""}
         />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="survey_discount" defaultChecked={!!contact?.survey_discount} style={{ accentColor: "#0067a5" }} />
+          Прошёл опрос — скидка 20% на следующий заказ
+        </label>
         <Textarea label="Описание" name="description" defaultValue={contact?.description ?? ""} />
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Отмена</Button>

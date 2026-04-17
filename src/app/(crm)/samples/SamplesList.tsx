@@ -6,6 +6,7 @@ import { Plus, Search, FlaskConical, Trash2, Edit2, Truck, List, Columns } from 
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
+import SelectOrCreate from "@/components/ui/SelectOrCreate";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
 import { formatDate } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -19,7 +20,8 @@ const STATUS_VARIANTS: Record<string, "default" | "warning" | "success" | "dange
 const DELIVERY_LABELS: Record<string, string> = { pvz: "ПВЗ", door: "До адреса" };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function SamplesList({ initialSamples, companies, contacts, users }: any) {
+export default function SamplesList({ initialSamples, companies, contacts: initialContacts, users }: any) {
+  const [contacts, setContacts] = useState(initialContacts ?? []);
   const [samples, setSamples] = useState(initialSamples);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -422,14 +424,31 @@ export default function SamplesList({ initialSamples, companies, contacts, users
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label style={lblStyle}>Контактное лицо</label>
-              <select value={form.contact_id} onChange={(e) => {
-                const contact = contacts.find((c: { id: string }) => c.id === e.target.value);
-                setForm({ ...form, contact_id: e.target.value, contact_phone: contact?.phone ?? form.contact_phone });
-              }} style={inputStyle}>
-                <option value="">Выберите...</option>
-                {contacts.map((c: { id: string; full_name: string; companies?: { name: string } | null }) => <option key={c.id} value={c.id}>{c.full_name}{(c as { companies?: { name: string } | null }).companies?.name ? ` · ${(c as { companies?: { name: string } | null }).companies!.name}` : ""}</option>)}
-              </select>
+              <SelectOrCreate
+                label="Контактное лицо"
+                name="contact_id"
+                entityType="contact"
+                key={editing?.id || "new"}
+                defaultValue={form.contact_id}
+                placeholder="Поиск контакта..."
+                options={contacts.map((c: { id: string; full_name: string; companies?: { name: string } | { name: string }[] | null }) => {
+                  const coName = Array.isArray(c.companies) ? c.companies[0]?.name : c.companies?.name;
+                  return { value: c.id, label: c.full_name + (coName ? ` · ${coName}` : "") };
+                })}
+                onCreated={(item) => setContacts((prev: { id: string; full_name: string }[]) => [...prev, { id: item.id, full_name: item.label }])}
+                onChange={async (value) => {
+                  let phone = "";
+                  const existing = contacts.find((c: { id: string; phone?: string | null }) => c.id === value);
+                  if (existing?.phone) {
+                    phone = existing.phone;
+                  } else if (value) {
+                    const supabase = createClient();
+                    const { data } = await supabase.from("contacts").select("phone, phone_mobile").eq("id", value).single();
+                    phone = data?.phone ?? data?.phone_mobile ?? "";
+                  }
+                  setForm((prev) => ({ ...prev, contact_id: value, contact_phone: phone || prev.contact_phone }));
+                }}
+              />
             </div>
             <div>
               <label style={lblStyle}>Номер телефона</label>

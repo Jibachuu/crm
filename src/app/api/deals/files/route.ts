@@ -20,30 +20,55 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ files: data ?? [] });
 }
 
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const formData = await req.formData();
+  let formData: FormData;
+  try {
+    formData = await req.formData();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: `Не удалось прочитать форму: ${msg}` }, { status: 400 });
+  }
   const file = formData.get("file") as File;
   const dealId = formData.get("deal_id") as string | null;
   const leadId = formData.get("lead_id") as string | null;
   if (!file || (!dealId && !leadId)) return NextResponse.json({ error: "file and (deal_id or lead_id) required" }, { status: 400 });
 
+  if (file.size > MAX_FILE_SIZE) {
+    return NextResponse.json({ error: `Файл слишком большой (${(file.size / 1024 / 1024).toFixed(1)} MB). Максимум ${MAX_FILE_SIZE / 1024 / 1024} MB.` }, { status: 413 });
+  }
+
   const admin = createAdminClient();
   const entityId = dealId || leadId!;
   const folder = dealId ? "deals" : "leads";
-  const path = `${folder}/${entityId}/${Date.now()}_${file.name}`;
+  const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+  const path = `${folder}/${entityId}/${Date.now()}_${safeName}`;
   const buffer = Buffer.from(new Uint8Array(await file.arrayBuffer()));
 
-  const { error: upErr } = await admin.storage.from("attachments").upload(path, buffer, { contentType: file.type, upsert: true });
+  const doUpload = () => admin.storage.from("attachments").upload(path, buffer, {
+    contentType: file.type || "application/octet-stream",
+    upsert: true,
+  });
+
+  let { error: upErr } = await doUpload();
   if (upErr) {
-    if (upErr.message?.includes("not found") || upErr.message?.includes("Bucket")) {
-      await admin.storage.createBucket("attachments", { public: true });
-      await admin.storage.from("attachments").upload(path, buffer, { contentType: file.type, upsert: true });
-    } else {
-      return NextResponse.json({ error: upErr.message }, { status: 500 });
+    const msg = upErr.message || "";
+    const isBucketMissing = /not found|Bucket|does not exist/i.test(msg);
+    if (isBucketMissing) {
+      const { error: createErr } = await admin.storage.createBucket("attachments", { public: true });
+      if (createErr && !/already exists/i.test(createErr.message || "")) {
+        return NextResponse.json({ error: `Не удалось создать bucket: ${createErr.message}` }, { status: 500 });
+      }
+      ({ error: upErr } = await doUpload());
+    }
+    if (upErr) {
+      console.error("[deal-files] upload failed", { path, size: file.size, type: file.type, err: upErr });
+      return NextResponse.json({ error: `Ошибка загрузки в хранилище: ${upErr.message}` }, { status: 500 });
     }
   }
 
@@ -59,7 +84,10 @@ export async function POST(req: NextRequest) {
     uploaded_by: user.id,
   }).select("*").single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("[deal-files] db insert failed", error);
+    return NextResponse.json({ error: `Ошибка записи в БД: ${error.message}` }, { status: 500 });
+  }
   return NextResponse.json(data);
 }
 
