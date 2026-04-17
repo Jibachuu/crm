@@ -4,13 +4,16 @@ import { useState, useEffect } from "react";
 import { RefreshCw, Search, MessageSquare, UserPlus, Link2 } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
 import MaxChat from "@/components/ui/MaxChat";
+import ChannelChat from "@/components/ui/ChannelChat";
 import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
 import { createClient } from "@/lib/supabase/client";
+
+type Channel = "telegram" | "maks" | "vk" | "avito" | "whatsapp";
 
 interface UnifiedDialog {
   id: string;
   name: string;
-  channel: "telegram" | "maks";
+  channel: Channel;
   lastMessage: string;
   lastTime: number;
   unreadCount?: number;
@@ -25,6 +28,9 @@ interface UnifiedDialog {
 const CHANNEL_COLORS: Record<string, { bg: string; badge: string; label: string }> = {
   telegram: { bg: "#0088cc", badge: "#0088cc", label: "TG" },
   maks: { bg: "#0067a5", badge: "#0067a5", label: "M" },
+  vk: { bg: "#4a76a8", badge: "#4a76a8", label: "VK" },
+  avito: { bg: "#00a046", badge: "#00a046", label: "AV" },
+  whatsapp: { bg: "#25d366", badge: "#25d366", label: "WA" },
 };
 
 function getInitials(name: string) {
@@ -222,6 +228,25 @@ export default function AllMessengersInbox() {
         }
       }
     } catch { /* skip */ }
+
+    // Load VK / Avito / WhatsApp chats from inbox_messages
+    for (const channel of ["vk", "avito", "whatsapp"] as const) {
+      try {
+        const res = await fetch(`/api/${channel}/messages`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        for (const c of (data.chats ?? []) as { chat_id: string; lastMessage: string; lastDate: string; contact_id: string | null }[]) {
+          all.push({
+            id: `${channel}_${c.chat_id}`,
+            name: c.chat_id, // will be enriched from contacts below
+            channel,
+            lastMessage: c.lastMessage || "",
+            lastTime: c.lastDate ? new Date(c.lastDate).getTime() / 1000 : 0,
+            chatId: c.chat_id,
+          });
+        }
+      } catch { /* skip */ }
+    }
 
     // Enrich names/avatars from CRM contacts + company names
     try {
@@ -484,6 +509,19 @@ export default function AllMessengersInbox() {
               <TelegramChat peer={selected.peer} compact phone={selected.phone} />
             </div>
           </div>
+        ) : (selected.channel === "vk" || selected.channel === "avito" || selected.channel === "whatsapp") && selected.chatId ? (
+          <div className="flex flex-col h-full">
+            <div className="flex items-center gap-2 px-4 py-2" style={{ background: "#fff", borderBottom: "1px solid #e4e4e4" }}>
+              <div className="w-3 h-3 rounded-full" style={{ background: CHANNEL_COLORS[selected.channel].bg }} />
+              <span className="text-sm font-medium" style={{ color: "#333" }}>{selected.name}</span>
+              <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: CHANNEL_COLORS[selected.channel].bg + "20", color: CHANNEL_COLORS[selected.channel].bg }}>
+                {selected.channel === "vk" ? "ВКонтакте" : selected.channel === "avito" ? "Avito" : "WhatsApp"}
+              </span>
+            </div>
+            <div className="flex-1 min-h-0">
+              <ChannelChat channel={selected.channel} chatId={selected.chatId} />
+            </div>
+          </div>
         ) : selected.channel === "maks" && selected.chatId ? (
           <div className="flex flex-col h-full">
             <div className="flex items-center gap-2 px-4 py-2" style={{ background: "#fff", borderBottom: "1px solid #e4e4e4" }}>
@@ -525,7 +563,7 @@ export default function AllMessengersInbox() {
             telegramUsername={selected.channel === "telegram" ? (selected.username || selected.peer) : undefined}
             maksId={selected.channel === "maks" ? selected.chatId : undefined}
             displayName={selected.name}
-            channel={selected.channel}
+            channel={selected.channel === "telegram" || selected.channel === "maks" ? selected.channel : "telegram"}
             onClose={() => setLinkedOpen(false)}
           />
         </div>

@@ -1,0 +1,17 @@
+[Unit]
+Description=Artevo WhatsApp Proxy (whatsapp-web.js)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/whatsapp-proxy
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=15
+Environment=PORT=3400
+Environment=API_KEY=artevo-wa-proxy-2026
+Environment=CRM_WEBHOOK_URL=https://artevo-crm.ru/api/webhooks/whatsapp
+Environment=CRM_WEBHOOK_SECRET=CHANGE_ME
+
+[Install]
+WantedBy=multi-user.target
