@@ -7,7 +7,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -17,9 +17,13 @@ jobs:
           host: 72.56.243.123
           username: root
           key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          command_timeout: 10m
           script: |
             cd /opt/crm-app
-            git pull origin main || true
+            git fetch origin main
+            git reset --hard origin/main
             npm install
             NODE_OPTIONS="--max-old-space-size=1024" npx next build
             systemctl restart crm-app
+            echo "Deploy complete!"
