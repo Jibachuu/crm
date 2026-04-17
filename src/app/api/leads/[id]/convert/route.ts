@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: leadId } = await params;
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   // Fetch the lead with its products
   const { data: lead, error: leadError } = await supabase
