@@ -14,7 +14,12 @@ interface WebPhoneProps {
   displayName?: string;
 }
 
-type CallState = "idle" | "registering" | "registered" | "incoming" | "calling" | "connected" | "failed";
+type CallState = "idle" | "registering" | "registered" | "incoming" | "calling" | "ringing" | "connected" | "failed";
+
+const ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun.novofon.ru" },
+];
 
 export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofon.ru", wsUrl = "wss://sip.novofon.ru/ws", displayName = "CRM" }: WebPhoneProps) {
   const [state, setState] = useState<CallState>("idle");
@@ -25,7 +30,6 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
   const [dialNumber, setDialNumber] = useState("");
 
   const stateRef = useRef<CallState>("idle");
-  // Keep stateRef in sync
   useEffect(() => { stateRef.current = state; }, [state]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,15 +39,70 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
   const audioRef = useRef<HTMLAudioElement>(null);
   const ringtoneRef = useRef<HTMLAudioElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval>>(null);
+  const ringbackRef = useRef<{ ctx: AudioContext; osc: OscillatorNode; gain: GainNode; interval: ReturnType<typeof setInterval> } | null>(null);
+
+  // --- Ringback tone (425 Hz, 1s on / 4s off — Russian standard) ---
+  const startRingback = useCallback(() => {
+    stopRingback();
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 425;
+      osc.type = "sine";
+      gain.gain.value = 0; // start silent
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+
+      let on = true;
+      gain.gain.value = 0.15;
+      const interval = setInterval(() => {
+        on = !on;
+        gain.gain.value = on ? 0.15 : 0;
+      }, on ? 1000 : 4000);
+
+      // More accurate: 1s on, 4s off cycle
+      clearInterval(interval);
+      let phase = 0;
+      const tick = setInterval(() => {
+        phase++;
+        const inCycle = phase % 50; // 50 * 100ms = 5s cycle
+        gain.gain.value = inCycle < 10 ? 0.15 : 0; // first 1s on, rest off
+      }, 100);
+
+      ringbackRef.current = { ctx, osc, gain, interval: tick };
+    } catch (e) {
+      console.warn("[WebPhone] ringback failed:", e);
+    }
+  }, []);
+
+  const stopRingback = useCallback(() => {
+    if (ringbackRef.current) {
+      try {
+        clearInterval(ringbackRef.current.interval);
+        ringbackRef.current.osc.stop();
+        ringbackRef.current.ctx.close();
+      } catch {}
+      ringbackRef.current = null;
+    }
+  }, []);
 
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (ringtoneRef.current) { ringtoneRef.current.pause(); ringtoneRef.current.currentTime = 0; }
+    stopRingback();
     sessionRef.current = null;
     setDuration(0);
     setMuted(false);
     setCallerInfo("");
-  }, []);
+  }, [stopRingback]);
+
+  const endCall = useCallback(() => {
+    console.log("[WebPhone] endCall, current state:", stateRef.current);
+    setState("registered");
+    cleanup();
+  }, [cleanup]);
 
   // Initialize JsSIP UA
   useEffect(() => {
@@ -61,6 +120,8 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
         display_name: displayName,
         register: true,
         session_timers: false,
+        connection_recovery_min_interval: 2,
+        connection_recovery_max_interval: 30,
       };
 
       const ua = new JsSIP.UA(config);
@@ -72,46 +133,56 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
       // Incoming call (including callback from Novofon after makeCall)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ua.on("newRTCSession", (data: any) => {
+        if (!mounted) return;
         const session = data.session;
-        if (session.direction === "incoming") {
-          sessionRef.current = session;
-          const from = session.remote_identity?.display_name || session.remote_identity?.uri?.user || "Unknown";
-          console.log("[WebPhone] incoming session from:", from);
+        if (session.direction !== "incoming") return;
 
-          const answerOptions = {
-            mediaConstraints: { audio: true, video: false },
-            pcConfig: {
-              iceServers: [
-                { urls: "stun:stun.l.google.com:19302" },
-                { urls: "stun:stun.novofon.ru" },
-              ],
-            },
-          };
+        sessionRef.current = session;
+        const from = session.remote_identity?.display_name || session.remote_identity?.uri?.user || "Unknown";
+        console.log("[WebPhone] incoming session from:", from, "current state:", stateRef.current);
 
-          session.on("accepted", () => {
-            if (ringtoneRef.current) { ringtoneRef.current.pause(); ringtoneRef.current.currentTime = 0; }
-            if (mounted) setState("connected");
-            startTimer();
-            attachAudio(session);
-          });
-          session.on("ended", (e: any) => { console.log("[WebPhone] incoming ended:", e?.cause); if (mounted) { setState("registered"); cleanup(); } });
-          session.on("failed", (e: any) => { console.error("[WebPhone] incoming failed:", e?.cause); if (mounted) { setState("registered"); cleanup(); } });
+        const answerOptions = {
+          mediaConstraints: { audio: true, video: false },
+          pcConfig: { iceServers: ICE_SERVERS },
+        };
 
-          // If we're in "calling" state, this is the callback from Novofon — auto-answer
-          if (stateRef.current === "calling") {
-            console.log("[WebPhone] auto-answering callback from Novofon");
-            session.answer(answerOptions);
-            return;
-          }
+        // Bind session events — always use endCall to ensure UI resets
+        session.on("accepted", () => {
+          console.log("[WebPhone] call accepted");
+          if (ringtoneRef.current) { ringtoneRef.current.pause(); ringtoneRef.current.currentTime = 0; }
+          stopRingback();
+          if (mounted) setState("connected");
+          startTimer();
+          attachAudio(session);
+        });
 
-          // Otherwise it's a regular incoming call — show UI
-          if (mounted) {
-            setCallerInfo(from);
-            setState("incoming");
-            setMinimized(false);
-          }
-          try { ringtoneRef.current?.play().catch(() => {}); } catch {}
+        session.on("ended", (e: any) => {
+          console.log("[WebPhone] call ended:", e?.cause);
+          if (mounted) endCall();
+        });
+
+        session.on("failed", (e: any) => {
+          console.error("[WebPhone] call failed:", e?.cause, e?.message?.status_code);
+          if (mounted) endCall();
+        });
+
+        // Callback from Novofon after makeCall — auto-answer
+        if (stateRef.current === "calling") {
+          console.log("[WebPhone] auto-answering Novofon callback");
+          session.answer(answerOptions);
+          // Now we're waiting for the remote party — play ringback
+          if (mounted) setState("ringing");
+          startRingback();
+          return;
         }
+
+        // Regular incoming call — show UI
+        if (mounted) {
+          setCallerInfo(from);
+          setState("incoming");
+          setMinimized(false);
+        }
+        try { ringtoneRef.current?.play().catch(() => {}); } catch {}
       });
 
       ua.start();
@@ -123,22 +194,27 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
       if (uaRef.current) { try { uaRef.current.stop(); } catch {} }
       cleanup();
     };
-  }, [sipUser, sipPassword, sipServer, wsUrl, displayName, cleanup]);
+  }, [sipUser, sipPassword, sipServer, wsUrl, displayName, cleanup, endCall, startRingback, stopRingback]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function attachAudio(session: any) {
-    const streams = session.connection?.getRemoteStreams?.();
-    if (streams?.length && audioRef.current) {
-      audioRef.current.srcObject = streams[0];
-      audioRef.current.play().catch(() => {});
-    } else {
-      // Modern API
-      session.connection?.addEventListener("track", (e: RTCTrackEvent) => {
+    // Try modern API first
+    if (session.connection) {
+      session.connection.addEventListener("track", (e: RTCTrackEvent) => {
         if (audioRef.current && e.streams?.[0]) {
           audioRef.current.srcObject = e.streams[0];
           audioRef.current.play().catch(() => {});
         }
       });
+      // Also check existing streams
+      const receivers = session.connection.getReceivers?.();
+      if (receivers?.length) {
+        const stream = new MediaStream(receivers.map((r: RTCRtpReceiver) => r.track));
+        if (audioRef.current) {
+          audioRef.current.srcObject = stream;
+          audioRef.current.play().catch(() => {});
+        }
+      }
     }
   }
 
@@ -152,12 +228,7 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     if (sessionRef.current) {
       sessionRef.current.answer({
         mediaConstraints: { audio: true, video: false },
-        pcConfig: {
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun.novofon.ru" },
-          ],
-        },
+        pcConfig: { iceServers: ICE_SERVERS },
       });
     }
   }
@@ -166,16 +237,14 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     if (sessionRef.current) {
       try { sessionRef.current.terminate(); } catch {}
     }
-    setState("registered");
-    cleanup();
+    endCall();
   }
 
   function hangup() {
     if (sessionRef.current) {
       try { sessionRef.current.terminate(); } catch {}
     }
-    setState("registered");
-    cleanup();
+    endCall();
   }
 
   function toggleMute() {
@@ -186,7 +255,6 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
 
   function normalizePhone(raw: string): string {
     const digits = raw.replace(/\D/g, "");
-    // 8xxx... → 7xxx... for Russian numbers
     if (digits.length === 11 && digits.startsWith("8")) return "7" + digits.slice(1);
     return digits;
   }
@@ -200,7 +268,6 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     setMinimized(false);
 
     try {
-      // Use Novofon callback API: it calls our SIP first, then connects to client
       const res = await fetch("/api/novofon/call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,25 +276,21 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
       const data = await res.json();
       if (!res.ok) {
         console.error("[WebPhone] callback API error:", data.error);
-        setState("registered");
-        cleanup();
+        endCall();
         return;
       }
-      console.log("[WebPhone] callback initiated, waiting for SIP ring...", data);
-      // Novofon will now call our SIP extension — the incoming handler will pick it up
+      console.log("[WebPhone] callback initiated:", data);
     } catch (err) {
       console.error("[WebPhone] callback API failed:", err);
-      setState("registered");
-      cleanup();
+      endCall();
     }
   }
 
   const fmtDur = `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}`;
-  const isActive = state === "incoming" || state === "calling" || state === "connected";
+  const isActive = state === "incoming" || state === "calling" || state === "ringing" || state === "connected";
 
-  // Status indicator (always visible)
   const statusColor = state === "registered" ? "#2e7d32" : state === "failed" ? "#c62828" : "#888";
-  const statusText = state === "registered" ? "Online" : state === "registering" ? "..." : state === "failed" ? "Offline" : state === "idle" ? "" : "";
+  const statusText = state === "registered" ? "Online" : state === "registering" ? "..." : state === "failed" ? "Offline" : "";
 
   if (!sipUser) return null;
 
@@ -295,8 +358,8 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
         </div>
       )}
 
-      {/* Calling (outbound ringing) */}
-      {state === "calling" && (
+      {/* Calling / Ringing (outbound) */}
+      {(state === "calling" || state === "ringing") && (
         <div className="fixed top-4 right-4 z-[100] bg-white rounded-xl shadow-2xl p-4" style={{ border: "1px solid #e4e4e4", minWidth: 260 }}>
           <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 rounded-full flex items-center justify-center animate-pulse" style={{ background: "#e8f4fd" }}>
@@ -304,7 +367,9 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
             </div>
             <div>
               <p className="text-sm font-semibold" style={{ color: "#333" }}>{callerInfo}</p>
-              <p className="text-xs" style={{ color: "#888" }}>Вызов...</p>
+              <p className="text-xs" style={{ color: "#888" }}>
+                {state === "calling" ? "Соединение..." : "Дозвон..."}
+              </p>
             </div>
           </div>
           <button onClick={hangup} className="w-full py-2 rounded-lg text-white text-sm font-medium flex items-center justify-center gap-1" style={{ background: "#c62828" }}>
