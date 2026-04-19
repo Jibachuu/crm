@@ -166,16 +166,6 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
           if (mounted) endCall();
         });
 
-        // Callback from Novofon after makeCall — auto-answer
-        if (stateRef.current === "calling") {
-          console.log("[WebPhone] auto-answering Novofon callback");
-          session.answer(answerOptions);
-          // Now we're waiting for the remote party — play ringback
-          if (mounted) setState("ringing");
-          startRingback();
-          return;
-        }
-
         // Regular incoming call — show UI
         if (mounted) {
           setCallerInfo(from);
@@ -259,31 +249,50 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     return digits;
   }
 
-  async function makeCall(number: string) {
+  function makeCall(number: string) {
     if (!uaRef.current || !number) return;
 
     const normalized = normalizePhone(number);
+    console.log("[WebPhone] calling:", normalized, "(raw:", number, ")");
     setCallerInfo(number);
     setState("calling");
     setMinimized(false);
+    startRingback();
 
-    try {
-      const res = await fetch("/api/novofon/call", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: normalized }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        console.error("[WebPhone] callback API error:", data.error);
-        endCall();
-        return;
+    const callOptions = {
+      mediaConstraints: { audio: true, video: false },
+      pcConfig: {
+        iceServers: ICE_SERVERS,
+        iceTransportPolicy: "all" as const,
+      },
+      rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
+    };
+
+    const session = uaRef.current.call(`sip:${normalized}@${sipServer}`, callOptions);
+    sessionRef.current = session;
+
+    session.on("progress", (e: any) => {
+      console.log("[WebPhone] progress:", e?.response?.status_code);
+      // 180 Ringing — remote phone is ringing
+      if (e?.response?.status_code === 180 || e?.response?.status_code === 183) {
+        setState("ringing");
       }
-      console.log("[WebPhone] callback initiated:", data);
-    } catch (err) {
-      console.error("[WebPhone] callback API failed:", err);
+    });
+    session.on("accepted", () => {
+      console.log("[WebPhone] call accepted");
+      stopRingback();
+      setState("connected");
+      startTimer();
+      attachAudio(session);
+    });
+    session.on("ended", (e: any) => {
+      console.log("[WebPhone] call ended:", e?.cause);
       endCall();
-    }
+    });
+    session.on("failed", (e: any) => {
+      console.error("[WebPhone] call failed:", e?.cause, "status:", e?.message?.status_code);
+      endCall();
+    });
   }
 
   const fmtDur = `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}`;
