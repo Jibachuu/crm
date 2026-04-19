@@ -61,9 +61,9 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
 
       const ua = new JsSIP.UA(config);
 
-      ua.on("registered", () => { if (mounted) setState("registered"); });
-      ua.on("unregistered", () => { if (mounted) setState("idle"); });
-      ua.on("registrationFailed", () => { if (mounted) setState("failed"); });
+      ua.on("registered", () => { console.log("[WebPhone] registered"); if (mounted) setState("registered"); });
+      ua.on("unregistered", () => { console.log("[WebPhone] unregistered"); if (mounted) setState("idle"); });
+      ua.on("registrationFailed", (e: any) => { console.error("[WebPhone] registration failed:", e?.cause); if (mounted) setState("failed"); });
 
       // Incoming call
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,8 +86,8 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
             startTimer();
             attachAudio(session);
           });
-          session.on("ended", () => { if (mounted) { setState("registered"); cleanup(); } });
-          session.on("failed", () => { if (mounted) { setState("registered"); cleanup(); } });
+          session.on("ended", (e: any) => { console.log("[WebPhone] incoming ended:", e?.cause); if (mounted) { setState("registered"); cleanup(); } });
+          session.on("failed", (e: any) => { console.error("[WebPhone] incoming failed:", e?.cause); if (mounted) { setState("registered"); cleanup(); } });
         }
       });
 
@@ -129,6 +129,12 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     if (sessionRef.current) {
       sessionRef.current.answer({
         mediaConstraints: { audio: true, video: false },
+        pcConfig: {
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun.novofon.ru" },
+          ],
+        },
       });
     }
   }
@@ -157,17 +163,28 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
 
   function makeCall(number: string) {
     if (!uaRef.current || !number) return;
-    const session = uaRef.current.call(`sip:${number}@${sipServer}`, {
+
+    const callOptions = {
       mediaConstraints: { audio: true, video: false },
-    });
+      pcConfig: {
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          { urls: "stun:stun.novofon.ru" },
+        ],
+      },
+      rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
+    };
+
+    const session = uaRef.current.call(`sip:${number}@${sipServer}`, callOptions);
     sessionRef.current = session;
     setCallerInfo(number);
     setState("calling");
     setMinimized(false);
 
+    session.on("progress", () => { console.log("[WebPhone] call progress (ringing)"); });
     session.on("accepted", () => { setState("connected"); startTimer(); attachAudio(session); });
-    session.on("ended", () => { setState("registered"); cleanup(); });
-    session.on("failed", () => { setState("registered"); cleanup(); });
+    session.on("ended", (e: any) => { console.log("[WebPhone] call ended:", e?.cause); setState("registered"); cleanup(); });
+    session.on("failed", (e: any) => { console.error("[WebPhone] call failed:", e?.cause, e?.message); setState("registered"); cleanup(); });
   }
 
   const fmtDur = `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}`;
