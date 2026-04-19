@@ -39,6 +39,8 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
   const audioRef = useRef<HTMLAudioElement>(null);
   const ringtoneRef = useRef<HTMLAudioElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval>>(null);
+  const callTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const outboundNumberRef = useRef<string>("");
   const ringbackRef = useRef<{ ctx: AudioContext; osc: OscillatorNode; gain: GainNode; interval: ReturnType<typeof setInterval> } | null>(null);
 
   // --- Ringback tone (425 Hz, 1s on / 4s off — Russian standard) ---
@@ -90,9 +92,11 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
 
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
     if (ringtoneRef.current) { ringtoneRef.current.pause(); ringtoneRef.current.currentTime = 0; }
     stopRingback();
     sessionRef.current = null;
+    outboundNumberRef.current = "";
     setDuration(0);
     setMuted(false);
     setCallerInfo("");
@@ -165,6 +169,15 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
           console.error("[WebPhone] call failed:", e?.cause, e?.message?.status_code);
           if (mounted) endCall();
         });
+
+        // If we initiated an outbound call via callback API, auto-answer this
+        if (stateRef.current === "calling") {
+          console.log("[WebPhone] auto-answering Novofon callback");
+          if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+          // Keep the original dialed number as callerInfo
+          session.answer(answerOptions);
+          return;
+        }
 
         // Regular incoming call — show UI
         if (mounted) {
@@ -249,50 +262,41 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     return digits;
   }
 
-  function makeCall(number: string) {
+  async function makeCall(number: string) {
     if (!uaRef.current || !number) return;
 
     const normalized = normalizePhone(number);
-    console.log("[WebPhone] calling:", normalized, "(raw:", number, ")");
+    console.log("[WebPhone] calling via callback API:", normalized, "(raw:", number, ")");
+    outboundNumberRef.current = number;
     setCallerInfo(number);
     setState("calling");
     setMinimized(false);
     startRingback();
 
-    const callOptions = {
-      mediaConstraints: { audio: true, video: false },
-      pcConfig: {
-        iceServers: ICE_SERVERS,
-        iceTransportPolicy: "all" as const,
-      },
-      rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
-    };
+    // Timeout: if no callback in 30s, reset
+    callTimeoutRef.current = setTimeout(() => {
+      console.warn("[WebPhone] callback timeout — no incoming SIP session in 30s");
+      if (stateRef.current === "calling") endCall();
+    }, 30000);
 
-    const session = uaRef.current.call(`sip:${normalized}@${sipServer}`, callOptions);
-    sessionRef.current = session;
-
-    session.on("progress", (e: any) => {
-      console.log("[WebPhone] progress:", e?.response?.status_code);
-      // 180 Ringing — remote phone is ringing
-      if (e?.response?.status_code === 180 || e?.response?.status_code === 183) {
-        setState("ringing");
+    try {
+      const res = await fetch("/api/novofon/call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: normalized }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error("[WebPhone] callback API error:", data.error);
+        endCall();
+        return;
       }
-    });
-    session.on("accepted", () => {
-      console.log("[WebPhone] call accepted");
-      stopRingback();
-      setState("connected");
-      startTimer();
-      attachAudio(session);
-    });
-    session.on("ended", (e: any) => {
-      console.log("[WebPhone] call ended:", e?.cause);
+      console.log("[WebPhone] callback API response:", data);
+      // Novofon will now call our SIP — auto-answer handler in newRTCSession will pick it up
+    } catch (err) {
+      console.error("[WebPhone] callback API failed:", err);
       endCall();
-    });
-    session.on("failed", (e: any) => {
-      console.error("[WebPhone] call failed:", e?.cause, "status:", e?.message?.status_code);
-      endCall();
-    });
+    }
   }
 
   const fmtDur = `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}`;
