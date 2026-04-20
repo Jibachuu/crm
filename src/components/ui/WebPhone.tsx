@@ -171,23 +171,33 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
         });
 
         session.on("failed", (e: any) => {
-          console.error("[WebPhone] call failed:", e?.cause, e?.message?.status_code);
+          console.error("[WebPhone] call failed:", e?.cause, "status:", e?.message?.status_code, "originator:", e?.originator);
           if (mounted) endCall();
+        });
+        session.on("peerconnection", (data: any) => {
+          console.log("[WebPhone] peerconnection created");
+          data.peerconnection.addEventListener("iceconnectionstatechange", () => {
+            console.log("[WebPhone] ICE state:", data.peerconnection.iceConnectionState);
+          });
+          data.peerconnection.addEventListener("icegatheringstatechange", () => {
+            console.log("[WebPhone] ICE gathering:", data.peerconnection.iceGatheringState);
+          });
         });
 
         // If we initiated an outbound call via callback API, auto-answer this
         if (stateRef.current === "calling") {
           console.log("[WebPhone] auto-answering Novofon callback");
           if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
-          // Request microphone first, then answer — prevents ICE failures
-          navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-            console.log("[WebPhone] mic acquired, answering...");
-            stream.getTracks().forEach((t) => t.stop()); // release, JsSIP will re-acquire
-            session.answer(answerOptions);
-          }).catch((err) => {
-            console.error("[WebPhone] mic error, answering anyway:", err);
-            session.answer(answerOptions);
-          });
+          // Small delay to let JsSIP process the SIP session fully before answering
+          setTimeout(() => {
+            console.log("[WebPhone] answering now, session status:", session.status);
+            try {
+              session.answer(answerOptions);
+            } catch (err) {
+              console.error("[WebPhone] answer error:", err);
+              endCall();
+            }
+          }, 300);
           return;
         }
 
