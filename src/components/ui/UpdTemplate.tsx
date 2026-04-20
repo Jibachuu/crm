@@ -27,7 +27,7 @@ export default function UpdTemplate({ upd, items, supplier }: { upd: UpdData; it
   const c = (extra?: React.CSSProperties): React.CSSProperties => ({ border: b, padding: "1px 3px", fontSize: 7.5, verticalAlign: "top", ...extra });
 
   return (
-    <div style={{ width: 794, fontFamily: "'Times New Roman', Times, serif", fontSize: 8, color: "#000", background: "#fff", padding: "12px 20px", boxSizing: "border-box" }}>
+    <div style={{ width: 1123, fontFamily: "'Times New Roman', Times, serif", fontSize: 8, color: "#000", background: "#fff", padding: "12px 20px", boxSizing: "border-box" }}>
 
       {/* ══════════════════════════════════════════════════════════════ */}
       {/* ВЕРХНЯЯ ЧАСТЬ: СЧЁТ-ФАКТУРА                                 */}
@@ -130,22 +130,22 @@ export default function UpdTemplate({ upd, items, supplier }: { upd: UpdData; it
 
       <table style={{ width: "100%", borderCollapse: "collapse", border: b, tableLayout: "fixed" }}>
         <colgroup>
-          <col style={{ width: 62 }} />{/* Код товара */}
-          <col style={{ width: 18 }} />{/* № п/п */}
+          <col style={{ width: 80 }} />{/* Код товара */}
+          <col style={{ width: 22 }} />{/* № п/п */}
           <col />{/* Наименование — flex */}
-          <col style={{ width: 24 }} />{/* Код вида */}
-          <col style={{ width: 22 }} />{/* Ед.код */}
-          <col style={{ width: 22 }} />{/* Ед.наим */}
-          <col style={{ width: 38 }} />{/* Кол-во */}
-          <col style={{ width: 52 }} />{/* Цена */}
-          <col style={{ width: 58 }} />{/* Без НДС */}
-          <col style={{ width: 34 }} />{/* Акциз */}
-          <col style={{ width: 36 }} />{/* Ставка */}
-          <col style={{ width: 48 }} />{/* Сумма НДС */}
-          <col style={{ width: 58 }} />{/* С НДС */}
-          <col style={{ width: 28 }} />{/* Страна код */}
-          <col style={{ width: 28 }} />{/* Страна наим */}
-          <col style={{ width: 48 }} />{/* Рег.номер */}
+          <col style={{ width: 32 }} />{/* Код вида */}
+          <col style={{ width: 28 }} />{/* Ед.код */}
+          <col style={{ width: 28 }} />{/* Ед.наим */}
+          <col style={{ width: 50 }} />{/* Кол-во */}
+          <col style={{ width: 68 }} />{/* Цена */}
+          <col style={{ width: 76 }} />{/* Без НДС */}
+          <col style={{ width: 44 }} />{/* Акциз */}
+          <col style={{ width: 48 }} />{/* Ставка */}
+          <col style={{ width: 62 }} />{/* Сумма НДС */}
+          <col style={{ width: 76 }} />{/* С НДС */}
+          <col style={{ width: 36 }} />{/* Страна код */}
+          <col style={{ width: 36 }} />{/* Страна наим */}
+          <col style={{ width: 68 }} />{/* Рег.номер */}
         </colgroup>
         <thead>
           <tr>

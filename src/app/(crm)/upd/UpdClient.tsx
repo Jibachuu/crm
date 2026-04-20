@@ -429,7 +429,7 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
                   if (btnBar) btnBar.style.display = "none";
                   const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#fff" });
                   if (btnBar) btnBar.style.display = "";
-                  const pdf = new jsPDF("p", "mm", "a4");
+                  const pdf = new jsPDF("l", "mm", "a4");
                   const w = pdf.internal.pageSize.getWidth();
                   const h = (canvas.height * w) / canvas.width;
                   pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, w, h);
