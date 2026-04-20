@@ -174,10 +174,11 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
           from_qty: t.from_qty,
           to_qty: i < arr.length - 1 ? arr[i + 1].from_qty - 1 : null,
           price: Math.round(p.base_price * (1 - t.discount_pct / 100)),
+          discount_pct: t.discount_pct,
         }));
         // Prepend base price tier (1 to first discount qty - 1)
         if (priceTiers.length > 0 && priceTiers[0].from_qty > 1) {
-          priceTiers.unshift({ from_qty: 1, to_qty: priceTiers[0].from_qty - 1, price: p.base_price });
+          priceTiers.unshift({ from_qty: 1, to_qty: priceTiers[0].from_qty - 1, price: p.base_price, discount_pct: 0 });
         }
       }
     }
@@ -691,9 +692,9 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                             newItems[idx] = { ...item, price_tiers: undefined };
                           } else {
                             newItems[idx] = { ...item, price_tiers: [
-                              { from_qty: 1, to_qty: 99, price: item.client_price },
-                              { from_qty: 100, to_qty: 499, price: Math.round(item.client_price * 0.93) },
-                              { from_qty: 500, to_qty: null, price: Math.round(item.client_price * 0.85) },
+                              { from_qty: 1, to_qty: 99, price: item.base_price, discount_pct: 0 },
+                              { from_qty: 100, to_qty: 499, price: Math.round(item.base_price * 0.93), discount_pct: 7 },
+                              { from_qty: 500, to_qty: null, price: Math.round(item.base_price * 0.85), discount_pct: 15 },
                             ] };
                           }
                           setItems(newItems);
@@ -752,7 +753,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                         {item.price_tiers?.length ? (
                           <button type="button" onClick={() => {
                             const newItems = [...items];
-                            const tiers = [...(item.price_tiers ?? []), { from_qty: 0, to_qty: null, price: 0 }];
+                            const tiers = [...(item.price_tiers ?? []), { from_qty: 0, to_qty: null, price: item.base_price, discount_pct: 0 }];
                             newItems[idx] = { ...item, price_tiers: tiers };
                             setItems(newItems);
                           }} className="text-xs mt-1" style={{ color: "#0067a5" }}>+ Уровень</button>
