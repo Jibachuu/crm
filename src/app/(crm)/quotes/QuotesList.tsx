@@ -11,7 +11,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 const STATUS_LABELS: Record<string, string> = { draft: "Черновик", sent: "Отправлено", accepted: "Принято", rejected: "Отклонено" };
 const STATUS_VARIANTS: Record<string, "default" | "warning" | "success" | "danger"> = { draft: "default", sent: "warning", accepted: "success", rejected: "danger" };
 
-interface PriceTier { from_qty: number; to_qty: number | null; price: number }
+interface PriceTier { from_qty: number; to_qty: number | null; price: number; discount_pct?: number }
 type BottleVariant = "none" | "uv" | "uv_logo" | "sticker" | "sticker_logo";
 const BOTTLE_VARIANTS: { value: BottleVariant; label: string }[] = [
   { value: "none", label: "Без УФ печати" },
@@ -239,6 +239,13 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
         const bp = Number(val) || 0;
         // Recalculate discount % from new base price and existing client price
         updated.discount_pct = bp > 0 ? Math.round((bp - updated.client_price) / bp * 1000) / 10 : 0;
+        // Recalculate price tiers based on new base price
+        if (updated.price_tiers?.length) {
+          updated.price_tiers = updated.price_tiers.map((t: PriceTier & { discount_pct?: number }) => {
+            const pct = t.discount_pct ?? (item.base_price > 0 ? Math.round((item.base_price - t.price) / item.base_price * 1000) / 10 : 0);
+            return { ...t, discount_pct: pct, price: Math.round(bp * (1 - pct / 100)) };
+          });
+        }
       }
       return updated;
     }));
@@ -682,7 +689,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                         }} className="text-xs" style={{ color: item.price_tiers?.length ? "#c62828" : "#0067a5" }}>
                           {item.price_tiers?.length ? "✕ Убрать лесенку цен" : "+ Лесенка цен"}
                         </button>
-                        {item.price_tiers?.map((tier: { from_qty: number; to_qty: number | null; price: number }, ti: number) => (
+                        {item.price_tiers?.map((tier: { from_qty: number; to_qty: number | null; price: number; discount_pct?: number }, ti: number) => (
                           <div key={ti} className="flex items-center gap-2 mt-1 text-xs">
                             <span style={{ color: "#888" }}>от</span>
                             <input type="number" value={tier.from_qty} onChange={(e) => {
@@ -701,10 +708,24 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                               setItems(newItems);
                             }} className="w-16 px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #d0d0d0", fontSize: 11 }} />
                             <span style={{ color: "#888" }}>шт →</span>
+                            <input type="number" value={tier.discount_pct ?? (item.base_price > 0 ? Math.round((item.base_price - tier.price) / item.base_price * 1000) / 10 : 0)}
+                              onChange={(e) => {
+                                const pct = Number(e.target.value) || 0;
+                                const newPrice = Math.round(item.base_price * (1 - pct / 100));
+                                const newItems = [...items];
+                                const tiers = [...(item.price_tiers ?? [])];
+                                tiers[ti] = { ...tiers[ti], discount_pct: pct, price: newPrice };
+                                newItems[idx] = { ...item, price_tiers: tiers };
+                                setItems(newItems);
+                              }}
+                              className="w-14 px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #e0e0e0", fontSize: 11, color: "#e65c00" }} />
+                            <span style={{ color: "#e65c00" }}>%</span>
                             <input type="number" value={tier.price} onChange={(e) => {
+                              const newPrice = Number(e.target.value) || 0;
+                              const pct = item.base_price > 0 ? Math.round((item.base_price - newPrice) / item.base_price * 1000) / 10 : 0;
                               const newItems = [...items];
                               const tiers = [...(item.price_tiers ?? [])];
-                              tiers[ti] = { ...tiers[ti], price: Number(e.target.value) };
+                              tiers[ti] = { ...tiers[ti], price: newPrice, discount_pct: pct };
                               newItems[idx] = { ...item, price_tiers: tiers };
                               setItems(newItems);
                             }} className="w-20 px-1 py-0.5 rounded outline-none text-right font-medium" style={{ border: "1px solid #d0d0d0", fontSize: 11, color: "#2e7d32" }} />
