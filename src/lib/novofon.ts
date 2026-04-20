@@ -19,14 +19,16 @@ function sign(method: string, params: Record<string, string>, secretKey: string)
   // 2. Build string to sign: method + queryString + md5(queryString)
   const md5Hash = crypto.createHash("md5").update(queryString).digest("hex");
   const stringToSign = method + queryString + md5Hash;
-  // 3. HMAC-SHA1 with secret key, base64 encode
-  const hmac = crypto.createHmac("sha1", secretKey).update(stringToSign).digest("base64");
-  return hmac;
+  // 3. HMAC-SHA1 hex, then base64-encode the hex string (matches PHP hash_hmac behavior)
+  const hmacHex = crypto.createHmac("sha1", secretKey).update(stringToSign).digest("hex");
+  return Buffer.from(hmacHex).toString("base64");
 }
 
 export async function novofonApi(method: string, params: Record<string, string> = {}) {
   const { userKey, secretKey } = getCredentials();
-  const signature = sign(method, params, secretKey);
+  // Sign with full path including /v1/ prefix (Novofon requires this)
+  const fullMethod = `/v1${method}/`;
+  const signature = sign(fullMethod, params, secretKey);
   const queryString = Object.keys(params).sort().map((k) => `${k}=${encodeURIComponent(params[k])}`).join("&");
   const url = `${API_BASE}${method}/${queryString ? "?" + queryString : ""}`;
 
