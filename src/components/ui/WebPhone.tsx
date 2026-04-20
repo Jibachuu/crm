@@ -135,12 +135,15 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
       ua.on("registered", () => { console.log("[WebPhone] registered"); if (mounted) setStateAndRef("registered"); });
       ua.on("unregistered", () => { console.log("[WebPhone] unregistered"); if (mounted) setStateAndRef("idle"); });
       ua.on("registrationFailed", (e: any) => { console.error("[WebPhone] registration failed:", e?.cause); if (mounted) setStateAndRef("failed"); });
+      ua.on("connected", () => { console.log("[WebPhone] WS connected"); });
+      ua.on("disconnected", () => { console.log("[WebPhone] WS disconnected"); });
 
       // Incoming call (including callback from Novofon after makeCall)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ua.on("newRTCSession", (data: any) => {
         if (!mounted) return;
         const session = data.session;
+        console.log("[WebPhone] newRTCSession direction:", session.direction, "from:", session.remote_identity?.uri?.toString());
         if (session.direction !== "incoming") return;
 
         sessionRef.current = session;
@@ -275,7 +278,7 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     if (!uaRef.current || !number) return;
 
     const normalized = normalizePhone(number);
-    console.log("[WebPhone] calling via callback API:", normalized, "(raw:", number, ")");
+    console.log("[WebPhone] calling via callback API:", normalized, "(raw:", number, ")", "ua registered:", uaRef.current?.isRegistered(), "ua connected:", uaRef.current?.isConnected());
     outboundNumberRef.current = number;
     setCallerInfo(number);
     setStateAndRef("calling");
