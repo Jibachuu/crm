@@ -22,8 +22,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "SIP номер не настроен. Укажите его в настройках профиля." }, { status: 400 });
     }
 
+    console.log("[novofon/call] from:", managerSip, "to:", phone);
     const result = await initiateCall(managerSip, phone);
-    return NextResponse.json(result);
+    console.log("[novofon/call] result:", JSON.stringify(result));
+    return NextResponse.json({ ...result, _debug: { from: managerSip, to: phone } });
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as { message?: string }).message }, { status: 500 });
   }
