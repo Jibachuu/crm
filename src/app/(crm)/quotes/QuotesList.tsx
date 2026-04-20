@@ -95,6 +95,17 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   const tiersByCategory = new Map<string, { tiers: { from_qty: number; discount_pct: number }[]; unit: string }>(
     categoryTiers.map((ct: any) => [ct.category, { tiers: ct.tiers || [], unit: ct.unit || "шт" }])
   );
+  // Fuzzy match: product category "Брендированные флаконы" should match tier "Флаконы"
+  function findCategoryTiers(productCategory: string) {
+    if (!productCategory) return undefined;
+    const exact = tiersByCategory.get(productCategory);
+    if (exact) return exact;
+    const lower = productCategory.toLowerCase();
+    for (const [key, value] of tiersByCategory) {
+      if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) return value;
+    }
+    return undefined;
+  }
   const [quotes, setQuotes] = useState(initialQuotes);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -157,7 +168,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     // Auto-generate price tiers from category defaults
     let priceTiers: PriceTier[] | undefined;
     if (p.category) {
-      const catTier = tiersByCategory.get(p.category);
+      const catTier = findCategoryTiers(p.category ?? "");
       if (catTier?.tiers?.length) {
         priceTiers = catTier.tiers.map((t: { from_qty: number; discount_pct: number }, i: number, arr: { from_qty: number; discount_pct: number }[]) => ({
           from_qty: t.from_qty,
@@ -252,6 +263,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   }
 
   function removeItem(idx: number) { setItems(items.filter((_, i) => i !== idx)); }
+  function duplicateItem(idx: number) { setItems([...items.slice(0, idx + 1), { ...items[idx] }, ...items.slice(idx + 1)]); }
 
   const totalAmount = items.reduce((s, i) => s + i.sum, 0);
   const avgDiscount = items.length > 0 ? Math.round(items.reduce((s, i) => s + i.discount_pct, 0) / items.length * 10) / 10 : 0;
@@ -580,7 +592,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                         <input value={item.name} onChange={(e) => updateItem(idx, "name", e.target.value)}
                           className="flex-1 text-xs font-medium px-2 py-1 rounded outline-none" style={{ border: "1px solid #e0e0e0" }}
                           placeholder="Название товара" />
-                        <button onClick={() => removeItem(idx)} className="p-1 rounded hover:bg-red-50 flex-shrink-0"><X size={12} style={{ color: "#c62828" }} /></button>
+                        <button onClick={() => duplicateItem(idx)} className="p-1 rounded hover:bg-blue-50 flex-shrink-0" title="Дублировать"><Copy size={12} style={{ color: "#0067a5" }} /></button>
+                        <button onClick={() => removeItem(idx)} className="p-1 rounded hover:bg-red-50 flex-shrink-0" title="Удалить"><X size={12} style={{ color: "#c62828" }} /></button>
                       </div>
 
                       <div className="flex items-center gap-2 text-xs">
@@ -609,7 +622,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                               newItems[idx] = { ...item, bottle_variant: variant, client_price: newPrice, discount_pct: item.base_price > 0 ? Math.round((item.base_price - newPrice) / item.base_price * 1000) / 10 : 0, sum: newPrice * item.qty };
                               // Recalculate price tiers if they exist
                               if (item.price_tiers?.length) {
-                                const catTier = tiersByCategory.get("Флаконы");
+                                const catTier = findCategoryTiers("Флаконы");
                                 if (catTier?.tiers?.length) {
                                   const tiers = catTier.tiers.map((t: { from_qty: number; discount_pct: number }, i: number, arr: { from_qty: number; discount_pct: number }[]) => ({
                                     from_qty: t.from_qty,
