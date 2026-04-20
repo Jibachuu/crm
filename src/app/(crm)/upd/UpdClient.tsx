@@ -407,7 +407,7 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
         </div>
       </Modal>
 
-      {/* Preview Modal — exact Russian УПД form (Приложение №1 к Постановлению №1137) */}
+      {/* Preview Modal — exact official Russian УПД form */}
       <Modal open={!!previewUpd} onClose={() => setPreviewUpd(null)} title={`УПД-${previewUpd?.upd_number}`} size="xl">
         {previewUpd && (() => {
           const total = previewItems.reduce((s, i) => s + i.total, 0);
@@ -420,61 +420,84 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
           const sellerInn = supplier?.inn || "";
           const sellerKpp = supplier?.kpp || "";
           const director = supplier?.director || "";
-          const c = { b: "1px solid #000", p: "2px 4px", f: 8 as const };
-          const td = (text: string, opts?: { align?: string; bold?: boolean; span?: number; w?: number }) => ({
-            style: { border: c.b, padding: c.p, fontSize: c.f, textAlign: (opts?.align || "left") as "left" | "right" | "center", fontWeight: opts?.bold ? 700 : 400, ...(opts?.w ? { width: opts.w } : {}) } as React.CSSProperties,
-            children: text,
-            ...(opts?.span ? { colSpan: opts.span } : {}),
-          });
+          const directorShort = supplier?.director_short || director;
+          const ogrnip = supplier?.ogrnip || "";
+          const b = "1px solid #000";
+          const bp = "2px 4px";
 
           return (
-            <div style={{ fontSize: 8, fontFamily: "'Times New Roman', Times, serif", color: "#000", overflow: "auto" }}>
-              <div id="upd-content" style={{ background: "#fff", padding: "12px 16px", maxWidth: 900 }}>
+            <div style={{ fontSize: 9, fontFamily: "'Times New Roman', Times, serif", color: "#000", overflow: "auto" }}>
+              <div id="upd-content" style={{ background: "#fff", padding: "10px 14px", maxWidth: 960 }}>
 
-                {/* Top-right reference */}
-                <div style={{ textAlign: "right", fontSize: 7, color: "#555", marginBottom: 4 }}>
-                  Приложение № 1 к постановлению Правительства РФ от 26 декабря 2011 г. № 1137<br/>
-                  (в ред. постановления Правительства РФ от 02 апреля 2021 г. № 534)
-                </div>
+                {/* ═══════════ ВЕРХНЯЯ ЧАСТЬ: СЧЁТ-ФАКТУРА ═══════════ */}
 
-                {/* UPD Status block */}
-                <div style={{ display: "flex", justifyContent: "space-between", border: "2px solid #000", padding: "4px 8px", marginBottom: 0 }}>
-                  <div>
-                    <span style={{ fontSize: 7, color: "#555" }}>Универсальный передаточный документ</span><br/>
-                    <strong style={{ fontSize: 10 }}>Счёт-фактура № {previewUpd.upd_number} от {updDate}</strong>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <span style={{ fontSize: 7, color: "#555" }}>Статус:</span> <strong>1</strong>
-                  </div>
-                </div>
+                {/* Row 1: Счёт-фактура № + Приложение */}
+                <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 2 }}>
+                  <tbody><tr>
+                    <td style={{ fontSize: 9, verticalAlign: "bottom" }}>
+                      Счёт-фактура №&nbsp;<u style={{ fontWeight: 700 }}>&nbsp;{previewUpd.upd_number}&nbsp;</u>&nbsp;от&nbsp;<u style={{ fontWeight: 700 }}>&nbsp;«{new Date(previewUpd.upd_date).getDate()}»&nbsp;{["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"][new Date(previewUpd.upd_date).getMonth()]}&nbsp;{new Date(previewUpd.upd_date).getFullYear()}&nbsp;г.&nbsp;</u>
+                    </td>
+                    <td style={{ fontSize: 7, textAlign: "right", color: "#555", verticalAlign: "top", width: 280 }}>
+                      Приложение № 1 к постановлению Правительства Российской Федерации от 26 декабря 2011 г. № 1137<br/>(в ред. постановления Правительства РФ от 02.04.2021 № 534)
+                    </td>
+                  </tr></tbody>
+                </table>
 
-                {/* Счёт-фактура lines (1-7) */}
-                <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #000", borderTop: "none" }}>
+                {/* Header fields in two-column layout */}
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 8, marginBottom: 2 }}>
                   <tbody>
-                    <tr><td style={{ border: c.b, padding: c.p, fontSize: 7, color: "#555", width: 180 }}>Продавец:</td><td style={{ border: c.b, padding: c.p, fontSize: c.f }}>{sellerName}</td></tr>
-                    <tr><td style={{ border: c.b, padding: c.p, fontSize: 7, color: "#555" }}>Адрес:</td><td style={{ border: c.b, padding: c.p, fontSize: c.f }}>{sellerAddr}</td></tr>
-                    <tr><td style={{ border: c.b, padding: c.p, fontSize: 7, color: "#555" }}>ИНН/КПП продавца:</td><td style={{ border: c.b, padding: c.p, fontSize: c.f }}>{sellerInn}{sellerKpp ? ` / ${sellerKpp}` : ""}</td></tr>
-                    <tr><td style={{ border: c.b, padding: c.p, fontSize: 7, color: "#555" }}>Грузоотправитель и его адрес:</td><td style={{ border: c.b, padding: c.p, fontSize: c.f }}>он же</td></tr>
-                    <tr><td style={{ border: c.b, padding: c.p, fontSize: 7, color: "#555" }}>Грузополучатель и его адрес:</td><td style={{ border: c.b, padding: c.p, fontSize: c.f }}>{previewUpd.buyer_name}, {previewUpd.buyer_address}</td></tr>
-                    <tr><td style={{ border: c.b, padding: c.p, fontSize: 7, color: "#555" }}>К платёжно-расчётному документу:</td><td style={{ border: c.b, padding: c.p, fontSize: c.f }}>—</td></tr>
-                    <tr><td style={{ border: c.b, padding: c.p, fontSize: 7, color: "#555" }}>Покупатель:</td><td style={{ border: c.b, padding: c.p, fontSize: c.f }}>{previewUpd.buyer_name}</td></tr>
-                    <tr><td style={{ border: c.b, padding: c.p, fontSize: 7, color: "#555" }}>Адрес:</td><td style={{ border: c.b, padding: c.p, fontSize: c.f }}>{previewUpd.buyer_address}</td></tr>
-                    <tr><td style={{ border: c.b, padding: c.p, fontSize: 7, color: "#555" }}>ИНН/КПП покупателя:</td><td style={{ border: c.b, padding: c.p, fontSize: c.f }}>{previewUpd.buyer_inn}{previewUpd.buyer_kpp ? ` / ${previewUpd.buyer_kpp}` : ""}</td></tr>
-                    <tr><td style={{ border: c.b, padding: c.p, fontSize: 7, color: "#555" }}>Валюта: наименование, код:</td><td style={{ border: c.b, padding: c.p, fontSize: c.f }}>Российский рубль, 643</td></tr>
+                    <tr>
+                      <td style={{ padding: "1px 0", width: "50%" }}><span style={{ color: "#555" }}>Продавец:</span> {sellerName}</td>
+                      <td style={{ padding: "1px 0" }}><span style={{ color: "#555" }}>Покупатель:</span> {previewUpd.buyer_name}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: "1px 0" }}><span style={{ color: "#555" }}>Адрес:</span> {sellerAddr}</td>
+                      <td style={{ padding: "1px 0" }}><span style={{ color: "#555" }}>Адрес:</span> {previewUpd.buyer_address}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: "1px 0" }}><span style={{ color: "#555" }}>ИНН/КПП продавца:</span> {sellerInn}{sellerKpp ? `/${sellerKpp}` : ""}</td>
+                      <td style={{ padding: "1px 0" }}><span style={{ color: "#555" }}>ИНН/КПП покупателя:</span> {previewUpd.buyer_inn}{previewUpd.buyer_kpp ? `/${previewUpd.buyer_kpp}` : ""}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: "1px 0" }}><span style={{ color: "#555" }}>Грузоотправитель и его адрес:</span> он же</td>
+                      <td></td>
+                    </tr>
+                    <tr>
+                      <td colSpan={2} style={{ padding: "1px 0" }}><span style={{ color: "#555" }}>Грузополучатель и его адрес:</span> {previewUpd.buyer_name}, {previewUpd.buyer_address}</td>
+                    </tr>
+                    <tr>
+                      <td colSpan={2} style={{ padding: "1px 0" }}><span style={{ color: "#555" }}>К платёжно-расчётному документу №</span> — <span style={{ color: "#555" }}>от</span> —</td>
+                    </tr>
                   </tbody>
                 </table>
 
-                {/* Items table */}
-                <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #000", marginTop: 4 }}>
+                <p style={{ fontSize: 7, margin: "2px 0 4px", color: "#555" }}>
+                  Документ о отгрузке, передаче (об оказании услуг), являющемся основанием для составления счёта-фактуры:
+                  Универсальный передаточный документ № {previewUpd.upd_number} от {updDate}
+                </p>
+
+                {/* ═══════════ ТАБЛИЦА ТОВАРОВ ═══════════ */}
+                <table style={{ width: "100%", borderCollapse: "collapse", border: b }}>
                   <thead>
                     <tr>
-                      {["№","Наименование товара\n(описание выполненных работ, оказанных услуг)","Код\nвид","Ед.\nизм.","Кол-во","Цена за\nединицу","Стоимость товаров\nбез налога","В том числе\nсумма акциза","Нал.\nставка","Сумма\nналога","Стоимость товаров\nс налогом","Страна\nпроисх."].map((h, i) => (
-                        <th key={i} style={{ border: c.b, padding: "2px 3px", fontSize: 6.5, fontWeight: 400, textAlign: "center", whiteSpace: "pre-line", verticalAlign: "top" }}>{h}</th>
-                      ))}
+                      <th rowSpan={2} style={{ border: b, padding: bp, fontSize: 7, width: 20 }}>№<br/>п/п</th>
+                      <th rowSpan={2} style={{ border: b, padding: bp, fontSize: 7, textAlign: "left" }}>Наименование товара<br/>(описание выполненных работ,<br/>оказанных услуг), имущественного права</th>
+                      <th colSpan={2} style={{ border: b, padding: bp, fontSize: 7 }}>Единица измерения</th>
+                      <th rowSpan={2} style={{ border: b, padding: bp, fontSize: 7 }}>Кол-во</th>
+                      <th rowSpan={2} style={{ border: b, padding: bp, fontSize: 7 }}>Цена за<br/>единицу</th>
+                      <th rowSpan={2} style={{ border: b, padding: bp, fontSize: 7 }}>Стоимость<br/>товаров без<br/>налога</th>
+                      <th rowSpan={2} style={{ border: b, padding: bp, fontSize: 7 }}>В т.ч.<br/>акциз</th>
+                      <th rowSpan={2} style={{ border: b, padding: bp, fontSize: 7 }}>Налог.<br/>ставка</th>
+                      <th rowSpan={2} style={{ border: b, padding: bp, fontSize: 7 }}>Сумма<br/>налога</th>
+                      <th rowSpan={2} style={{ border: b, padding: bp, fontSize: 7 }}>Стоимость<br/>товаров с<br/>налогом</th>
                     </tr>
                     <tr>
-                      {["1","1а","1б","2","2а","3","4","5","6","7","8","9","10","10а","11"].slice(0,12).map((n, i) => (
-                        <td key={i} style={{ border: c.b, padding: "1px 2px", fontSize: 6, textAlign: "center", color: "#888" }}>{n}</td>
+                      <th style={{ border: b, padding: bp, fontSize: 6 }}>код</th>
+                      <th style={{ border: b, padding: bp, fontSize: 6 }}>наим.</th>
+                    </tr>
+                    <tr style={{ fontSize: 6, color: "#999" }}>
+                      {["1","2","2а","3","4","5","6","7","8","9","10","11"].map((n) => (
+                        <td key={n} style={{ border: b, padding: "1px", textAlign: "center" }}>{n}</td>
                       ))}
                     </tr>
                   </thead>
@@ -483,81 +506,139 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
                       const itemVat = vatRate > 0 ? Math.round(item.total * vatRate / (100 + vatRate) * 100) / 100 : 0;
                       const itemNoVat = item.total - itemVat;
                       return (
-                        <tr key={idx}>
-                          <td style={{ border: c.b, padding: c.p, textAlign: "center" }}>{idx + 1}</td>
-                          <td style={{ border: c.b, padding: c.p }}>{item.name}</td>
-                          <td style={{ border: c.b, padding: c.p, textAlign: "center" }}>—</td>
-                          <td style={{ border: c.b, padding: c.p, textAlign: "center" }}>{item.unit}</td>
-                          <td style={{ border: c.b, padding: c.p, textAlign: "center" }}>{item.quantity}</td>
-                          <td style={{ border: c.b, padding: c.p, textAlign: "right" }}>{formatCurrency(item.price)}</td>
-                          <td style={{ border: c.b, padding: c.p, textAlign: "right" }}>{formatCurrency(itemNoVat)}</td>
-                          <td style={{ border: c.b, padding: c.p, textAlign: "center" }}>без акциза</td>
-                          <td style={{ border: c.b, padding: c.p, textAlign: "center" }}>{vatRate > 0 ? `${vatRate}%` : "Без НДС"}</td>
-                          <td style={{ border: c.b, padding: c.p, textAlign: "right" }}>{vatRate > 0 ? formatCurrency(itemVat) : "—"}</td>
-                          <td style={{ border: c.b, padding: c.p, textAlign: "right" }}>{formatCurrency(item.total)}</td>
-                          <td style={{ border: c.b, padding: c.p, textAlign: "center" }}>—</td>
+                        <tr key={idx} style={{ fontSize: 8 }}>
+                          <td style={{ border: b, padding: bp, textAlign: "center" }}>{idx + 1}</td>
+                          <td style={{ border: b, padding: bp }}>{item.name}</td>
+                          <td style={{ border: b, padding: bp, textAlign: "center" }}>796</td>
+                          <td style={{ border: b, padding: bp, textAlign: "center" }}>{item.unit}</td>
+                          <td style={{ border: b, padding: bp, textAlign: "center" }}>{item.quantity}</td>
+                          <td style={{ border: b, padding: bp, textAlign: "right" }}>{formatCurrency(item.price)}</td>
+                          <td style={{ border: b, padding: bp, textAlign: "right" }}>{formatCurrency(itemNoVat)}</td>
+                          <td style={{ border: b, padding: bp, textAlign: "center", fontSize: 7 }}>без акциза</td>
+                          <td style={{ border: b, padding: bp, textAlign: "center" }}>{vatRate > 0 ? `${vatRate}%` : "Без НДС"}</td>
+                          <td style={{ border: b, padding: bp, textAlign: "right" }}>{vatRate > 0 ? formatCurrency(itemVat) : "—"}</td>
+                          <td style={{ border: b, padding: bp, textAlign: "right" }}>{formatCurrency(item.total)}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
-                    <tr style={{ fontWeight: 700 }}>
-                      <td colSpan={6} style={{ border: c.b, padding: c.p, textAlign: "right" }}>Всего к оплате:</td>
-                      <td style={{ border: c.b, padding: c.p, textAlign: "right" }}>{formatCurrency(totalNoVat)}</td>
-                      <td style={{ border: c.b, padding: c.p, textAlign: "center" }}>X</td>
-                      <td style={{ border: c.b, padding: c.p }}></td>
-                      <td style={{ border: c.b, padding: c.p, textAlign: "right" }}>{vatRate > 0 ? formatCurrency(vatAmount) : "—"}</td>
-                      <td style={{ border: c.b, padding: c.p, textAlign: "right" }}>{formatCurrency(total)}</td>
-                      <td style={{ border: c.b, padding: c.p }}></td>
+                    <tr style={{ fontWeight: 700, fontSize: 8 }}>
+                      <td colSpan={6} style={{ border: b, padding: bp, textAlign: "right" }}>Всего к оплате:</td>
+                      <td style={{ border: b, padding: bp, textAlign: "right" }}>{formatCurrency(totalNoVat)}</td>
+                      <td style={{ border: b, padding: bp, textAlign: "center" }}>X</td>
+                      <td style={{ border: b, padding: bp }}></td>
+                      <td style={{ border: b, padding: bp, textAlign: "right" }}>{vatRate > 0 ? formatCurrency(vatAmount) : "—"}</td>
+                      <td style={{ border: b, padding: bp, textAlign: "right" }}>{formatCurrency(total)}</td>
                     </tr>
                   </tfoot>
                 </table>
 
-                {/* Signature line under table */}
-                <div style={{ marginTop: 6, fontSize: 7 }}>
-                  <p>Индивидуальный предприниматель _______________ {director}</p>
-                </div>
-
-                {/* Bottom part — УПД specific fields */}
-                <table style={{ width: "100%", borderCollapse: "collapse", border: "2px solid #000", marginTop: 8 }}>
+                {/* Подписи под таблицей */}
+                <table style={{ width: "100%", fontSize: 7, marginTop: 4 }}>
                   <tbody>
                     <tr>
-                      <td style={{ border: c.b, padding: "3px 6px", fontSize: 7, color: "#555", width: "50%" }} colSpan={2}>
-                        <strong style={{ fontSize: 8 }}>Основание передачи (сдачи) / получения (приёмки)</strong><br/>
-                        {previewUpd.basis}
+                      <td style={{ width: "33%", padding: "2px 0" }}>
+                        <span style={{ color: "#555" }}>Документ составил:</span>
                       </td>
-                      <td style={{ border: c.b, padding: "3px 6px", fontSize: 7, color: "#555" }} colSpan={2}>
-                        <strong style={{ fontSize: 8 }}>Данные о транспортировке и грузе</strong><br/>
-                        —
+                      <td style={{ width: "33%", padding: "2px 0" }}>
+                        <span style={{ color: "#555" }}>Руководитель организации<br/>или иное уполномоченное лицо:</span>
                       </td>
-                    </tr>
-                    <tr>
-                      <td style={{ border: c.b, padding: "3px 6px", fontSize: 7 }} colSpan={2}>
-                        Товар (груз) передал / услуги, результаты работ, права сдал<br/>
-                        <div style={{ borderBottom: "1px solid #000", height: 20, marginTop: 4 }} />
-                        <div style={{ fontSize: 7, marginTop: 2 }}>Дата отгрузки, передачи (сдачи): {updDate}</div>
-                      </td>
-                      <td style={{ border: c.b, padding: "3px 6px", fontSize: 7 }} colSpan={2}>
-                        Товар (груз) получил / услуги, результаты работ, права принял<br/>
-                        <div style={{ borderBottom: "1px solid #000", height: 20, marginTop: 4 }} />
-                        <div style={{ fontSize: 7, marginTop: 2 }}>Дата получения (приёмки): _______________</div>
+                      <td style={{ padding: "2px 0" }}>
+                        <span style={{ color: "#555" }}>Главный бухгалтер<br/>или иное уполномоченное лицо:</span>
                       </td>
                     </tr>
                     <tr>
-                      <td style={{ border: c.b, padding: "3px 6px", fontSize: 7 }} colSpan={2}>
-                        Иные сведения об отгрузке, передаче: —
-                      </td>
-                      <td style={{ border: c.b, padding: "3px 6px", fontSize: 7 }} colSpan={2}>
-                        Иные сведения о получении, приёмке: —
-                      </td>
+                      <td style={{ padding: "2px 0" }}></td>
+                      <td style={{ padding: "2px 0", borderBottom: "1px solid #000" }}></td>
+                      <td style={{ padding: "2px 0", borderBottom: "1px solid #000" }}></td>
                     </tr>
                   </tbody>
                 </table>
 
-                <div style={{ marginTop: 8, fontSize: 8 }}>
-                  <p>Всего наименований <strong>{previewItems.length}</strong>, на сумму <strong>{formatCurrency(total)}</strong></p>
-                  <p style={{ fontStyle: "italic" }}>{amountToWords(total)}</p>
-                </div>
+                <p style={{ fontSize: 7, margin: "4px 0 2px" }}>Индивидуальный предприниматель __________________ {directorShort}</p>
+
+                {/* ═══════════ НИЖНЯЯ ЧАСТЬ: ПЕРЕДАЧА/ПРИЁМКА ═══════════ */}
+                <table style={{ width: "100%", borderCollapse: "collapse", border: "2px solid #000", marginTop: 6 }}>
+                  <tbody>
+                    {/* Row: Основание / Данные о транспортировке */}
+                    <tr>
+                      <td style={{ border: b, padding: "3px 6px", fontSize: 7, width: "50%" }}>
+                        <span style={{ color: "#555" }}>Основание передачи (сдачи) / получения (приёмки):</span><br/>
+                        <strong>{previewUpd.basis}</strong>
+                      </td>
+                      <td style={{ border: b, padding: "3px 6px", fontSize: 7 }}>
+                        <span style={{ color: "#555" }}>Данные о транспортировке и грузе:</span><br/>—
+                      </td>
+                    </tr>
+
+                    {/* Row: Передал / Получил */}
+                    <tr>
+                      <td style={{ border: b, padding: "4px 6px", fontSize: 7 }}>
+                        <strong>Товар (груз) передал / услуги, результаты работ, права сдал:</strong><br/>
+                        <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "flex-end" }}>
+                          <div style={{ flex: 1, borderBottom: "1px solid #000", height: 16 }} />
+                          <span>{directorShort}</span>
+                        </div>
+                        <div style={{ marginTop: 4 }}>Дата отгрузки, передачи (сдачи) «___» _____________ {new Date(previewUpd.upd_date).getFullYear()} года</div>
+                      </td>
+                      <td style={{ border: b, padding: "4px 6px", fontSize: 7 }}>
+                        <strong>Товар (груз) получил / услуги, результаты работ, права принял:</strong><br/>
+                        <div style={{ borderBottom: "1px solid #000", height: 16, marginTop: 6 }} />
+                        <div style={{ marginTop: 4 }}>Дата получения (приёмки) «___» _____________ ________ года</div>
+                      </td>
+                    </tr>
+
+                    {/* Row: Иные сведения */}
+                    <tr>
+                      <td style={{ border: b, padding: "3px 6px", fontSize: 7 }}>
+                        <span style={{ color: "#555" }}>Иные сведения об отгрузке, передаче:</span> —
+                      </td>
+                      <td style={{ border: b, padding: "3px 6px", fontSize: 7 }}>
+                        <span style={{ color: "#555" }}>Иные сведения о получении, приёмке:</span> —
+                      </td>
+                    </tr>
+
+                    {/* Row: Ответственный за оформление */}
+                    <tr>
+                      <td style={{ border: b, padding: "3px 6px", fontSize: 7 }}>
+                        <span style={{ color: "#555" }}>Ответственный за правильность оформления факта хозяйственной жизни:</span>
+                        <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "flex-end" }}>
+                          <div style={{ flex: 1, borderBottom: "1px solid #000", height: 14 }} />
+                          <span>{directorShort}</span>
+                        </div>
+                      </td>
+                      <td style={{ border: b, padding: "3px 6px", fontSize: 7 }}>
+                        <span style={{ color: "#555" }}>Ответственный за правильность оформления факта хозяйственной жизни:</span>
+                        <div style={{ borderBottom: "1px solid #000", height: 14, marginTop: 4 }} />
+                      </td>
+                    </tr>
+
+                    {/* Row: Наименование экономического субъекта */}
+                    <tr>
+                      <td style={{ border: b, padding: "3px 6px", fontSize: 7 }}>
+                        <span style={{ color: "#555" }}>Наименование экономического субъекта — составителя документа (в т.ч. комиссионера/агента):</span><br/>
+                        {sellerName}<br/>
+                        ИНН {sellerInn}
+                      </td>
+                      <td style={{ border: b, padding: "3px 6px", fontSize: 7 }}>
+                        <span style={{ color: "#555" }}>Наименование экономического субъекта — составителя документа:</span><br/>
+                        {previewUpd.buyer_name}<br/>
+                        ИНН {previewUpd.buyer_inn}
+                      </td>
+                    </tr>
+
+                    {/* Row: М.П. */}
+                    <tr>
+                      <td style={{ border: b, padding: "3px 6px", fontSize: 7 }}>М.П.</td>
+                      <td style={{ border: b, padding: "3px 6px", fontSize: 7 }}>М.П.</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {ogrnip && (
+                  <p style={{ fontSize: 7, marginTop: 4 }}>ОГРНИП {ogrnip}, дата регистрации _______________</p>
+                )}
               </div>
 
               {/* Download PDF button */}
