@@ -557,20 +557,18 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
               <div className="space-y-3">
                 {items.map((item, idx) => (
                   <div key={idx} className="flex gap-3 p-3 rounded" style={{ border: "1px solid #e4e4e4", background: "#fafafa" }}>
-                    {/* Photo */}
-                    <div className="flex-shrink-0">
+                    {/* Photo — always clickable to change */}
+                    <label className="flex-shrink-0 relative group cursor-pointer block w-20 h-20">
                       {item.image_url ? (
-                        <div className="relative group">
+                        <>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={item.image_url} alt="" className="w-20 h-20 rounded object-cover" style={{ border: "1px solid #e0e0e0" }} />
-                          <label className="absolute inset-0 bg-black/40 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer">
+                          <div className="absolute inset-0 bg-black/40 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                             <ImagePlus size={16} style={{ color: "#fff" }} />
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadItemImage(f, idx); e.target.value = ""; }} />
-                          </label>
-                        </div>
+                          </div>
+                        </>
                       ) : (
-                        <label
-                          className="w-20 h-20 rounded flex flex-col items-center justify-center gap-1 transition-colors hover:bg-gray-100 cursor-pointer"
+                        <div className="w-20 h-20 rounded flex flex-col items-center justify-center gap-1 transition-colors hover:bg-gray-100"
                           style={{ background: "#f0f0f0", border: "1px dashed #ccc" }}>
                           {uploadingImage === String(idx) ? (
                             <span className="text-xs" style={{ color: "#888" }}>...</span>
@@ -580,11 +578,11 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                               <span style={{ fontSize: 9, color: "#aaa" }}>Фото</span>
                             </>
                           )}
-                          <input type="file" accept="image/*" className="hidden" disabled={uploadingImage === String(idx)}
-                            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadItemImage(f, idx); e.target.value = ""; }} />
-                        </label>
+                        </div>
                       )}
-                    </div>
+                      <input type="file" accept="image/*" className="hidden" disabled={uploadingImage === String(idx)}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadItemImage(f, idx); e.target.value = ""; }} />
+                    </label>
 
                     {/* Info */}
                     <div className="flex-1 min-w-0 space-y-1.5">
