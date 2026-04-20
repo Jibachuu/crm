@@ -196,6 +196,21 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
+          onPaste={(e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            const imageFiles: File[] = [];
+            for (const item of Array.from(items)) {
+              if (item.type.startsWith("image/")) {
+                const file = item.getAsFile();
+                if (file) imageFiles.push(file);
+              }
+            }
+            if (imageFiles.length > 0) {
+              e.preventDefault();
+              setFiles((prev) => [...prev, ...imageFiles]);
+            }
+          }}
           placeholder="Текст письма..."
           rows={compact ? 4 : 6}
           style={{ ...inputStyle, resize: "vertical" }}
