@@ -12,6 +12,23 @@ const STATUS_LABELS: Record<string, string> = { draft: "Черновик", sent:
 const STATUS_VARIANTS: Record<string, "default" | "warning" | "success" | "danger"> = { draft: "default", sent: "warning", accepted: "success", rejected: "danger" };
 
 interface PriceTier { from_qty: number; to_qty: number | null; price: number }
+type BottleVariant = "none" | "uv" | "uv_logo" | "sticker" | "sticker_logo";
+const BOTTLE_VARIANTS: { value: BottleVariant; label: string }[] = [
+  { value: "none", label: "Без УФ печати" },
+  { value: "uv", label: "С УФ печатью (+500₽)" },
+  { value: "uv_logo", label: "С УФ печатью и нашим лого" },
+  { value: "sticker", label: "С наклейкой (+100₽)" },
+  { value: "sticker_logo", label: "С наклейкой и нашим лого" },
+];
+function calcBottlePrice(basePrice: number, variant: BottleVariant): number {
+  switch (variant) {
+    case "uv": return basePrice + 500;
+    case "uv_logo": return Math.round((basePrice + 500) * 0.6);
+    case "sticker": return basePrice + 100;
+    case "sticker_logo": return basePrice;
+    default: return basePrice;
+  }
+}
 interface QuoteItem {
   product_id: string;
   name: string;
@@ -24,6 +41,8 @@ interface QuoteItem {
   image_url: string;
   description: string;
   price_tiers?: PriceTier[];
+  bottle_variant?: BottleVariant;
+  column_index?: number;
 }
 
 function SearchableSelect({ options, value, onChange, inputStyle, placeholder = "Поиск..." }: { options: { id: string; label: string }[]; value: string; onChange: (id: string) => void; inputStyle: React.CSSProperties; placeholder?: string }) {
@@ -85,7 +104,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   const [copied, setCopied] = useState(false);
 
   // Editor state
-  const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean; category_overrides?: Record<string, { title: string; description: string }> }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
+  const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean; category_overrides?: Record<string, { title: string; description: string }>; column_titles?: Record<string, string> }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -102,7 +121,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setEditing({ id: quoteId });
     const q = quotes.find((qq: { id: string }) => qq.id === quoteId);
     if (q) {
-      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "", hide_total: q.hide_total ?? false, category_overrides: q.category_overrides ?? {} });
+      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "", hide_total: q.hide_total ?? false, category_overrides: q.category_overrides ?? {}, column_titles: q.column_titles ?? {} });
     }
     // Load items from DB
     const supabase = (await import("@/lib/supabase/client")).createClient();
@@ -120,6 +139,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       image_url: i.image_url ?? "",
       description: i.description ?? "",
       price_tiers: i.price_tiers ?? undefined,
+      bottle_variant: i.bottle_variant ?? undefined,
+      column_index: i.column_index ?? 0,
     })));
     setEditorOpen(true);
   }
@@ -227,6 +248,36 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
 
   const totalAmount = items.reduce((s, i) => s + i.sum, 0);
   const avgDiscount = items.length > 0 ? Math.round(items.reduce((s, i) => s + i.discount_pct, 0) / items.length * 10) / 10 : 0;
+
+  // Column management
+  const columnTitles = form.column_titles ?? {};
+  const columnCount = Math.max(1, ...items.map((i) => (i.column_index ?? 0) + 1));
+  const columnTotals = Array.from({ length: columnCount }, (_, ci) =>
+    items.filter((i) => (i.column_index ?? 0) === ci).reduce((s, i) => s + i.sum, 0)
+  );
+
+  function addColumn() {
+    const newIdx = columnCount;
+    setForm({ ...form, column_titles: { ...columnTitles, [String(newIdx)]: `Вариант ${newIdx + 1}` } });
+    // Add an empty manual item in the new column
+    setItems([...items, { product_id: "", name: "", article: "", base_price: 0, client_price: 0, discount_pct: 0, qty: 1, sum: 0, image_url: "", description: "", column_index: newIdx }]);
+  }
+
+  function removeColumn(colIdx: number) {
+    if (columnCount <= 1) return;
+    // Remove all items in this column
+    const newItems = items.filter((i) => (i.column_index ?? 0) !== colIdx)
+      .map((i) => ({ ...i, column_index: (i.column_index ?? 0) > colIdx ? (i.column_index ?? 0) - 1 : (i.column_index ?? 0) }));
+    setItems(newItems);
+    // Shift column titles
+    const newTitles: Record<string, string> = {};
+    for (const [k, v] of Object.entries(columnTitles)) {
+      const ki = Number(k);
+      if (ki < colIdx) newTitles[k] = v;
+      else if (ki > colIdx) newTitles[String(ki - 1)] = v;
+    }
+    setForm({ ...form, column_titles: newTitles });
+  }
 
   async function handleSave(status = "draft") {
     setSaving(true);
@@ -538,6 +589,57 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                         style={{ border: "1px solid #e0e0e0", resize: "vertical", fontSize: 11 }}
                         placeholder="Описание / характеристики товара" />
 
+                      {/* Bottle variant selector (only for Флаконы category) */}
+                      {item.name.toLowerCase().includes("флакон") && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span style={{ color: "#7b1fa2" }}>Вариант:</span>
+                          <select
+                            value={item.bottle_variant ?? "none"}
+                            onChange={(e) => {
+                              const variant = e.target.value as BottleVariant;
+                              const newPrice = calcBottlePrice(item.base_price, variant);
+                              const newItems = [...items];
+                              newItems[idx] = { ...item, bottle_variant: variant, client_price: newPrice, discount_pct: item.base_price > 0 ? Math.round((item.base_price - newPrice) / item.base_price * 1000) / 10 : 0, sum: newPrice * item.qty };
+                              // Recalculate price tiers if they exist
+                              if (item.price_tiers?.length) {
+                                const catTier = tiersByCategory.get("Флаконы");
+                                if (catTier?.tiers?.length) {
+                                  const tiers = catTier.tiers.map((t: { from_qty: number; discount_pct: number }, i: number, arr: { from_qty: number; discount_pct: number }[]) => ({
+                                    from_qty: t.from_qty,
+                                    to_qty: i < arr.length - 1 ? arr[i + 1].from_qty - 1 : null,
+                                    price: Math.round(newPrice * (1 - t.discount_pct / 100)),
+                                  }));
+                                  if (tiers.length > 0 && tiers[0].from_qty > 1) tiers.unshift({ from_qty: 1, to_qty: tiers[0].from_qty - 1, price: newPrice });
+                                  newItems[idx].price_tiers = tiers;
+                                }
+                              }
+                              setItems(newItems);
+                            }}
+                            className="px-2 py-0.5 rounded outline-none"
+                            style={{ border: "1px solid #ce93d8", fontSize: 11, color: "#7b1fa2" }}
+                          >
+                            {BOTTLE_VARIANTS.map((bv) => <option key={bv.value} value={bv.value}>{bv.label}</option>)}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Column selector (if multiple columns) */}
+                      {columnCount > 1 && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span style={{ color: "#888" }}>Столбец:</span>
+                          <select
+                            value={item.column_index ?? 0}
+                            onChange={(e) => updateItem(idx, "column_index", Number(e.target.value))}
+                            className="px-2 py-0.5 rounded outline-none"
+                            style={{ border: "1px solid #d0d0d0", fontSize: 11 }}
+                          >
+                            {Array.from({ length: columnCount }, (_, ci) => (
+                              <option key={ci} value={ci}>{columnTitles[String(ci)] || `Столбец ${ci + 1}`}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
                       <div className="flex items-center gap-3 text-xs">
                         <div className="flex items-center gap-1">
                           <span style={{ color: "#888" }}>Каталог:</span>
@@ -631,25 +733,52 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
             )}
           </div>
 
-          {/* Totals */}
+          {/* Columns management */}
           {items.length > 0 && (
-            <div className="flex items-center justify-between p-3 rounded" style={{ background: "#f5f5f5", border: "1px solid #e4e4e4" }}>
-              <div className="flex flex-col gap-1">
-                <div className="text-xs" style={{ color: "#888" }}>
-                  Средняя скидка: <strong style={{ color: "#e65c00" }}>{avgDiscount}%</strong>
+            <div className="p-3 rounded space-y-3" style={{ background: "#f5f5f5", border: "1px solid #e4e4e4" }}>
+              {/* Column titles & totals */}
+              {columnCount > 1 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold" style={{ color: "#555" }}>Столбцы КП:</p>
+                  {Array.from({ length: columnCount }, (_, ci) => (
+                    <div key={ci} className="flex items-center gap-2">
+                      <input
+                        value={columnTitles[String(ci)] || `Столбец ${ci + 1}`}
+                        onChange={(e) => setForm({ ...form, column_titles: { ...columnTitles, [String(ci)]: e.target.value } })}
+                        className="flex-1 text-xs px-2 py-1 rounded outline-none"
+                        style={{ border: "1px solid #e0e0e0", fontSize: 11 }}
+                      />
+                      <span className="text-xs font-medium" style={{ color: "#2e7d32" }}>{formatCurrency(columnTotals[ci])}</span>
+                      <span className="text-xs" style={{ color: "#aaa" }}>({items.filter((i) => (i.column_index ?? 0) === ci).length} поз.)</span>
+                      {columnCount > 1 && (
+                        <button onClick={() => removeColumn(ci)} className="text-xs px-1 hover:text-red-600" style={{ color: "#c62828" }}>✕</button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                {items.some((i) => i.price_tiers?.length) && (
-                  <label className="flex items-center gap-2 text-xs" style={{ color: "#888" }}>
-                    <input type="checkbox" checked={form.hide_total ?? false}
-                      onChange={(e) => setForm({ ...form, hide_total: e.target.checked })}
-                      style={{ accentColor: "#e65c00" }} />
-                    Скрыть общую сумму в КП (лесенка цен)
-                  </label>
-                )}
+              )}
+              <div className="flex items-center gap-2">
+                <button onClick={addColumn} className="text-xs" style={{ color: "#0067a5" }}>+ Добавить столбец</button>
               </div>
-              <div className="text-right">
-                <p className="text-xs" style={{ color: "#888" }}>Итого:</p>
-                <p className="text-lg font-bold" style={{ color: "#2e7d32" }}>{formatCurrency(totalAmount)}</p>
+
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-1">
+                  <div className="text-xs" style={{ color: "#888" }}>
+                    Средняя скидка: <strong style={{ color: "#e65c00" }}>{avgDiscount}%</strong>
+                  </div>
+                  {items.some((i) => i.price_tiers?.length) && (
+                    <label className="flex items-center gap-2 text-xs" style={{ color: "#888" }}>
+                      <input type="checkbox" checked={form.hide_total ?? false}
+                        onChange={(e) => setForm({ ...form, hide_total: e.target.checked })}
+                        style={{ accentColor: "#e65c00" }} />
+                      Скрыть общую сумму в КП (лесенка цен)
+                    </label>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="text-xs" style={{ color: "#888" }}>Общий итог:</p>
+                  <p className="text-lg font-bold" style={{ color: "#2e7d32" }}>{formatCurrency(totalAmount)}</p>
+                </div>
               </div>
             </div>
           )}

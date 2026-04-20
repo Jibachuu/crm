@@ -25,14 +25,25 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
   const totalAmount = (items ?? []).reduce((s, i) => s + (i.sum ?? 0), 0);
   const manager = quote.users as { full_name: string; email?: string } | null;
 
-  // Group items by category (extract from name "Category / Subcategory / Name")
-  const categoryMap = new Map<string, typeof items>();
-  for (const item of items ?? []) {
-    const parts = item.name.split(" / ");
-    const cat = parts.length >= 2 ? parts[0] : "Товары";
-    if (!categoryMap.has(cat)) categoryMap.set(cat, []);
-    categoryMap.get(cat)!.push(item);
+  // Multiple columns support
+  const colTitles = (quote.column_titles ?? {}) as Record<string, string>;
+  const columnIndices = [...new Set((items ?? []).map((i: { column_index?: number }) => i.column_index ?? 0))].sort();
+  const hasMultipleColumns = columnIndices.length > 1;
+
+  // Group items by column, then by category
+  function groupByCategory(colItems: typeof items) {
+    const categoryMap = new Map<string, typeof items>();
+    for (const item of colItems ?? []) {
+      const parts = item.name.split(" / ");
+      const cat = parts.length >= 2 ? parts[0] : "Товары";
+      if (!categoryMap.has(cat)) categoryMap.set(cat, []);
+      categoryMap.get(cat)!.push(item);
+    }
+    return categoryMap;
   }
+
+  // Default grouping (all items if single column)
+  const categoryMap = groupByCategory(items);
 
   // Match category descriptions — per-quote overrides take priority
   const catDescMap = new Map((catDescs ?? []).map((d) => [d.category.toLowerCase(), d]));
@@ -64,83 +75,109 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
           </p>
         </div>
 
-        {/* Category sections with descriptions + products */}
-        <div style={{ padding: "0 40px" }}>
-          {[...categoryMap.entries()].map(([category, catItems]) => {
-            const desc = catDescMap.get(category.toLowerCase());
-            const override = overrides[category];
-            const displayTitle = override?.title || desc?.title || category;
-            const displayDesc = override?.description ?? desc?.description ?? "";
-            return (
-              <div key={category} style={{ padding: "28px 0", borderBottom: "1px solid #efe9df", pageBreakInside: "avoid" }}>
-                {/* Category header + description */}
-                <h2 style={{ fontSize: 18, fontWeight: 700, color: "#3d3325", marginBottom: 8, fontFamily: "Georgia, serif" }}>
-                  {displayTitle}
-                </h2>
-                {displayDesc && (
-                  <div style={{ fontSize: 13, color: "#6b5e4f", lineHeight: 1.7, marginBottom: 20, paddingLeft: 16, borderLeft: "3px solid #d4c9b8" }}>
-                    {displayDesc.split("\n").map((line: string, i: number) => (
-                      <p key={i} style={{ margin: "4px 0" }}>{line.startsWith("- ") ? `• ${line.slice(2)}` : line}</p>
-                    ))}
-                  </div>
-                )}
+        {/* Render columns — each column has its own categories and total */}
+        {columnIndices.map((colIdx) => {
+          const colItems = (items ?? []).filter((i: { column_index?: number }) => (i.column_index ?? 0) === colIdx);
+          const colCategoryMap = groupByCategory(colItems);
+          const colTotal = colItems.reduce((s: number, i: { sum: number }) => s + (i.sum ?? 0), 0);
+          const colTitle = colTitles[String(colIdx)];
 
-                {/* Products grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>
-                  {(catItems ?? []).map((item) => (
-                    <div key={item.id} style={{ display: "flex", gap: 14, padding: 16, borderRadius: 8, background: "#faf8f5", border: "1px solid #efe9df", pageBreakInside: "avoid", breakInside: "avoid" }}>
-                      {/* Photo */}
-                      {item.image_url ? (
-                        <img src={item.image_url} alt="" style={{ width: 140, height: 140, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
-                      ) : (
-                        <div style={{ width: 140, height: 140, borderRadius: 6, background: "#efe9df", flexShrink: 0 }} />
+          return (
+            <div key={colIdx}>
+              {/* Column header (only if multiple columns) */}
+              {hasMultipleColumns && (
+                <div style={{ padding: "16px 40px 8px", borderTop: colIdx > 0 ? "3px solid #e8e0d4" : "none", marginTop: colIdx > 0 ? 8 : 0 }}>
+                  <h2 style={{ fontSize: 20, fontWeight: 700, color: "#0067a5", fontFamily: "Georgia, serif" }}>
+                    {colTitle || `Вариант ${colIdx + 1}`}
+                  </h2>
+                </div>
+              )}
+
+              {/* Category sections */}
+              <div style={{ padding: "0 40px" }}>
+                {[...colCategoryMap.entries()].map(([category, catItems]) => {
+                  const desc = catDescMap.get(category.toLowerCase());
+                  const override = overrides[category];
+                  const displayTitle = override?.title || desc?.title || category;
+                  const displayDesc = override?.description ?? desc?.description ?? "";
+                  return (
+                    <div key={`${colIdx}-${category}`} style={{ padding: "28px 0", borderBottom: "1px solid #efe9df", pageBreakInside: "avoid" }}>
+                      <h2 style={{ fontSize: 18, fontWeight: 700, color: "#3d3325", marginBottom: 8, fontFamily: "Georgia, serif" }}>
+                        {displayTitle}
+                      </h2>
+                      {displayDesc && (
+                        <div style={{ fontSize: 13, color: "#6b5e4f", lineHeight: 1.7, marginBottom: 20, paddingLeft: 16, borderLeft: "3px solid #d4c9b8" }}>
+                          {displayDesc.split("\n").map((line: string, i: number) => (
+                            <p key={i} style={{ margin: "4px 0" }}>{line.startsWith("- ") ? `• ${line.slice(2)}` : line}</p>
+                          ))}
+                        </div>
                       )}
-                      {/* Info */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginBottom: 2 }}>{item.name.split(" / ").pop()}</p>
-                        {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
-                        {item.description && <p style={{ fontSize: 11, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
-                        {item.price_tiers?.length ? (
-                          <div style={{ marginTop: 8 }}>
-                            <p style={{ fontSize: 11, color: "#8c7e6a", marginBottom: 4 }}>Цены при разном объёме:</p>
-                            {item.price_tiers.map((tier: { from_qty: number; to_qty: number | null; price: number }, ti: number) => (
-                              <div key={ti} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 13 }}>
-                                <span style={{ color: "#8c7e6a" }}>{tier.from_qty}{tier.to_qty ? `–${tier.to_qty}` : "+"} шт.</span>
-                                <span style={{ fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(tier.price)}</span>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>
+                        {(catItems ?? []).map((item) => {
+                          const BOTTLE_LABELS: Record<string, string> = { uv: "С УФ печатью", uv_logo: "С УФ печатью и лого", sticker: "С наклейкой", sticker_logo: "С наклейкой и лого" };
+                          const bottleLabel = item.bottle_variant && item.bottle_variant !== "none" ? BOTTLE_LABELS[item.bottle_variant] : null;
+                          return (
+                            <div key={item.id} style={{ display: "flex", gap: 14, padding: 16, borderRadius: 8, background: "#faf8f5", border: "1px solid #efe9df", pageBreakInside: "avoid", breakInside: "avoid" }}>
+                              {item.image_url ? (
+                                <img src={item.image_url} alt="" style={{ width: 140, height: 140, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                              ) : (
+                                <div style={{ width: 140, height: 140, borderRadius: 6, background: "#efe9df", flexShrink: 0 }} />
+                              )}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginBottom: 2 }}>{item.name.split(" / ").pop()}</p>
+                                {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
+                                {bottleLabel && <p style={{ fontSize: 11, color: "#7b1fa2", fontWeight: 600, marginTop: 2 }}>{bottleLabel}</p>}
+                                {item.description && <p style={{ fontSize: 11, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
+                                {item.price_tiers?.length ? (
+                                  <div style={{ marginTop: 8 }}>
+                                    <p style={{ fontSize: 11, color: "#8c7e6a", marginBottom: 4 }}>Цены при разном объёме:</p>
+                                    {item.price_tiers.map((tier: { from_qty: number; to_qty: number | null; price: number }, ti: number) => (
+                                      <div key={ti} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 13 }}>
+                                        <span style={{ color: "#8c7e6a" }}>{tier.from_qty}{tier.to_qty ? `–${tier.to_qty}` : "+"} шт.</span>
+                                        <span style={{ fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(tier.price)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
+                                    {item.discount_pct > 0 && (
+                                      <span style={{ fontSize: 12, color: "#b3a894", textDecoration: "line-through" }}>{formatCurrency(item.base_price)}</span>
+                                    )}
+                                    <span style={{ fontSize: 16, fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(item.client_price)}</span>
+                                    {item.discount_pct > 0 && (
+                                      <span style={{ fontSize: 11, color: "#c17f3e", fontWeight: 600 }}>-{item.discount_pct}%</span>
+                                    )}
+                                    <span style={{ fontSize: 12, color: "#8c7e6a" }}>× {item.qty} шт.</span>
+                                    <span style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginLeft: "auto" }}>{formatCurrency(item.sum)}</span>
+                                  </div>
+                                )}
                               </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
-                            {item.discount_pct > 0 && (
-                              <span style={{ fontSize: 12, color: "#b3a894", textDecoration: "line-through" }}>{formatCurrency(item.base_price)}</span>
-                            )}
-                            <span style={{ fontSize: 16, fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(item.client_price)}</span>
-                            {item.discount_pct > 0 && (
-                              <span style={{ fontSize: 11, color: "#c17f3e", fontWeight: 600 }}>-{item.discount_pct}%</span>
-                            )}
-                            <span style={{ fontSize: 12, color: "#8c7e6a" }}>× {item.qty} шт.</span>
-                            <span style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginLeft: "auto" }}>{formatCurrency(item.sum)}</span>
-                          </div>
-                        )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
 
-        {/* Total */}
-        {!quote.hide_total && (
-          <div style={{ padding: "24px 40px", background: "#f5f0e8", borderTop: "2px solid #e8e0d4" }}>
-            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12 }}>
-              <span style={{ fontSize: 14, color: "#8c7e6a" }}>Итого:</span>
-              <span style={{ fontSize: 28, fontWeight: 700, color: "#3d3325", fontFamily: "Georgia, serif" }}>{formatCurrency(totalAmount)}</span>
+              {/* Column total */}
+              {!quote.hide_total && (
+                <div style={{ padding: "16px 40px", background: hasMultipleColumns ? "#f8f5f0" : "#f5f0e8", borderTop: "2px solid #e8e0d4" }}>
+                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 12 }}>
+                    <span style={{ fontSize: 14, color: "#8c7e6a" }}>
+                      {hasMultipleColumns ? `Итого ${colTitle || `вариант ${colIdx + 1}`}:` : "Итого:"}
+                    </span>
+                    <span style={{ fontSize: hasMultipleColumns ? 22 : 28, fontWeight: 700, color: "#3d3325", fontFamily: "Georgia, serif" }}>
+                      {formatCurrency(hasMultipleColumns ? colTotal : totalAmount)}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })}
 
         {/* Terms */}
         {(quote.payment_terms || quote.delivery_terms || quote.comment) && (

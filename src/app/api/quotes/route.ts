@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
 
   if (action === "create" || action === "update") {
-    const { id, company_id, contact_id, deal_id, manager_id, payment_terms, delivery_terms, comment, status, items, hide_total, category_overrides } = body;
+    const { id, company_id, contact_id, deal_id, manager_id, payment_terms, delivery_terms, comment, status, items, hide_total, category_overrides, column_titles } = body;
 
     const totalAmount = (items ?? []).reduce((s: number, i: { sum: number }) => s + (i.sum ?? 0), 0);
 
@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
       total_amount: totalAmount,
       hide_total: hide_total ?? false,
       category_overrides: category_overrides ?? {},
+      column_titles: column_titles ?? {},
       updated_at: new Date().toISOString(),
     };
 
@@ -58,6 +59,8 @@ export async function POST(req: NextRequest) {
         image_url: i.image_url || null,
         description: i.description || null,
         price_tiers: i.price_tiers?.length ? i.price_tiers : null,
+        bottle_variant: i.bottle_variant || null,
+        column_index: i.column_index ?? 0,
         sort_order: idx,
       }));
       await admin.from("quote_items").insert(itemRows);
