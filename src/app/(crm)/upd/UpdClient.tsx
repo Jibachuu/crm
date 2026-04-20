@@ -101,7 +101,7 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
       vat_included: inv.vat_included ?? false,
     }));
     // Load invoice items
-    const { data: invItems } = await supabase.from("invoice_items").select("*").eq("invoice_id", invoiceId).order("sort_order");
+    const { data: invItems } = await supabase.from("invoice_items").select("*").eq("invoice_id", invoiceId);
     if (invItems?.length) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setItems(invItems.map((i: any) => ({ product_id: i.product_id ?? "", name: i.name, quantity: i.quantity ?? 1, unit: i.unit ?? "шт", price: i.price ?? 0, total: i.total ?? 0 })));
@@ -407,87 +407,173 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
         </div>
       </Modal>
 
-      {/* Preview Modal */}
+      {/* Preview Modal — standard Russian УПД form */}
       <Modal open={!!previewUpd} onClose={() => setPreviewUpd(null)} title={`УПД-${previewUpd?.upd_number}`} size="xl">
-        {previewUpd && (
-          <div className="p-6" id="upd-preview">
-            <div className="text-center mb-4">
-              <h2 className="text-lg font-bold">Универсальный передаточный документ (УПД)</h2>
-              <p className="text-sm" style={{ color: "#666" }}>№ {previewUpd.upd_number} от {formatDate(previewUpd.upd_date)}</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6 mb-6 text-sm">
-              <div>
-                <p className="text-xs font-semibold mb-1" style={{ color: "#888" }}>ПРОДАВЕЦ</p>
-                <p className="font-semibold">{supplier?.legal_name || supplier?.company_name}</p>
-                <p>ИНН {supplier?.inn}{supplier?.kpp ? ` / КПП ${supplier.kpp}` : ""}</p>
-                <p style={{ color: "#666" }}>{supplier?.address}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold mb-1" style={{ color: "#888" }}>ПОКУПАТЕЛЬ</p>
-                <p className="font-semibold">{previewUpd.buyer_name}</p>
-                <p>ИНН {previewUpd.buyer_inn}{previewUpd.buyer_kpp ? ` / КПП ${previewUpd.buyer_kpp}` : ""}</p>
-                <p style={{ color: "#666" }}>{previewUpd.buyer_address}</p>
-              </div>
-            </div>
-
-            <p className="text-xs mb-3" style={{ color: "#666" }}>Основание: {previewUpd.basis}</p>
-
-            <table className="w-full text-xs mb-4" style={{ border: "1px solid #333" }}>
-              <thead>
-                <tr style={{ background: "#f5f5f5" }}>
-                  <th className="border border-gray-400 px-2 py-1">№</th>
-                  <th className="border border-gray-400 px-2 py-1 text-left">Наименование</th>
-                  <th className="border border-gray-400 px-2 py-1">Кол-во</th>
-                  <th className="border border-gray-400 px-2 py-1">Ед.</th>
-                  <th className="border border-gray-400 px-2 py-1">Цена</th>
-                  <th className="border border-gray-400 px-2 py-1">Сумма</th>
-                </tr>
-              </thead>
-              <tbody>
-                {previewItems.map((item, idx) => (
-                  <tr key={idx}>
-                    <td className="border border-gray-300 px-2 py-1 text-center">{idx + 1}</td>
-                    <td className="border border-gray-300 px-2 py-1">{item.name}</td>
-                    <td className="border border-gray-300 px-2 py-1 text-center">{item.quantity}</td>
-                    <td className="border border-gray-300 px-2 py-1 text-center">{item.unit}</td>
-                    <td className="border border-gray-300 px-2 py-1 text-right">{formatCurrency(item.price)}</td>
-                    <td className="border border-gray-300 px-2 py-1 text-right">{formatCurrency(item.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: "#f5f5f5" }}>
-                  <td colSpan={5} className="border border-gray-400 px-2 py-1 text-right font-bold">Итого:</td>
-                  <td className="border border-gray-400 px-2 py-1 text-right font-bold">{formatCurrency(previewItems.reduce((s, i) => s + i.total, 0))}</td>
-                </tr>
-              </tfoot>
-            </table>
-
-            <p className="text-xs mb-4" style={{ color: "#666" }}>
-              Всего: {amountToWords(previewItems.reduce((s, i) => s + i.total, 0))}
-            </p>
-
-            <div className="grid grid-cols-2 gap-8 mt-6 text-xs">
-              <div>
-                <p className="font-semibold mb-4">Передал:</p>
-                <div className="flex items-end gap-4">
-                  {supplier?.signature_url && <img src={supplier.signature_url} alt="" className="h-10" />}
-                  <p>{supplier?.director_short || supplier?.director}</p>
+        {previewUpd && (() => {
+          const total = previewItems.reduce((s, i) => s + i.total, 0);
+          const vatRate = previewUpd.vat_included ? 20 : 0;
+          const vatAmount = vatRate > 0 ? Math.round(total * vatRate / (100 + vatRate) * 100) / 100 : 0;
+          const totalNoVat = total - vatAmount;
+          const updDate = new Date(previewUpd.upd_date).toLocaleDateString("ru-RU");
+          return (
+            <div className="p-4" style={{ fontSize: 11, fontFamily: "Arial, sans-serif", color: "#000" }}>
+              <div id="upd-content" style={{ background: "#fff", padding: 20 }}>
+                {/* Header reference */}
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, color: "#555" }}>
+                    Приложение № 1 к постановлению Правительства Российской Федерации от 26 декабря 2011 г. № 1137
+                  </div>
                 </div>
-                {supplier?.stamp_url && <img src={supplier.stamp_url} alt="" className="h-16 mt-2 opacity-80" />}
-              </div>
-              <div>
-                <p className="font-semibold mb-4">Принял:</p>
-                <div style={{ borderBottom: "1px solid #333", height: 40 }} />
-              </div>
-            </div>
 
-            <div className="flex justify-end mt-4 gap-2">
-              <Button size="sm" variant="secondary" onClick={() => window.print()}>Печать</Button>
+                {/* UPD title row */}
+                <table style={{ width: "100%", borderCollapse: "collapse", border: "2px solid #000", marginBottom: 0 }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ border: "1px solid #000", padding: "4px 8px", width: "50%" }}>
+                        <div style={{ fontSize: 9, color: "#555" }}>Универсальный передаточный документ</div>
+                        <div><strong>№ {previewUpd.upd_number}</strong> от <strong>{updDate}</strong></div>
+                      </td>
+                      <td style={{ border: "1px solid #000", padding: "4px 8px" }}>
+                        <div style={{ fontSize: 9, color: "#555" }}>Статус: <strong>1</strong></div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Счёт-фактура header */}
+                <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #000" }}>
+                  <tbody>
+                    {/* Line 1 — Seller */}
+                    <tr>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", width: 30, textAlign: "center", fontSize: 9 }}>1</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", fontSize: 9, color: "#555" }}>Продавец:</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px" }}>{supplier?.legal_name || supplier?.company_name}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", textAlign: "center", fontSize: 9 }}>1а</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", fontSize: 9, color: "#555" }}>Адрес:</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px" }}>{supplier?.address}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", textAlign: "center", fontSize: 9 }}>1б</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", fontSize: 9, color: "#555" }}>ИНН/КПП продавца:</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px" }}>{supplier?.inn}{supplier?.kpp ? ` / ${supplier.kpp}` : ""}</td>
+                    </tr>
+                    {/* Line 2 — Buyer */}
+                    <tr>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", textAlign: "center", fontSize: 9 }}>2</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", fontSize: 9, color: "#555" }}>Покупатель:</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px" }}>{previewUpd.buyer_name}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", textAlign: "center", fontSize: 9 }}>2а</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", fontSize: 9, color: "#555" }}>Адрес:</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px" }}>{previewUpd.buyer_address}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", textAlign: "center", fontSize: 9 }}>2б</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", fontSize: 9, color: "#555" }}>ИНН/КПП покупателя:</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px" }}>{previewUpd.buyer_inn}{previewUpd.buyer_kpp ? ` / ${previewUpd.buyer_kpp}` : ""}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", textAlign: "center", fontSize: 9 }}>3</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px", fontSize: 9, color: "#555" }}>Основание:</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 6px" }}>{previewUpd.basis}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Items table */}
+                <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #000", marginTop: 8 }}>
+                  <thead>
+                    <tr style={{ background: "#f0f0f0" }}>
+                      <th style={{ border: "1px solid #000", padding: "3px 4px", fontSize: 9 }}>№</th>
+                      <th style={{ border: "1px solid #000", padding: "3px 4px", fontSize: 9, textAlign: "left" }}>Наименование товара (описание выполненных работ, оказанных услуг)</th>
+                      <th style={{ border: "1px solid #000", padding: "3px 4px", fontSize: 9 }}>Ед. изм.</th>
+                      <th style={{ border: "1px solid #000", padding: "3px 4px", fontSize: 9 }}>Кол-во</th>
+                      <th style={{ border: "1px solid #000", padding: "3px 4px", fontSize: 9 }}>Цена за ед.</th>
+                      <th style={{ border: "1px solid #000", padding: "3px 4px", fontSize: 9 }}>Стоимость без НДС</th>
+                      <th style={{ border: "1px solid #000", padding: "3px 4px", fontSize: 9 }}>Ставка НДС</th>
+                      <th style={{ border: "1px solid #000", padding: "3px 4px", fontSize: 9 }}>Сумма НДС</th>
+                      <th style={{ border: "1px solid #000", padding: "3px 4px", fontSize: 9 }}>Стоимость с НДС</th>
+                    </tr>
+                    <tr style={{ fontSize: 8, color: "#888" }}>
+                      {["1","1а","2","3","4","5","7","8","9"].map((n) => (
+                        <td key={n} style={{ border: "1px solid #000", padding: "1px 4px", textAlign: "center" }}>{n}</td>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewItems.map((item, idx) => {
+                      const itemVat = vatRate > 0 ? Math.round(item.total * vatRate / (100 + vatRate) * 100) / 100 : 0;
+                      const itemNoVat = item.total - itemVat;
+                      return (
+                        <tr key={idx}>
+                          <td style={{ border: "1px solid #000", padding: "3px 4px", textAlign: "center" }}>{idx + 1}</td>
+                          <td style={{ border: "1px solid #000", padding: "3px 4px" }}>{item.name}</td>
+                          <td style={{ border: "1px solid #000", padding: "3px 4px", textAlign: "center" }}>{item.unit}</td>
+                          <td style={{ border: "1px solid #000", padding: "3px 4px", textAlign: "center" }}>{item.quantity}</td>
+                          <td style={{ border: "1px solid #000", padding: "3px 4px", textAlign: "right" }}>{formatCurrency(item.price)}</td>
+                          <td style={{ border: "1px solid #000", padding: "3px 4px", textAlign: "right" }}>{formatCurrency(itemNoVat)}</td>
+                          <td style={{ border: "1px solid #000", padding: "3px 4px", textAlign: "center" }}>{vatRate > 0 ? `${vatRate}%` : "Без НДС"}</td>
+                          <td style={{ border: "1px solid #000", padding: "3px 4px", textAlign: "right" }}>{vatRate > 0 ? formatCurrency(itemVat) : "—"}</td>
+                          <td style={{ border: "1px solid #000", padding: "3px 4px", textAlign: "right" }}>{formatCurrency(item.total)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ fontWeight: 700 }}>
+                      <td colSpan={5} style={{ border: "1px solid #000", padding: "3px 6px", textAlign: "right" }}>Всего к оплате:</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 4px", textAlign: "right" }}>{formatCurrency(totalNoVat)}</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 4px" }}></td>
+                      <td style={{ border: "1px solid #000", padding: "3px 4px", textAlign: "right" }}>{vatRate > 0 ? formatCurrency(vatAmount) : "—"}</td>
+                      <td style={{ border: "1px solid #000", padding: "3px 4px", textAlign: "right" }}>{formatCurrency(total)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                {/* Bottom section — signatures */}
+                <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                  <div>
+                    <p style={{ fontSize: 9, color: "#555", marginBottom: 4 }}>Товар (груз) передал / услуги, результаты работ сдал</p>
+                    <div style={{ borderBottom: "1px solid #000", height: 30, marginBottom: 4 }} />
+                    <p style={{ fontSize: 9, color: "#555" }}>Дата отгрузки: {updDate}</p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 9, color: "#555", marginBottom: 4 }}>Товар (груз) получил / услуги, результаты работ принял</p>
+                    <div style={{ borderBottom: "1px solid #000", height: 30, marginBottom: 4 }} />
+                    <p style={{ fontSize: 9, color: "#555" }}>Дата получения: _______________</p>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 12, fontSize: 10 }}>
+                  <p>Всего наименований: <strong>{previewItems.length}</strong>, на сумму: <strong>{formatCurrency(total)}</strong></p>
+                  <p style={{ color: "#555", fontStyle: "italic" }}>{amountToWords(total)}</p>
+                </div>
+              </div>
+
+              {/* Download PDF button */}
+              <div className="flex justify-end mt-4 gap-2" id="upd-buttons">
+                <Button size="sm" onClick={async () => {
+                  const html2canvas = (await import("html2canvas")).default;
+                  const { jsPDF } = await import("jspdf");
+                  const el = document.getElementById("upd-content");
+                  if (!el) return;
+                  const btnBar = document.getElementById("upd-buttons");
+                  if (btnBar) btnBar.style.display = "none";
+                  const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#fff" });
+                  if (btnBar) btnBar.style.display = "";
+                  const pdf = new jsPDF("p", "mm", "a4");
+                  const w = pdf.internal.pageSize.getWidth();
+                  const h = (canvas.height * w) / canvas.width;
+                  pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, w, h);
+                  pdf.save(`УПД_${previewUpd.upd_number}.pdf`);
+                }}>Скачать PDF</Button>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
     </div>
   );
