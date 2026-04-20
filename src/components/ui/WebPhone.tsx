@@ -176,8 +176,15 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
         if (stateRef.current === "calling") {
           console.log("[WebPhone] auto-answering Novofon callback");
           if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
-          // Keep the original dialed number as callerInfo
-          session.answer(answerOptions);
+          // Request microphone first, then answer — prevents ICE failures
+          navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+            console.log("[WebPhone] mic acquired, answering...");
+            stream.getTracks().forEach((t) => t.stop()); // release, JsSIP will re-acquire
+            session.answer(answerOptions);
+          }).catch((err) => {
+            console.error("[WebPhone] mic error, answering anyway:", err);
+            session.answer(answerOptions);
+          });
           return;
         }
 
