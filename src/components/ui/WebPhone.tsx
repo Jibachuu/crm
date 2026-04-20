@@ -30,6 +30,8 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
   const [dialNumber, setDialNumber] = useState("");
 
   const stateRef = useRef<CallState>("idle");
+  // Sync ref immediately on state change (useEffect is too late for fast callbacks)
+  function setStateAndRef(s: CallState) { stateRef.current = s; setState(s); }
   useEffect(() => { stateRef.current = state; }, [state]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -104,7 +106,7 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
 
   const endCall = useCallback(() => {
     console.log("[WebPhone] endCall, current state:", stateRef.current);
-    setState("registered");
+    setStateAndRef("registered");
     cleanup();
   }, [cleanup]);
 
@@ -130,9 +132,9 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
 
       const ua = new JsSIP.UA(config);
 
-      ua.on("registered", () => { console.log("[WebPhone] registered"); if (mounted) setState("registered"); });
-      ua.on("unregistered", () => { console.log("[WebPhone] unregistered"); if (mounted) setState("idle"); });
-      ua.on("registrationFailed", (e: any) => { console.error("[WebPhone] registration failed:", e?.cause); if (mounted) setState("failed"); });
+      ua.on("registered", () => { console.log("[WebPhone] registered"); if (mounted) setStateAndRef("registered"); });
+      ua.on("unregistered", () => { console.log("[WebPhone] unregistered"); if (mounted) setStateAndRef("idle"); });
+      ua.on("registrationFailed", (e: any) => { console.error("[WebPhone] registration failed:", e?.cause); if (mounted) setStateAndRef("failed"); });
 
       // Incoming call (including callback from Novofon after makeCall)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -155,7 +157,7 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
           console.log("[WebPhone] call accepted");
           if (ringtoneRef.current) { ringtoneRef.current.pause(); ringtoneRef.current.currentTime = 0; }
           stopRingback();
-          if (mounted) setState("connected");
+          if (mounted) setStateAndRef("connected");
           startTimer();
           attachAudio(session);
         });
@@ -182,7 +184,7 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
         // Regular incoming call — show UI
         if (mounted) {
           setCallerInfo(from);
-          setState("incoming");
+          setStateAndRef("incoming");
           setMinimized(false);
         }
         try { ringtoneRef.current?.play().catch(() => {}); } catch {}
@@ -269,7 +271,7 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     console.log("[WebPhone] calling via callback API:", normalized, "(raw:", number, ")");
     outboundNumberRef.current = number;
     setCallerInfo(number);
-    setState("calling");
+    setStateAndRef("calling");
     setMinimized(false);
     startRingback();
 
