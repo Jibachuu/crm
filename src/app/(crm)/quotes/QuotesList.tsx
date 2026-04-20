@@ -80,7 +80,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   const [copied, setCopied] = useState(false);
 
   // Editor state
-  const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
+  const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean; category_overrides?: Record<string, { title: string; description: string }> }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -97,7 +97,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setEditing({ id: quoteId });
     const q = quotes.find((qq: { id: string }) => qq.id === quoteId);
     if (q) {
-      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "", hide_total: q.hide_total ?? false });
+      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "", hide_total: q.hide_total ?? false, category_overrides: q.category_overrides ?? {} });
     }
     // Load items from DB
     const supabase = (await import("@/lib/supabase/client")).createClient();
@@ -189,6 +189,10 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
         updated.sum = updated.client_price * updated.qty;
       } else if (field === "qty") {
         updated.sum = updated.client_price * (Number(val) || 0);
+      } else if (field === "base_price") {
+        const bp = Number(val) || 0;
+        // Recalculate discount % from new base price and existing client price
+        updated.discount_pct = bp > 0 ? Math.round((bp - updated.client_price) / bp * 1000) / 10 : 0;
       }
       return updated;
     }));
@@ -203,7 +207,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setSaving(true);
     const res = await fetch("/api/quotes", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: editing ? "update" : "create", id: editing?.id, ...form, status, items }),
+      body: JSON.stringify({ action: editing ? "update" : "create", id: editing?.id, ...form, category_overrides: form.category_overrides ?? {}, status, items }),
     });
     if (res.ok) {
       const data = await res.json();
@@ -396,6 +400,46 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
             )}
           </div>
 
+          {/* Category descriptions editor */}
+          {(() => {
+            const cats = new Set<string>();
+            for (const item of items) {
+              const parts = item.name.split(" / ");
+              if (parts.length >= 2) cats.add(parts[0]);
+            }
+            if (cats.size === 0) return null;
+            const overrides = form.category_overrides ?? {};
+            return (
+              <div>
+                <label style={lblStyle}>Описания категорий (отображаются в КП)</label>
+                <div className="space-y-2">
+                  {[...cats].map((cat) => (
+                    <div key={cat} className="p-3 rounded" style={{ border: "1px solid #e4e4e4", background: "#fafafa" }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-semibold" style={{ color: "#555" }}>{cat}</span>
+                      </div>
+                      <input
+                        value={overrides[cat]?.title ?? cat}
+                        onChange={(e) => setForm({ ...form, category_overrides: { ...overrides, [cat]: { ...overrides[cat], title: e.target.value, description: overrides[cat]?.description ?? "" } } })}
+                        placeholder="Заголовок категории"
+                        className="w-full text-xs px-2 py-1 rounded outline-none mb-1"
+                        style={{ border: "1px solid #e0e0e0", fontSize: 12, fontWeight: 600 }}
+                      />
+                      <textarea
+                        value={overrides[cat]?.description ?? ""}
+                        onChange={(e) => setForm({ ...form, category_overrides: { ...overrides, [cat]: { title: overrides[cat]?.title ?? cat, description: e.target.value } } })}
+                        placeholder="Описание категории (отображается под заголовком в КП)"
+                        className="w-full text-xs px-2 py-1 rounded outline-none"
+                        rows={2}
+                        style={{ border: "1px solid #e0e0e0", resize: "vertical", fontSize: 11 }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Items table */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -472,7 +516,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                       <div className="flex items-center gap-3 text-xs">
                         <div className="flex items-center gap-1">
                           <span style={{ color: "#888" }}>Каталог:</span>
-                          <span style={{ color: "#aaa", textDecoration: item.discount_pct > 0 ? "line-through" : "none" }}>{formatCurrency(item.base_price)}</span>
+                          <input type="number" value={item.base_price} onChange={(e) => updateItem(idx, "base_price", Number(e.target.value))}
+                            className="w-20 px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #e0e0e0", fontSize: 11, color: "#aaa", textDecoration: item.discount_pct > 0 ? "line-through" : "none" }} />
                         </div>
                         <div className="flex items-center gap-1">
                           <span style={{ color: "#333" }}>Цена:</span>

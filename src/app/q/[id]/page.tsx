@@ -34,8 +34,9 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
     categoryMap.get(cat)!.push(item);
   }
 
-  // Match category descriptions
+  // Match category descriptions — per-quote overrides take priority
   const catDescMap = new Map((catDescs ?? []).map((d) => [d.category.toLowerCase(), d]));
+  const overrides = (quote.category_overrides ?? {}) as Record<string, { title: string; description: string }>;
 
   const logoUrl = supplier?.logo_url;
 
@@ -67,15 +68,18 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
         <div style={{ padding: "0 40px" }}>
           {[...categoryMap.entries()].map(([category, catItems]) => {
             const desc = catDescMap.get(category.toLowerCase());
+            const override = overrides[category];
+            const displayTitle = override?.title || desc?.title || category;
+            const displayDesc = override?.description ?? desc?.description ?? "";
             return (
-              <div key={category} style={{ padding: "28px 0", borderBottom: "1px solid #efe9df" }}>
+              <div key={category} style={{ padding: "28px 0", borderBottom: "1px solid #efe9df", pageBreakInside: "avoid" }}>
                 {/* Category header + description */}
                 <h2 style={{ fontSize: 18, fontWeight: 700, color: "#3d3325", marginBottom: 8, fontFamily: "Georgia, serif" }}>
-                  {desc?.title ?? category}
+                  {displayTitle}
                 </h2>
-                {desc?.description && (
+                {displayDesc && (
                   <div style={{ fontSize: 13, color: "#6b5e4f", lineHeight: 1.7, marginBottom: 20, paddingLeft: 16, borderLeft: "3px solid #d4c9b8" }}>
-                    {desc.description.split("\n").map((line: string, i: number) => (
+                    {displayDesc.split("\n").map((line: string, i: number) => (
                       <p key={i} style={{ margin: "4px 0" }}>{line.startsWith("- ") ? `• ${line.slice(2)}` : line}</p>
                     ))}
                   </div>
@@ -84,12 +88,12 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                 {/* Products grid */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>
                   {(catItems ?? []).map((item) => (
-                    <div key={item.id} style={{ display: "flex", gap: 14, padding: 16, borderRadius: 8, background: "#faf8f5", border: "1px solid #efe9df" }}>
+                    <div key={item.id} style={{ display: "flex", gap: 14, padding: 16, borderRadius: 8, background: "#faf8f5", border: "1px solid #efe9df", pageBreakInside: "avoid", breakInside: "avoid" }}>
                       {/* Photo */}
                       {item.image_url ? (
-                        <img src={item.image_url} alt="" style={{ width: 80, height: 80, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                        <img src={item.image_url} alt="" style={{ width: 140, height: 140, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
                       ) : (
-                        <div style={{ width: 80, height: 80, borderRadius: 6, background: "#efe9df", flexShrink: 0 }} />
+                        <div style={{ width: 140, height: 140, borderRadius: 6, background: "#efe9df", flexShrink: 0 }} />
                       )}
                       {/* Info */}
                       <div style={{ flex: 1, minWidth: 0 }}>
