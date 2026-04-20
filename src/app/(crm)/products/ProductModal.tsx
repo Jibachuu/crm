@@ -18,7 +18,38 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState(product?.category ?? "");
+  const [subcategory, setSubcategory] = useState(product?.subcategory ?? "");
+  const [kind, setKind] = useState(product?.kind ?? "");
+  const [liters, setLiters] = useState(product?.liters ?? "");
+  const [container, setContainer] = useState(product?.container ?? "");
+  const [autoName, setAutoName] = useState(!isEdit);
+  const [name, setName] = useState(product?.name ?? "");
   const showVolumeFlavor = ["Косметика", "Аромажидкость", "косметика", "аромажидкость"].some((c) => category.toLowerCase().includes(c.toLowerCase()));
+
+  // Auto-generate name from parts
+  function buildName() {
+    return [category, subcategory, kind, liters ? `${liters}л` : "", container].filter(Boolean).join(" ");
+  }
+  // Update name when parts change (only in auto mode)
+  function updatePart(setter: (v: string) => void, value: string) {
+    setter(value);
+    if (autoName) {
+      // We need to compute with the new value, so we do it after setState
+      setTimeout(() => {
+        const el = document.querySelector<HTMLInputElement>('input[name="name"]');
+        if (el) {
+          const parts = [
+            setter === setCategory ? value : category,
+            setter === setSubcategory ? value : subcategory,
+            setter === setKind ? value : kind,
+            (setter === setLiters ? value : liters) ? `${setter === setLiters ? value : liters}л` : "",
+            setter === setContainer ? value : container,
+          ].filter(Boolean).join(" ");
+          setName(parts);
+        }
+      }, 0);
+    }
+  }
   const [attributes, setAttributes] = useState<Attribute[]>(
     product?.product_attributes?.map((a: { name: string; values: string[] }) => ({ name: a.name, values: a.values.join(", ") })) ?? []
   );
@@ -73,11 +104,14 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
       name: fd.get("name") as string,
       category: (fd.get("category") as string) || null,
       subcategory: (fd.get("subcategory") as string) || null,
+      kind: (fd.get("kind") as string) || null,
+      liters: (fd.get("liters") as string) || null,
+      container: (fd.get("container") as string) || null,
       description: (fd.get("description") as string) || null,
       base_price: Number(fd.get("base_price")) || 0,
       volume_ml: fd.get("volume_ml") ? Number(fd.get("volume_ml")) : null,
       flavor: (fd.get("flavor") as string) || null,
-      is_active: true,
+      is_active: isEdit ? product.is_active : true,
     };
 
     let savedProduct;
@@ -147,18 +181,55 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
         {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>}
 
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Артикул (SKU)" name="sku" defaultValue={product?.sku} required placeholder="АРТ-001" />
-          <Input label="Базовая цена (₽)" name="base_price" type="number" defaultValue={product?.base_price ?? ""} min="0" step="0.01" />
-        </div>
-        <Input label="Название товара" name="name" defaultValue={product?.name} required placeholder="Название" />
-        <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-slate-700">Категория</label>
-            <input name="category" value={category} onChange={(e) => setCategory(e.target.value)}
+            <input name="category" value={category} onChange={(e) => updatePart(setCategory, e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Косметика, Держатели, Флаконы..." />
           </div>
-          <Input label="Подкатегория" name="subcategory" defaultValue={product?.subcategory ?? ""} placeholder="Настольные" />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Подкатегория</label>
+            <input name="subcategory" value={subcategory} onChange={(e) => updatePart(setSubcategory, e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Мыло, Настольные..." />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Вид</label>
+            <input name="kind" value={kind} onChange={(e) => updatePart(setKind, e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Black pepper, Т-образный..." />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Литры</label>
+            <input name="liters" value={liters} onChange={(e) => updatePart(setLiters, e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="5, 10..." />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Тара</label>
+            <input name="container" value={container} onChange={(e) => updatePart(setContainer, e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="флакон 250мл, канистра..." />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex flex-col gap-1">
+            <label className="text-sm font-medium text-slate-700">Название товара</label>
+            <input name="name" value={name} onChange={(e) => { setName(e.target.value); setAutoName(false); }} required
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Формируется автоматически" />
+          </div>
+          <label className="flex items-center gap-1.5 mt-5 text-xs cursor-pointer" style={{ color: "#888" }}>
+            <input type="checkbox" checked={autoName} onChange={(e) => { setAutoName(e.target.checked); if (e.target.checked) setName(buildName()); }}
+              style={{ accentColor: "#0067a5" }} />
+            Авто
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Артикул (SKU)" name="sku" defaultValue={product?.sku} required placeholder="АРТ-001" />
+          <Input label="Цена за 1 шт (₽)" name="base_price" type="number" defaultValue={product?.base_price ?? ""} min="0" step="0.01" />
         </div>
         {showVolumeFlavor && (
           <div className="grid grid-cols-2 gap-3">

@@ -23,16 +23,18 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
   const [editingStock, setEditingStock] = useState<Record<string, string>>({});
 
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("active");
 
   // Get unique categories
   const categories = [...new Set(products.map((p: { category?: string }) => p.category).filter(Boolean))] as string[];
 
-  const filtered = products.filter((p: { name: string; sku: string; category?: string }) => {
+  const filtered = products.filter((p: { name: string; sku: string; category?: string; is_active: boolean }) => {
     const matchSearch = !search ||
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.sku.toLowerCase().includes(search.toLowerCase());
     const matchCategory = !categoryFilter || p.category === categoryFilter;
-    return matchSearch && matchCategory;
+    const matchActive = activeFilter === "all" || (activeFilter === "active" ? p.is_active : !p.is_active);
+    return matchSearch && matchCategory && matchActive;
   });
 
   const filteredIds = filtered.map((p: { id: string }) => p.id);
@@ -150,6 +152,12 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
             {categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         )}
+        <select value={activeFilter} onChange={(e) => setActiveFilter(e.target.value as "all" | "active" | "inactive")}
+          className="text-xs px-2 py-1.5 rounded outline-none" style={{ border: "1px solid #d0d0d0", color: activeFilter !== "all" ? "#333" : "#888" }}>
+          <option value="all">Все статусы</option>
+          <option value="active">Активные</option>
+          <option value="inactive">Неактивные</option>
+        </select>
         <ExportImportButtons entity="products" onImported={() => window.location.reload()} />
         <PurgeButton table="products" onPurged={() => window.location.reload()} />
         <Button size="sm" onClick={() => { setEditing(null); setModalOpen(true); }}>
@@ -163,6 +171,15 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
           <span className="text-sm font-medium" style={{ color: "#0067a5" }}>Выбрано: {selected.size}</span>
           <button onClick={() => setSelected(new Set())} className="text-xs hover:underline" style={{ color: "#0067a5" }}>Снять</button>
           <div className="flex-1" />
+          <Button size="sm" variant="secondary" onClick={async () => {
+            const ids = Array.from(selected);
+            const supabase = createClient();
+            await supabase.from("products").update({ is_active: false }).in("id", ids);
+            setProducts((prev) => prev.map((p: { id: string; is_active: boolean }) => ids.includes(p.id) ? { ...p, is_active: false } : p));
+            setSelected(new Set());
+          }}>
+            <CheckSquare size={13} /> Архивировать
+          </Button>
           <Button size="sm" variant="danger" onClick={bulkDelete} loading={bulkDeleting}>
             <Trash2 size={13} /> Удалить
           </Button>
@@ -189,7 +206,7 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                   <th className="px-3 py-2.5 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleAll} className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
                   </th>
-                  {["Фото", "Товар", "Категория", "Подкатегория", "Объём", "Аромат", "Артикул", "Цена", "Наличие", "Статус", ""].map((h) => (
+                  {["Фото", "Товар", "Категория", "Подкатегория", "Вид", "Литры", "Тара", "Артикул", "Цена", "Статус", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>{h}</th>
                   ))}
                 </tr>
@@ -198,12 +215,11 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                 {filtered.map((product: {
                   id: string; name: string; sku: string; base_price: number; is_active: boolean;
                   category?: string; subcategory?: string; image_url?: string;
+                  kind?: string; liters?: string; container?: string;
                   volume_ml?: number; flavor?: string;
                   product_variants?: { id: string; stock: number }[];
                 }) => {
                   const isSel = selected.has(product.id);
-                  const totalStock = product.product_variants?.reduce((s, v) => s + v.stock, 0) ?? 0;
-                  const isEditingStock = product.id in editingStock;
                   return (
                     <tr key={product.id} style={{ borderBottom: "1px solid #f0f0f0", background: isSel ? "#f0f7ff" : "transparent" }}>
                       <td className="px-3 py-2.5">
@@ -240,42 +256,11 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                       </td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.category || "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.subcategory || "—"}</td>
-                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.volume_ml ? `${product.volume_ml} мл` : "—"}</td>
-                      <td className="px-4 py-2.5 text-xs" style={{ color: "#7b1fa2" }}>{product.flavor || "—"}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.kind || "—"}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.liters ? `${product.liters}л` : "—"}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.container || "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.sku}</td>
                       <td className="px-4 py-2.5 font-medium" style={{ color: "#333" }}>{formatCurrency(product.base_price)}</td>
-                      <td className="px-4 py-2.5">
-                        {isEditingStock ? (
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              className="w-16 text-xs px-2 py-1 focus:outline-none"
-                              style={{ border: "1px solid #d0d0d0", borderRadius: 3 }}
-                              value={editingStock[product.id]}
-                              onChange={(e) => setEditingStock((p) => ({ ...p, [product.id]: e.target.value }))}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") updateStock(product.id, Number(editingStock[product.id]) || 0);
-                                if (e.key === "Escape") setEditingStock((p) => { const n = { ...p }; delete n[product.id]; return n; });
-                              }}
-                              autoFocus
-                            />
-                            <button
-                              onClick={() => updateStock(product.id, Number(editingStock[product.id]) || 0)}
-                              className="text-xs px-1.5 py-0.5 rounded"
-                              style={{ background: "#0067a5", color: "#fff" }}
-                            >OK</button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setEditingStock((p) => ({ ...p, [product.id]: String(totalStock) }))}
-                            className="text-xs font-medium px-2 py-0.5 rounded hover:bg-gray-100 transition-colors"
-                            style={{ color: totalStock > 0 ? "#2e7d32" : "#c62828" }}
-                            title="Нажмите чтобы изменить"
-                          >
-                            {totalStock > 0 ? `${totalStock} шт` : "Нет"}
-                          </button>
-                        )}
-                      </td>
                       <td className="px-4 py-2.5">
                         <button
                           onClick={() => updateField(product.id, "is_active", !product.is_active)}
