@@ -70,7 +70,12 @@ function SearchableSelect({ options, value, onChange, inputStyle, placeholder = 
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function QuotesList({ initialQuotes, companies, contacts, products, users, currentUserId, invoices = [] }: any) {
+export default function QuotesList({ initialQuotes, companies, contacts, products, users, currentUserId, invoices = [], categoryTiers = [] }: any) {
+  // Build category -> tiers lookup
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tiersByCategory = new Map<string, { tiers: { from_qty: number; discount_pct: number }[]; unit: string }>(
+    categoryTiers.map((ct: any) => [ct.category, { tiers: ct.tiers || [], unit: ct.unit || "шт" }])
+  );
   const [quotes, setQuotes] = useState(initialQuotes);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -102,7 +107,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     // Load items from DB
     const supabase = (await import("@/lib/supabase/client")).createClient();
     const { data: loadedItems } = await supabase.from("quote_items").select("*").eq("quote_id", quoteId).order("sort_order");
-    setItems((loadedItems ?? []).map((i: QuoteItem & { id?: string }) => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setItems((loadedItems ?? []).map((i: any) => ({
       product_id: i.product_id ?? "",
       name: i.name,
       article: i.article ?? "",
@@ -113,6 +119,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       sum: i.sum,
       image_url: i.image_url ?? "",
       description: i.description ?? "",
+      price_tiers: i.price_tiers ?? undefined,
     })));
     setEditorOpen(true);
   }
@@ -126,6 +133,23 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       .map((l) => l.trim())
       .join("; ");
 
+    // Auto-generate price tiers from category defaults
+    let priceTiers: PriceTier[] | undefined;
+    if (p.category) {
+      const catTier = tiersByCategory.get(p.category);
+      if (catTier?.tiers?.length) {
+        priceTiers = catTier.tiers.map((t: { from_qty: number; discount_pct: number }, i: number, arr: { from_qty: number; discount_pct: number }[]) => ({
+          from_qty: t.from_qty,
+          to_qty: i < arr.length - 1 ? arr[i + 1].from_qty - 1 : null,
+          price: Math.round(p.base_price * (1 - t.discount_pct / 100)),
+        }));
+        // Prepend base price tier (1 to first discount qty - 1)
+        if (priceTiers.length > 0 && priceTiers[0].from_qty > 1) {
+          priceTiers.unshift({ from_qty: 1, to_qty: priceTiers[0].from_qty - 1, price: p.base_price });
+        }
+      }
+    }
+
     setItems([...items, {
       product_id: p.id,
       name: fullName,
@@ -137,6 +161,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       sum: p.base_price,
       image_url: p.image_url ?? "",
       description: chars || p.description || "",
+      price_tiers: priceTiers,
     }]);
     setProductSearch("");
   }

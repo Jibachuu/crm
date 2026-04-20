@@ -114,9 +114,15 @@ const ENTITY_FIELDS: Record<Entity, CrmField[]> = {
     { key: "created_at", label: "Дата создания" },
   ],
   products: [
-    { key: "name", label: "Название", required: true },
+    { key: "category", label: "Категория" },
+    { key: "subcategory", label: "Подкатегория" },
+    { key: "kind", label: "Вид" },
+    { key: "name", label: "Название" },
+    { key: "liters", label: "Литры" },
+    { key: "container", label: "Тара" },
     { key: "sku", label: "Артикул", required: true },
-    { key: "base_price", label: "Базовая цена", required: true },
+    { key: "base_price", label: "Цена за 1 шт", required: true },
+    { key: "image_url", label: "Фото (URL)" },
     { key: "description", label: "Описание" },
   ],
   samples: [
@@ -300,17 +306,6 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
     setLoading(true);
     const mapped = applyMapping(fileRows);
     try {
-    // For products entity, use the old API
-    if (entity === "products") {
-      const res = await fetch(`/api/import/products`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: mapped }),
-      });
-      const data = await res.json();
-      setResult({ added: data.added ?? 0, updated: 0, skipped: 0, errors: data.errors ?? [], total: fileRows.length });
-      if (data.added > 0) onImported?.(data.added);
-    } else {
       // Split into batches
       const BATCH_SIZE = 150;
       let totalAdded = 0, totalUpdated = 0, totalSkipped = 0;
@@ -337,8 +332,6 @@ export default function ImportModal({ open, onClose, entity, onImported }: Props
         }
       }
       setResult({ added: totalAdded, updated: totalUpdated, skipped: totalSkipped, errors: allErrors, total: mapped.length });
-    }
-
     } catch (err) {
       console.error("IMPORT ERROR:", err);
       setResult({ added: 0, updated: 0, skipped: 0, errors: [`Ошибка запроса: ${err}`], total: fileRows.length });

@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const maxDuration = 120;
 
-type Entity = "companies" | "contacts" | "leads" | "deals" | "samples";
+type Entity = "companies" | "contacts" | "leads" | "deals" | "samples" | "products";
 
 function parseDate(val: unknown): string | null {
   if (!val) return null;
@@ -758,6 +758,72 @@ export async function POST(req: NextRequest) {
       }
       if (autoLinked > 0) errors.push(`✓ Автопривязка мессенджеров: ${autoLinked} контактов`);
     } catch { /* ignore */ }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (entity === "products") {
+    const toInsert: Record<string, unknown>[] = [];
+    const toUpdate: { id: string; rec: Record<string, unknown> }[] = [];
+
+    // Existing products by SKU
+    const { data: existingProducts } = await admin.from("products").select("id, sku").not("sku", "is", null);
+    const skuMap = new Map((existingProducts ?? []).map((p) => [p.sku.toLowerCase().trim(), p.id]));
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const sku = String(row.sku ?? "").trim();
+      if (!sku) { errors.push(`Строка ${i + 2}: нет артикула`); continue; }
+
+      const cat = String(row.category ?? "").trim() || null;
+      const subcat = String(row.subcategory ?? "").trim() || null;
+      const kind = String(row.kind ?? "").trim() || null;
+      const liters = String(row.liters ?? "").trim() || null;
+      const container = String(row.container ?? "").trim() || null;
+
+      // Auto-generate name if not provided
+      let name = String(row.name ?? "").trim();
+      if (!name) {
+        name = [cat, subcat, kind, liters ? `${liters}л` : null, container].filter(Boolean).join(" ");
+      }
+      if (!name) name = sku;
+
+      const rec: Record<string, unknown> = {
+        name,
+        sku,
+        category: cat,
+        subcategory: subcat,
+        kind,
+        liters,
+        container,
+        base_price: Number(row.base_price) || 0,
+        image_url: String(row.image_url ?? "").trim() || null,
+        description: String(row.description ?? "").trim() || null,
+        is_active: true,
+      };
+
+      const existingId = skuMap.get(sku.toLowerCase());
+      if (existingId) {
+        if (mode === "update") toUpdate.push({ id: existingId, rec });
+        else skipped++;
+        continue;
+      }
+
+      skuMap.set(sku.toLowerCase(), "__pending__");
+      toInsert.push(rec);
+    }
+
+    for (let i = 0; i < toInsert.length; i += BATCH) {
+      const batch = toInsert.slice(i, i + BATCH);
+      const { error: err } = await admin.from("products").insert(batch);
+      if (err) errors.push(err.message);
+      else added += batch.length;
+    }
+
+    for (const { id, rec } of toUpdate) {
+      const { error: err } = await admin.from("products").update(rec).eq("id", id);
+      if (err) errors.push(`Обновление ${id}: ${err.message}`);
+      else updated++;
+    }
   }
 
   return NextResponse.json({ added, updated, skipped, errors, total: rows.length });
