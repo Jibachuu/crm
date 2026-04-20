@@ -407,39 +407,40 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
         </div>
       </Modal>
 
-      {/* Preview Modal */}
-      <Modal open={!!previewUpd} onClose={() => setPreviewUpd(null)} title={`УПД-${previewUpd?.upd_number}`} size="xl">
-        {previewUpd && (() => {
-          return (
-            <div style={{ overflow: "auto" }}>
-              <div id="upd-content">
-                <UpdTemplate
-                  upd={{ upd_number: previewUpd.upd_number, upd_date: previewUpd.upd_date, buyer_name: previewUpd.buyer_name, buyer_inn: previewUpd.buyer_inn, buyer_kpp: previewUpd.buyer_kpp, buyer_address: previewUpd.buyer_address, basis: previewUpd.basis, vat_included: previewUpd.vat_included }}
-                  items={previewItems}
-                  supplier={supplier}
-                />
-              </div>
-              <div className="flex justify-end mt-4 gap-2" id="upd-buttons">
-                <Button size="sm" onClick={async () => {
-                  const html2canvas = (await import("html2canvas")).default;
-                  const { jsPDF } = await import("jspdf");
-                  const el = document.getElementById("upd-content");
-                  if (!el) return;
-                  const btnBar = document.getElementById("upd-buttons");
-                  if (btnBar) btnBar.style.display = "none";
-                  const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#fff" });
-                  if (btnBar) btnBar.style.display = "";
-                  const pdf = new jsPDF("l", "mm", "a4");
-                  const w = pdf.internal.pageSize.getWidth();
-                  const h = (canvas.height * w) / canvas.width;
-                  pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, w, h);
-                  pdf.save(`УПД_${previewUpd.upd_number}.pdf`);
-                }}>Скачать PDF</Button>
-              </div>
+      {/* Full-screen Preview */}
+      {previewUpd && (
+        <div className="fixed inset-0 z-[200] bg-gray-100" style={{ overflow: "auto" }}>
+          {/* Top bar */}
+          <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-3" style={{ background: "#fff", borderBottom: "1px solid #e4e4e4" }}>
+            <h2 className="text-sm font-semibold">УПД-{previewUpd.upd_number}</h2>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={async () => {
+                const html2canvas = (await import("html2canvas")).default;
+                const { jsPDF } = await import("jspdf");
+                const el = document.getElementById("upd-content");
+                if (!el) return;
+                const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#fff" });
+                const pdf = new jsPDF("l", "mm", "a4");
+                const w = pdf.internal.pageSize.getWidth();
+                const h = (canvas.height * w) / canvas.width;
+                pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, w, h);
+                pdf.save(`УПД_${previewUpd.upd_number}.pdf`);
+              }}>Скачать PDF</Button>
+              <Button size="sm" variant="secondary" onClick={() => setPreviewUpd(null)}>Закрыть</Button>
             </div>
-          );
-        })()}
-      </Modal>
+          </div>
+          {/* Document */}
+          <div style={{ padding: "20px", display: "flex", justifyContent: "center" }}>
+            <div id="upd-content" style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.15)" }}>
+              <UpdTemplate
+                upd={{ upd_number: previewUpd.upd_number, upd_date: previewUpd.upd_date, buyer_name: previewUpd.buyer_name, buyer_inn: previewUpd.buyer_inn, buyer_kpp: previewUpd.buyer_kpp, buyer_address: previewUpd.buyer_address, basis: previewUpd.basis, vat_included: previewUpd.vat_included }}
+                items={previewItems}
+                supplier={supplier}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
