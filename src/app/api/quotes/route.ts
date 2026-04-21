@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
         sum: i.sum ?? 0,
         image_url: i.image_url || null,
         description: i.description || null,
+        hide_photo: !!i.hide_photo,
         price_tiers: i.price_tiers?.length ? i.price_tiers : null,
         bottle_variant: i.bottle_variant || null,
         column_index: i.column_index ?? 0,

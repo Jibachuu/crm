@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Plus, Search, FileSpreadsheet, Trash2, Eye, Download, Copy, Check, Send, X, ImagePlus } from "lucide-react";
+import { Plus, Search, FileSpreadsheet, Trash2, Eye, EyeOff, Download, Copy, Check, Send, X, ImagePlus } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
@@ -29,7 +29,7 @@ function calcBottlePrice(basePrice: number, variant: BottleVariant): number {
     default: return basePrice;
   }
 }
-interface ItemVariant { label: string; price: number; quantity: number; sum: number; image_url: string; price_tiers?: PriceTier[] }
+interface ItemVariant { label: string; price: number; quantity: number; sum: number; image_url: string; price_tiers?: PriceTier[]; hide_photo?: boolean }
 interface QuoteItem {
   product_id: string;
   name: string;
@@ -45,6 +45,7 @@ interface QuoteItem {
   bottle_variant?: BottleVariant;
   column_index?: number;
   variants?: ItemVariant[];
+  hide_photo?: boolean;
 }
 
 function SearchableSelect({ options, value, onChange, inputStyle, placeholder = "Поиск..." }: { options: { id: string; label: string }[]; value: string; onChange: (id: string) => void; inputStyle: React.CSSProperties; placeholder?: string }) {
@@ -155,6 +156,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       bottle_variant: i.bottle_variant ?? undefined,
       column_index: i.column_index ?? 0,
       variants: i.variants ?? undefined,
+      hide_photo: i.hide_photo ?? false,
     })));
     setEditorOpen(true);
   }
@@ -236,7 +238,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setItems((prev) => [...prev, ...newItems]);
   }
 
-  function updateItem(idx: number, field: string, val: string | number) {
+  function updateItem(idx: number, field: string, val: string | number | boolean) {
     setItems(items.map((item, i) => {
       if (i !== idx) return item;
       const updated = { ...item, [field]: val };
@@ -294,7 +296,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setItems(items.map((it, i) => i === idx ? { ...it, variants } : it));
   }
 
-  function updateVariant(itemIdx: number, varIdx: number, field: keyof ItemVariant, val: string | number) {
+  function updateVariant(itemIdx: number, varIdx: number, field: keyof ItemVariant, val: string | number | boolean) {
     setItems(items.map((it, i) => {
       if (i !== itemIdx) return it;
       const variants = [...(it.variants ?? [])];
@@ -691,16 +693,6 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
             const catsList = [...cats];
             return (
               <>
-              {/* Hide photos toggle */}
-              <div className="p-3 rounded flex items-center gap-4" style={{ border: "1px solid #e4e4e4", background: "#fafafa" }}>
-                <label className="flex items-center gap-2 text-xs cursor-pointer">
-                  <input type="checkbox" checked={form.hide_photos ?? false}
-                    onChange={(e) => setForm({ ...form, hide_photos: e.target.checked })}
-                    style={{ accentColor: "#0067a5" }} />
-                  <span style={{ color: "#333" }}>Скрыть все фото в КП (оставить только названия и цены)</span>
-                </label>
-              </div>
-
               {/* Custom info blocks */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -814,31 +806,41 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                 {items.map((item, idx) => (
                   <div key={idx} className="flex gap-3 p-3 rounded" style={{ border: "1px solid #e4e4e4", background: "#fafafa" }}>
                     {/* Photo — always clickable to change */}
-                    <label className="flex-shrink-0 relative group cursor-pointer block w-20 h-20">
-                      {item.image_url ? (
-                        <>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={item.image_url} alt="" className="w-20 h-20 rounded object-cover" style={{ border: "1px solid #e0e0e0" }} />
-                          <div className="absolute inset-0 bg-black/40 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                            <ImagePlus size={16} style={{ color: "#fff" }} />
+                    <div className="flex-shrink-0 relative w-20 h-20">
+                      <label className="relative group cursor-pointer block w-20 h-20">
+                        {item.image_url ? (
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={item.image_url} alt="" className="w-20 h-20 rounded object-cover" style={{ border: "1px solid #e0e0e0", opacity: item.hide_photo ? 0.3 : 1 }} />
+                            <div className="absolute inset-0 bg-black/40 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                              <ImagePlus size={16} style={{ color: "#fff" }} />
+                            </div>
+                          </>
+                        ) : (
+                          <div className="w-20 h-20 rounded flex flex-col items-center justify-center gap-1 transition-colors hover:bg-gray-100"
+                            style={{ background: "#f0f0f0", border: "1px dashed #ccc" }}>
+                            {uploadingImage === String(idx) ? (
+                              <span className="text-xs" style={{ color: "#888" }}>...</span>
+                            ) : (
+                              <>
+                                <ImagePlus size={18} style={{ color: "#aaa" }} />
+                                <span style={{ fontSize: 9, color: "#aaa" }}>Фото</span>
+                              </>
+                            )}
                           </div>
-                        </>
-                      ) : (
-                        <div className="w-20 h-20 rounded flex flex-col items-center justify-center gap-1 transition-colors hover:bg-gray-100"
-                          style={{ background: "#f0f0f0", border: "1px dashed #ccc" }}>
-                          {uploadingImage === String(idx) ? (
-                            <span className="text-xs" style={{ color: "#888" }}>...</span>
-                          ) : (
-                            <>
-                              <ImagePlus size={18} style={{ color: "#aaa" }} />
-                              <span style={{ fontSize: 9, color: "#aaa" }}>Фото</span>
-                            </>
-                          )}
-                        </div>
+                        )}
+                        <input type="file" accept="image/*" className="hidden" disabled={uploadingImage === String(idx)}
+                          onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadItemImage(f, idx); e.target.value = ""; }} />
+                      </label>
+                      {item.image_url && (
+                        <button type="button" onClick={() => updateItem(idx, "hide_photo", !item.hide_photo)}
+                          className="absolute -top-1 -right-1 p-1 rounded-full shadow"
+                          style={{ background: item.hide_photo ? "#c62828" : "#fff", border: "1px solid #ccc" }}
+                          title={item.hide_photo ? "Показать фото в КП" : "Скрыть фото в КП"}>
+                          {item.hide_photo ? <EyeOff size={11} style={{ color: "#fff" }} /> : <Eye size={11} style={{ color: "#555" }} />}
+                        </button>
                       )}
-                      <input type="file" accept="image/*" className="hidden" disabled={uploadingImage === String(idx)}
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadItemImage(f, idx); e.target.value = ""; }} />
-                    </label>
+                    </div>
 
                     {/* Info */}
                     <div className="flex-1 min-w-0 space-y-1.5">
@@ -966,18 +968,28 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                                 <div key={vi} className="p-1.5 rounded" style={{ background: "#f8f4fa", border: "1px solid #e1bee7" }}>
                                   <div className="flex items-center gap-2">
                                     {/* Photo */}
-                                    <label className="flex-shrink-0 cursor-pointer" title="Загрузить фото">
-                                      {v.image_url ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={v.image_url} alt="" className="w-10 h-10 rounded object-cover" style={{ border: "1px solid #e0e0e0" }} />
-                                      ) : (
-                                        <div className="w-10 h-10 rounded flex items-center justify-center" style={{ background: "#fff", border: "1px dashed #ccc" }}>
-                                          <ImagePlus size={12} style={{ color: "#aaa" }} />
-                                        </div>
+                                    <div className="flex-shrink-0 relative">
+                                      <label className="cursor-pointer block" title="Загрузить фото">
+                                        {v.image_url ? (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img src={v.image_url} alt="" className="w-10 h-10 rounded object-cover" style={{ border: "1px solid #e0e0e0", opacity: v.hide_photo ? 0.3 : 1 }} />
+                                        ) : (
+                                          <div className="w-10 h-10 rounded flex items-center justify-center" style={{ background: "#fff", border: "1px dashed #ccc" }}>
+                                            <ImagePlus size={12} style={{ color: "#aaa" }} />
+                                          </div>
+                                        )}
+                                        <input type="file" accept="image/*" className="hidden"
+                                          onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadVariantImage(f, idx, vi); e.target.value = ""; }} />
+                                      </label>
+                                      {v.image_url && (
+                                        <button type="button" onClick={() => updateVariant(idx, vi, "hide_photo", !v.hide_photo)}
+                                          className="absolute -top-1 -right-1 p-0.5 rounded-full shadow"
+                                          style={{ background: v.hide_photo ? "#c62828" : "#fff", border: "1px solid #ccc" }}
+                                          title={v.hide_photo ? "Показать фото в КП" : "Скрыть фото в КП"}>
+                                          {v.hide_photo ? <EyeOff size={9} style={{ color: "#fff" }} /> : <Eye size={9} style={{ color: "#555" }} />}
+                                        </button>
                                       )}
-                                      <input type="file" accept="image/*" className="hidden"
-                                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadVariantImage(f, idx, vi); e.target.value = ""; }} />
-                                    </label>
+                                    </div>
                                     {/* Label */}
                                     <input value={v.label} onChange={(e) => updateVariant(idx, vi, "label", e.target.value)}
                                       className="flex-1 text-xs px-2 py-1 rounded outline-none"

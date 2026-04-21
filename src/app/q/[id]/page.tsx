@@ -53,7 +53,6 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
   // Match category descriptions — per-quote overrides take priority
   const catDescMap = new Map((catDescs ?? []).map((d) => [d.category.toLowerCase(), d]));
   const overrides = (quote.category_overrides ?? {}) as Record<string, { title: string; description: string }>;
-  const hidePhotos = !!quote.hide_photos;
   type CustomBlock = { id: string; title: string; description: string; photos: string[]; position: string };
   const customBlocks = (quote.custom_blocks ?? []) as CustomBlock[];
   const blocksTop = customBlocks.filter((b) => b.position === "top");
@@ -172,9 +171,9 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                                     {item.description && <p style={{ fontSize: 12, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
                                   </div>
                                   <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(item.variants.length, 5)}, 1fr)`, gap: 8 }}>
-                                    {item.variants.map((v: { label: string; price: number; quantity: number; sum: number; image_url?: string; price_tiers?: { from_qty: number; to_qty: number | null; price: number }[] }, vi: number) => (
+                                    {item.variants.map((v: { label: string; price: number; quantity: number; sum: number; image_url?: string; price_tiers?: { from_qty: number; to_qty: number | null; price: number }[]; hide_photo?: boolean }, vi: number) => (
                                       <div key={vi} style={{ padding: "10px 8px", background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6 }}>
-                                        {hidePhotos ? null : v.image_url ? (
+                                        {v.hide_photo ? null : v.image_url ? (
                                           <img src={v.image_url} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 4, background: "#fff" }} />
                                         ) : (
                                           <div style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 4, background: "#efe9df" }} />
@@ -204,7 +203,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                               ) : (
                                 // ═══ Обычная раскладка с большим фото слева ═══
                                 <div style={{ display: "flex", gap: 14 }}>
-                                  {hidePhotos ? null : item.image_url ? (
+                                  {item.hide_photo ? null : item.image_url ? (
                                     <img src={item.image_url} alt="" style={{ width: 140, height: 140, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
                                   ) : (
                                     <div style={{ width: 140, height: 140, borderRadius: 6, background: "#efe9df", flexShrink: 0 }} />
