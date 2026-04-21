@@ -22,7 +22,12 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
     ? await admin.from("email_signatures").select("body").eq("manager_id", managerId).limit(1).single()
     : { data: null };
 
-  const totalAmount = (items ?? []).reduce((s, i) => s + (i.sum ?? 0), 0);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function itemSum(i: any): number {
+    if (i.variants?.length) return i.variants.reduce((s: number, v: { sum?: number; price: number; quantity: number }) => s + (v.sum ?? v.price * v.quantity), 0);
+    return i.sum ?? 0;
+  }
+  const totalAmount = (items ?? []).reduce((s, i) => s + itemSum(i), 0);
   const manager = quote.users as { full_name: string; email?: string } | null;
 
   // Multiple columns support
@@ -79,7 +84,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
         {columnIndices.map((colIdx) => {
           const colItems = (items ?? []).filter((i: { column_index?: number }) => (i.column_index ?? 0) === colIdx);
           const colCategoryMap = groupByCategory(colItems);
-          const colTotal = colItems.reduce((s: number, i: { sum: number }) => s + (i.sum ?? 0), 0);
+          const colTotal = colItems.reduce((s: number, i) => s + itemSum(i), 0);
           const colTitle = colTitles[String(colIdx)];
 
           return (
@@ -129,7 +134,26 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                                 {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
                                 {bottleLabel && <p style={{ fontSize: 11, color: "#7b1fa2", fontWeight: 600, marginTop: 2 }}>{bottleLabel}</p>}
                                 {item.description && <p style={{ fontSize: 11, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
-                                {item.price_tiers?.length ? (
+                                {item.variants?.length ? (
+                                  <div style={{ marginTop: 8 }}>
+                                    <p style={{ fontSize: 11, color: "#8c7e6a", marginBottom: 6 }}>Варианты:</p>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                      {item.variants.map((v: { label: string; price: number; quantity: number; sum: number; image_url?: string }, vi: number) => (
+                                        <div key={vi} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6 }}>
+                                          {v.image_url ? (
+                                            <img src={v.image_url} alt="" style={{ width: 48, height: 48, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
+                                          ) : (
+                                            <div style={{ width: 48, height: 48, borderRadius: 4, background: "#efe9df", flexShrink: 0 }} />
+                                          )}
+                                          <span style={{ flex: 1, fontSize: 12, color: "#3d3325", fontWeight: 500 }}>{v.label}</span>
+                                          <span style={{ fontSize: 12, color: "#6b5e4f", fontWeight: 700 }}>{formatCurrency(v.price)}</span>
+                                          <span style={{ fontSize: 11, color: "#8c7e6a" }}>× {v.quantity}</span>
+                                          <span style={{ fontSize: 12, color: "#3d3325", fontWeight: 600, minWidth: 70, textAlign: "right" }}>{formatCurrency(v.sum || v.price * v.quantity)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : item.price_tiers?.length ? (
                                   <div style={{ marginTop: 8 }}>
                                     <p style={{ fontSize: 11, color: "#8c7e6a", marginBottom: 4 }}>Цены при разном объёме:</p>
                                     {item.price_tiers.map((tier: { from_qty: number; to_qty: number | null; price: number }, ti: number) => (

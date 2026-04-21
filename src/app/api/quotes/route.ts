@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
         price_tiers: i.price_tiers?.length ? i.price_tiers : null,
         bottle_variant: i.bottle_variant || null,
         column_index: i.column_index ?? 0,
+        variants: i.variants?.length ? i.variants : null,
         sort_order: idx,
       }));
       await admin.from("quote_items").insert(itemRows);

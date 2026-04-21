@@ -29,6 +29,7 @@ function calcBottlePrice(basePrice: number, variant: BottleVariant): number {
     default: return basePrice;
   }
 }
+interface ItemVariant { label: string; price: number; quantity: number; sum: number; image_url: string }
 interface QuoteItem {
   product_id: string;
   name: string;
@@ -43,6 +44,7 @@ interface QuoteItem {
   price_tiers?: PriceTier[];
   bottle_variant?: BottleVariant;
   column_index?: number;
+  variants?: ItemVariant[];
 }
 
 function SearchableSelect({ options, value, onChange, inputStyle, placeholder = "Поиск..." }: { options: { id: string; label: string }[]; value: string; onChange: (id: string) => void; inputStyle: React.CSSProperties; placeholder?: string }) {
@@ -152,6 +154,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       price_tiers: i.price_tiers ?? undefined,
       bottle_variant: i.bottle_variant ?? undefined,
       column_index: i.column_index ?? 0,
+      variants: i.variants ?? undefined,
     })));
     setEditorOpen(true);
   }
@@ -266,14 +269,75 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   function removeItem(idx: number) { setItems(items.filter((_, i) => i !== idx)); }
   function duplicateItem(idx: number) { setItems([...items.slice(0, idx + 1), { ...items[idx] }, ...items.slice(idx + 1)]); }
 
-  const totalAmount = items.reduce((s, i) => s + i.sum, 0);
+  // Add all 5 bottle variants to an item (pre-filled with standard pricing)
+  function addBottleVariants(idx: number) {
+    const item = items[idx];
+    const bp = item.base_price || item.client_price || 0;
+    const variants: ItemVariant[] = [
+      { label: "Без УФ печати", price: bp, quantity: 1, sum: bp, image_url: item.image_url || "" },
+      { label: "С УФ печатью", price: bp + 500, quantity: 1, sum: bp + 500, image_url: "" },
+      { label: "С УФ печатью и нашим лого", price: Math.round((bp + 500) * 0.6), quantity: 1, sum: Math.round((bp + 500) * 0.6), image_url: "" },
+      { label: "С наклейкой", price: bp + 100, quantity: 1, sum: bp + 100, image_url: "" },
+      { label: "С наклейкой и нашим лого", price: bp, quantity: 1, sum: bp, image_url: "" },
+    ];
+    setItems(items.map((it, i) => i === idx ? { ...it, variants } : it));
+  }
+
+  function removeAllVariants(idx: number) {
+    setItems(items.map((it, i) => i === idx ? { ...it, variants: undefined } : it));
+  }
+
+  function addCustomVariant(idx: number) {
+    const item = items[idx];
+    const newVariant: ItemVariant = { label: "Новый вариант", price: 0, quantity: 1, sum: 0, image_url: "" };
+    const variants = [...(item.variants ?? []), newVariant];
+    setItems(items.map((it, i) => i === idx ? { ...it, variants } : it));
+  }
+
+  function updateVariant(itemIdx: number, varIdx: number, field: keyof ItemVariant, val: string | number) {
+    setItems(items.map((it, i) => {
+      if (i !== itemIdx) return it;
+      const variants = [...(it.variants ?? [])];
+      const v = { ...variants[varIdx], [field]: val };
+      if (field === "price" || field === "quantity") {
+        v.sum = (Number(v.price) || 0) * (Number(v.quantity) || 0);
+      }
+      variants[varIdx] = v;
+      return { ...it, variants };
+    }));
+  }
+
+  function removeVariant(itemIdx: number, varIdx: number) {
+    setItems(items.map((it, i) => {
+      if (i !== itemIdx) return it;
+      const variants = (it.variants ?? []).filter((_, vi) => vi !== varIdx);
+      return { ...it, variants: variants.length ? variants : undefined };
+    }));
+  }
+
+  async function uploadVariantImage(file: File, itemIdx: number, varIdx: number) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("product_id", `quote-manual-${Date.now()}`);
+    const res = await fetch("/api/products/upload-image", { method: "POST", body: fd });
+    if (res.ok) {
+      const { url } = await res.json();
+      updateVariant(itemIdx, varIdx, "image_url", url);
+    }
+  }
+
+  function itemTotalSum(item: QuoteItem): number {
+    if (item.variants?.length) return item.variants.reduce((s, v) => s + (v.sum || v.price * v.quantity || 0), 0);
+    return item.sum;
+  }
+  const totalAmount = items.reduce((s, i) => s + itemTotalSum(i), 0);
   const avgDiscount = items.length > 0 ? Math.round(items.reduce((s, i) => s + i.discount_pct, 0) / items.length * 10) / 10 : 0;
 
   // Column management
   const columnTitles = form.column_titles ?? {};
   const columnCount = Math.max(1, ...items.map((i) => (i.column_index ?? 0) + 1));
   const columnTotals = Array.from({ length: columnCount }, (_, ci) =>
-    items.filter((i) => (i.column_index ?? 0) === ci).reduce((s, i) => s + i.sum, 0)
+    items.filter((i) => (i.column_index ?? 0) === ci).reduce((s, i) => s + itemTotalSum(i), 0)
   );
 
   function addColumn() {
@@ -678,7 +742,73 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                           <input type="number" min="1" value={item.qty} onChange={(e) => updateItem(idx, "qty", Number(e.target.value))}
                             className="w-14 px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #e0e0e0" }} />
                         </div>
-                        <div className="ml-auto font-medium" style={{ color: "#2e7d32" }}>= {formatCurrency(item.sum)}</div>
+                        <div className="ml-auto font-medium" style={{ color: "#2e7d32" }}>
+                          = {formatCurrency(item.variants?.length ? itemTotalSum(item) : item.sum)}
+                        </div>
+                      </div>
+
+                      {/* Variants (разные варианты одного товара с отдельными ценами и фото) */}
+                      <div className="mt-1 border-t pt-2" style={{ borderColor: "#e4e4e4" }}>
+                        {!item.variants?.length ? (
+                          <div className="flex items-center gap-2">
+                            <button type="button" onClick={() => addBottleVariants(idx)}
+                              className="text-xs" style={{ color: "#7b1fa2" }}>
+                              + Варианты флакона (5 типов)
+                            </button>
+                            <button type="button" onClick={() => addCustomVariant(idx)}
+                              className="text-xs" style={{ color: "#0067a5" }}>
+                              + Свой вариант
+                            </button>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-semibold" style={{ color: "#7b1fa2" }}>Варианты ({item.variants.length})</span>
+                              <button type="button" onClick={() => removeAllVariants(idx)}
+                                className="text-xs" style={{ color: "#c62828" }}>✕ Убрать все варианты</button>
+                            </div>
+                            <div className="space-y-1.5">
+                              {item.variants.map((v, vi) => (
+                                <div key={vi} className="flex items-center gap-2 p-1.5 rounded" style={{ background: "#f8f4fa", border: "1px solid #e1bee7" }}>
+                                  {/* Photo */}
+                                  <label className="flex-shrink-0 cursor-pointer" title="Загрузить фото">
+                                    {v.image_url ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img src={v.image_url} alt="" className="w-10 h-10 rounded object-cover" style={{ border: "1px solid #e0e0e0" }} />
+                                    ) : (
+                                      <div className="w-10 h-10 rounded flex items-center justify-center" style={{ background: "#fff", border: "1px dashed #ccc" }}>
+                                        <ImagePlus size={12} style={{ color: "#aaa" }} />
+                                      </div>
+                                    )}
+                                    <input type="file" accept="image/*" className="hidden"
+                                      onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadVariantImage(f, idx, vi); e.target.value = ""; }} />
+                                  </label>
+                                  {/* Label */}
+                                  <input value={v.label} onChange={(e) => updateVariant(idx, vi, "label", e.target.value)}
+                                    className="flex-1 text-xs px-2 py-1 rounded outline-none"
+                                    style={{ border: "1px solid #e0e0e0", background: "#fff" }} />
+                                  {/* Price */}
+                                  <span className="text-xs" style={{ color: "#888" }}>Цена:</span>
+                                  <input type="number" value={v.price} onChange={(e) => updateVariant(idx, vi, "price", Number(e.target.value))}
+                                    className="w-20 text-xs text-right px-1 py-0.5 rounded outline-none"
+                                    style={{ border: "1px solid #e0e0e0", background: "#fff", color: "#2e7d32" }} />
+                                  {/* Quantity */}
+                                  <span className="text-xs" style={{ color: "#888" }}>Кол:</span>
+                                  <input type="number" min="1" value={v.quantity} onChange={(e) => updateVariant(idx, vi, "quantity", Number(e.target.value))}
+                                    className="w-14 text-xs text-right px-1 py-0.5 rounded outline-none"
+                                    style={{ border: "1px solid #e0e0e0", background: "#fff" }} />
+                                  {/* Sum */}
+                                  <span className="text-xs font-medium" style={{ color: "#2e7d32", minWidth: 70, textAlign: "right" }}>
+                                    {formatCurrency(v.sum || v.price * v.quantity)}
+                                  </span>
+                                  <button onClick={() => removeVariant(idx, vi)} className="text-red-400 hover:text-red-600"><X size={12} /></button>
+                                </div>
+                              ))}
+                            </div>
+                            <button type="button" onClick={() => addCustomVariant(idx)}
+                              className="text-xs mt-1" style={{ color: "#0067a5" }}>+ Ещё вариант</button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Tiered pricing (price ladder) */}
