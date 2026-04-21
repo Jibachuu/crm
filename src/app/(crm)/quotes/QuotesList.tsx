@@ -278,7 +278,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       { label: "С УФ печатью", price: bp + 500, quantity: 1, sum: bp + 500, image_url: "" },
       { label: "С УФ печатью и нашим лого", price: Math.round((bp + 500) * 0.6), quantity: 1, sum: Math.round((bp + 500) * 0.6), image_url: "" },
       { label: "С наклейкой", price: bp + 100, quantity: 1, sum: bp + 100, image_url: "" },
-      { label: "С наклейкой и нашим лого", price: bp, quantity: 1, sum: bp, image_url: "" },
+      { label: "С наклейкой и нашим лого", price: Math.round((bp + 100) * 0.6), quantity: 1, sum: Math.round((bp + 100) * 0.6), image_url: "" },
     ];
     setItems(items.map((it, i) => i === idx ? { ...it, variants } : it));
   }
@@ -332,26 +332,39 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     const v = item.variants?.[varIdx];
     if (!v) return;
     const bp = v.price;
-    // Use category tiers if available (try to match by product category)
-    const catTier = findCategoryTiers("Флаконы");
+    const isLogo = /лого/i.test(v.label);
     let tiers: PriceTier[];
-    if (catTier?.tiers?.length) {
-      tiers = catTier.tiers.map((t: { from_qty: number; discount_pct: number }, i: number, arr: { from_qty: number; discount_pct: number }[]) => ({
-        from_qty: t.from_qty,
-        to_qty: i < arr.length - 1 ? arr[i + 1].from_qty - 1 : null,
-        price: Math.round(bp * (1 - t.discount_pct / 100)),
-        discount_pct: t.discount_pct,
-      }));
-      if (tiers.length > 0 && tiers[0].from_qty > 1) tiers.unshift({ from_qty: 1, to_qty: tiers[0].from_qty - 1, price: bp, discount_pct: 0 });
-    } else {
+
+    if (isLogo) {
+      // For "+лого" variants: flat price across all quantity tiers (40% discount baked in)
       tiers = [
         { from_qty: 1, to_qty: 4, price: bp, discount_pct: 0 },
-        { from_qty: 5, to_qty: 9, price: Math.round(bp * 0.95), discount_pct: 5 },
-        { from_qty: 10, to_qty: 29, price: Math.round(bp * 0.9), discount_pct: 10 },
-        { from_qty: 30, to_qty: 99, price: Math.round(bp * 0.75), discount_pct: 25 },
-        { from_qty: 100, to_qty: null, price: Math.round(bp * 0.65), discount_pct: 35 },
+        { from_qty: 5, to_qty: 9, price: bp, discount_pct: 0 },
+        { from_qty: 10, to_qty: 29, price: bp, discount_pct: 0 },
+        { from_qty: 30, to_qty: 99, price: bp, discount_pct: 0 },
+        { from_qty: 100, to_qty: null, price: bp, discount_pct: 0 },
       ];
+    } else {
+      const catTier = findCategoryTiers("Флаконы");
+      if (catTier?.tiers?.length) {
+        tiers = catTier.tiers.map((t: { from_qty: number; discount_pct: number }, i: number, arr: { from_qty: number; discount_pct: number }[]) => ({
+          from_qty: t.from_qty,
+          to_qty: i < arr.length - 1 ? arr[i + 1].from_qty - 1 : null,
+          price: Math.round(bp * (1 - t.discount_pct / 100)),
+          discount_pct: t.discount_pct,
+        }));
+        if (tiers.length > 0 && tiers[0].from_qty > 1) tiers.unshift({ from_qty: 1, to_qty: tiers[0].from_qty - 1, price: bp, discount_pct: 0 });
+      } else {
+        tiers = [
+          { from_qty: 1, to_qty: 4, price: bp, discount_pct: 0 },
+          { from_qty: 5, to_qty: 9, price: Math.round(bp * 0.95), discount_pct: 5 },
+          { from_qty: 10, to_qty: 29, price: Math.round(bp * 0.9), discount_pct: 10 },
+          { from_qty: 30, to_qty: 99, price: Math.round(bp * 0.75), discount_pct: 25 },
+          { from_qty: 100, to_qty: null, price: Math.round(bp * 0.65), discount_pct: 35 },
+        ];
+      }
     }
+
     setItems(items.map((it, i) => {
       if (i !== itemIdx) return it;
       const vs = [...(it.variants ?? [])];
