@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchAll } from "@/lib/supabase/fetchAll";
 import { redirect } from "next/navigation";
 import Header from "@/components/layout/Header";
 import SamplesList from "./SamplesList";
@@ -11,12 +12,12 @@ export default async function SamplesPage() {
 
   const admin = createAdminClient();
 
-  const [{ data: samples }, { data: companies }, { data: contacts }, { data: users }] = await Promise.all([
+  const [{ data: samples }, companies, contacts, { data: users }] = await Promise.all([
     admin.from("samples")
       .select("*, companies(id, name), contacts(id, full_name), users!samples_assigned_to_fkey(id, full_name), logist:users!samples_logist_id_fkey(id, full_name)")
       .order("created_at", { ascending: false }),
-    admin.from("companies").select("id, name").order("name"),
-    admin.from("contacts").select("id, full_name, phone").order("full_name"),
+    fetchAll(admin, "companies", "id, name", { order: { column: "name" } }),
+    fetchAll(admin, "contacts", "id, full_name, phone", { order: { column: "full_name" } }),
     admin.from("users").select("id, full_name").eq("is_active", true).order("full_name"),
   ]);
 
@@ -26,8 +27,8 @@ export default async function SamplesPage() {
       <main className="p-6">
         <SamplesList
           initialSamples={samples ?? []}
-          companies={companies ?? []}
-          contacts={contacts ?? []}
+          companies={companies}
+          contacts={contacts}
           users={users ?? []}
         />
       </main>

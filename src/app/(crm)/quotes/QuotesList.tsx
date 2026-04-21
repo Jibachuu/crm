@@ -29,7 +29,7 @@ function calcBottlePrice(basePrice: number, variant: BottleVariant): number {
     default: return basePrice;
   }
 }
-interface ItemVariant { label: string; price: number; quantity: number; sum: number; image_url: string }
+interface ItemVariant { label: string; price: number; quantity: number; sum: number; image_url: string; price_tiers?: PriceTier[] }
 interface QuoteItem {
   product_id: string;
   name: string;
@@ -324,6 +324,88 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       const { url } = await res.json();
       updateVariant(itemIdx, varIdx, "image_url", url);
     }
+  }
+
+  // Variant price tiers (лесенка цен для варианта)
+  function addVariantTiers(itemIdx: number, varIdx: number) {
+    const item = items[itemIdx];
+    const v = item.variants?.[varIdx];
+    if (!v) return;
+    const bp = v.price;
+    // Use category tiers if available (try to match by product category)
+    const catTier = findCategoryTiers("Флаконы");
+    let tiers: PriceTier[];
+    if (catTier?.tiers?.length) {
+      tiers = catTier.tiers.map((t: { from_qty: number; discount_pct: number }, i: number, arr: { from_qty: number; discount_pct: number }[]) => ({
+        from_qty: t.from_qty,
+        to_qty: i < arr.length - 1 ? arr[i + 1].from_qty - 1 : null,
+        price: Math.round(bp * (1 - t.discount_pct / 100)),
+        discount_pct: t.discount_pct,
+      }));
+      if (tiers.length > 0 && tiers[0].from_qty > 1) tiers.unshift({ from_qty: 1, to_qty: tiers[0].from_qty - 1, price: bp, discount_pct: 0 });
+    } else {
+      tiers = [
+        { from_qty: 1, to_qty: 4, price: bp, discount_pct: 0 },
+        { from_qty: 5, to_qty: 9, price: Math.round(bp * 0.95), discount_pct: 5 },
+        { from_qty: 10, to_qty: 29, price: Math.round(bp * 0.9), discount_pct: 10 },
+        { from_qty: 30, to_qty: 99, price: Math.round(bp * 0.75), discount_pct: 25 },
+        { from_qty: 100, to_qty: null, price: Math.round(bp * 0.65), discount_pct: 35 },
+      ];
+    }
+    setItems(items.map((it, i) => {
+      if (i !== itemIdx) return it;
+      const vs = [...(it.variants ?? [])];
+      vs[varIdx] = { ...vs[varIdx], price_tiers: tiers };
+      return { ...it, variants: vs };
+    }));
+  }
+
+  function removeVariantTiers(itemIdx: number, varIdx: number) {
+    setItems(items.map((it, i) => {
+      if (i !== itemIdx) return it;
+      const vs = [...(it.variants ?? [])];
+      vs[varIdx] = { ...vs[varIdx], price_tiers: undefined };
+      return { ...it, variants: vs };
+    }));
+  }
+
+  function updateVariantTier(itemIdx: number, varIdx: number, tierIdx: number, patch: Partial<PriceTier>) {
+    setItems(items.map((it, i) => {
+      if (i !== itemIdx) return it;
+      const vs = [...(it.variants ?? [])];
+      const tiers = [...(vs[varIdx].price_tiers ?? [])];
+      const t = { ...tiers[tierIdx], ...patch };
+      // Recalculate
+      const basePrice = vs[varIdx].price;
+      if (patch.discount_pct !== undefined) {
+        t.price = Math.round(basePrice * (1 - (patch.discount_pct ?? 0) / 100));
+      } else if (patch.price !== undefined && basePrice > 0) {
+        t.discount_pct = Math.round((basePrice - (patch.price ?? 0)) / basePrice * 1000) / 10;
+      }
+      tiers[tierIdx] = t;
+      vs[varIdx] = { ...vs[varIdx], price_tiers: tiers };
+      return { ...it, variants: vs };
+    }));
+  }
+
+  function removeVariantTier(itemIdx: number, varIdx: number, tierIdx: number) {
+    setItems(items.map((it, i) => {
+      if (i !== itemIdx) return it;
+      const vs = [...(it.variants ?? [])];
+      const tiers = (vs[varIdx].price_tiers ?? []).filter((_, ti) => ti !== tierIdx);
+      vs[varIdx] = { ...vs[varIdx], price_tiers: tiers.length ? tiers : undefined };
+      return { ...it, variants: vs };
+    }));
+  }
+
+  function addVariantTierLevel(itemIdx: number, varIdx: number) {
+    setItems(items.map((it, i) => {
+      if (i !== itemIdx) return it;
+      const vs = [...(it.variants ?? [])];
+      const tiers = [...(vs[varIdx].price_tiers ?? []), { from_qty: 0, to_qty: null, price: vs[varIdx].price, discount_pct: 0 }];
+      vs[varIdx] = { ...vs[varIdx], price_tiers: tiers };
+      return { ...it, variants: vs };
+    }));
   }
 
   function itemTotalSum(item: QuoteItem): number {
@@ -769,39 +851,74 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                             </div>
                             <div className="space-y-1.5">
                               {item.variants.map((v, vi) => (
-                                <div key={vi} className="flex items-center gap-2 p-1.5 rounded" style={{ background: "#f8f4fa", border: "1px solid #e1bee7" }}>
-                                  {/* Photo */}
-                                  <label className="flex-shrink-0 cursor-pointer" title="Загрузить фото">
-                                    {v.image_url ? (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img src={v.image_url} alt="" className="w-10 h-10 rounded object-cover" style={{ border: "1px solid #e0e0e0" }} />
-                                    ) : (
-                                      <div className="w-10 h-10 rounded flex items-center justify-center" style={{ background: "#fff", border: "1px dashed #ccc" }}>
-                                        <ImagePlus size={12} style={{ color: "#aaa" }} />
+                                <div key={vi} className="p-1.5 rounded" style={{ background: "#f8f4fa", border: "1px solid #e1bee7" }}>
+                                  <div className="flex items-center gap-2">
+                                    {/* Photo */}
+                                    <label className="flex-shrink-0 cursor-pointer" title="Загрузить фото">
+                                      {v.image_url ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={v.image_url} alt="" className="w-10 h-10 rounded object-cover" style={{ border: "1px solid #e0e0e0" }} />
+                                      ) : (
+                                        <div className="w-10 h-10 rounded flex items-center justify-center" style={{ background: "#fff", border: "1px dashed #ccc" }}>
+                                          <ImagePlus size={12} style={{ color: "#aaa" }} />
+                                        </div>
+                                      )}
+                                      <input type="file" accept="image/*" className="hidden"
+                                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadVariantImage(f, idx, vi); e.target.value = ""; }} />
+                                    </label>
+                                    {/* Label */}
+                                    <input value={v.label} onChange={(e) => updateVariant(idx, vi, "label", e.target.value)}
+                                      className="flex-1 text-xs px-2 py-1 rounded outline-none"
+                                      style={{ border: "1px solid #e0e0e0", background: "#fff" }} />
+                                    {/* Price */}
+                                    <span className="text-xs" style={{ color: "#888" }}>Цена:</span>
+                                    <input type="number" value={v.price} onChange={(e) => updateVariant(idx, vi, "price", Number(e.target.value))}
+                                      className="w-20 text-xs text-right px-1 py-0.5 rounded outline-none"
+                                      style={{ border: "1px solid #e0e0e0", background: "#fff", color: "#2e7d32" }} />
+                                    {/* Quantity */}
+                                    <span className="text-xs" style={{ color: "#888" }}>Кол:</span>
+                                    <input type="number" min="1" value={v.quantity} onChange={(e) => updateVariant(idx, vi, "quantity", Number(e.target.value))}
+                                      className="w-14 text-xs text-right px-1 py-0.5 rounded outline-none"
+                                      style={{ border: "1px solid #e0e0e0", background: "#fff" }} />
+                                    {/* Sum */}
+                                    <span className="text-xs font-medium" style={{ color: "#2e7d32", minWidth: 70, textAlign: "right" }}>
+                                      {formatCurrency(v.sum || v.price * v.quantity)}
+                                    </span>
+                                    <button onClick={() => removeVariant(idx, vi)} className="text-red-400 hover:text-red-600"><X size={12} /></button>
+                                  </div>
+                                  {/* Variant price tiers */}
+                                  <div className="mt-1 pl-12">
+                                    <button type="button" onClick={() => v.price_tiers?.length ? removeVariantTiers(idx, vi) : addVariantTiers(idx, vi)}
+                                      className="text-xs" style={{ color: v.price_tiers?.length ? "#c62828" : "#0067a5" }}>
+                                      {v.price_tiers?.length ? "✕ Убрать лесенку" : "+ Лесенка цен"}
+                                    </button>
+                                    {v.price_tiers?.map((tier, ti) => (
+                                      <div key={ti} className="flex items-center gap-1.5 mt-1 text-xs">
+                                        <span style={{ color: "#888" }}>от</span>
+                                        <input type="number" value={tier.from_qty}
+                                          onChange={(e) => updateVariantTier(idx, vi, ti, { from_qty: Number(e.target.value) })}
+                                          className="w-14 px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #d0d0d0", fontSize: 11, background: "#fff" }} />
+                                        <span style={{ color: "#888" }}>до</span>
+                                        <input type="number" value={tier.to_qty ?? ""} placeholder="∞"
+                                          onChange={(e) => updateVariantTier(idx, vi, ti, { to_qty: e.target.value ? Number(e.target.value) : null })}
+                                          className="w-14 px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #d0d0d0", fontSize: 11, background: "#fff" }} />
+                                        <span style={{ color: "#888" }}>шт →</span>
+                                        <input type="number" value={tier.discount_pct ?? (v.price > 0 ? Math.round((v.price - tier.price) / v.price * 1000) / 10 : 0)}
+                                          onChange={(e) => updateVariantTier(idx, vi, ti, { discount_pct: Number(e.target.value) })}
+                                          className="w-12 px-1 py-0.5 rounded outline-none text-right" style={{ border: "1px solid #e0e0e0", fontSize: 11, color: "#e65c00", background: "#fff" }} />
+                                        <span style={{ color: "#e65c00" }}>%</span>
+                                        <input type="number" value={tier.price}
+                                          onChange={(e) => updateVariantTier(idx, vi, ti, { price: Number(e.target.value) })}
+                                          className="w-18 px-1 py-0.5 rounded outline-none text-right font-medium" style={{ border: "1px solid #d0d0d0", fontSize: 11, color: "#2e7d32", background: "#fff", width: 70 }} />
+                                        <span style={{ color: "#888" }}>₽</span>
+                                        <button type="button" onClick={() => removeVariantTier(idx, vi, ti)} className="text-red-400 hover:text-red-600">✕</button>
                                       </div>
-                                    )}
-                                    <input type="file" accept="image/*" className="hidden"
-                                      onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadVariantImage(f, idx, vi); e.target.value = ""; }} />
-                                  </label>
-                                  {/* Label */}
-                                  <input value={v.label} onChange={(e) => updateVariant(idx, vi, "label", e.target.value)}
-                                    className="flex-1 text-xs px-2 py-1 rounded outline-none"
-                                    style={{ border: "1px solid #e0e0e0", background: "#fff" }} />
-                                  {/* Price */}
-                                  <span className="text-xs" style={{ color: "#888" }}>Цена:</span>
-                                  <input type="number" value={v.price} onChange={(e) => updateVariant(idx, vi, "price", Number(e.target.value))}
-                                    className="w-20 text-xs text-right px-1 py-0.5 rounded outline-none"
-                                    style={{ border: "1px solid #e0e0e0", background: "#fff", color: "#2e7d32" }} />
-                                  {/* Quantity */}
-                                  <span className="text-xs" style={{ color: "#888" }}>Кол:</span>
-                                  <input type="number" min="1" value={v.quantity} onChange={(e) => updateVariant(idx, vi, "quantity", Number(e.target.value))}
-                                    className="w-14 text-xs text-right px-1 py-0.5 rounded outline-none"
-                                    style={{ border: "1px solid #e0e0e0", background: "#fff" }} />
-                                  {/* Sum */}
-                                  <span className="text-xs font-medium" style={{ color: "#2e7d32", minWidth: 70, textAlign: "right" }}>
-                                    {formatCurrency(v.sum || v.price * v.quantity)}
-                                  </span>
-                                  <button onClick={() => removeVariant(idx, vi)} className="text-red-400 hover:text-red-600"><X size={12} /></button>
+                                    ))}
+                                    {v.price_tiers?.length ? (
+                                      <button type="button" onClick={() => addVariantTierLevel(idx, vi)}
+                                        className="text-xs mt-1" style={{ color: "#0067a5" }}>+ Уровень</button>
+                                    ) : null}
+                                  </div>
                                 </div>
                               ))}
                             </div>

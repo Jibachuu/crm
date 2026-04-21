@@ -137,18 +137,35 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                                 {item.variants?.length ? (
                                   <div style={{ marginTop: 8 }}>
                                     <p style={{ fontSize: 11, color: "#8c7e6a", marginBottom: 6 }}>Варианты:</p>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                      {item.variants.map((v: { label: string; price: number; quantity: number; sum: number; image_url?: string }, vi: number) => (
-                                        <div key={vi} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6 }}>
-                                          {v.image_url ? (
-                                            <img src={v.image_url} alt="" style={{ width: 48, height: 48, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
-                                          ) : (
-                                            <div style={{ width: 48, height: 48, borderRadius: 4, background: "#efe9df", flexShrink: 0 }} />
-                                          )}
-                                          <span style={{ flex: 1, fontSize: 12, color: "#3d3325", fontWeight: 500 }}>{v.label}</span>
-                                          <span style={{ fontSize: 12, color: "#6b5e4f", fontWeight: 700 }}>{formatCurrency(v.price)}</span>
-                                          <span style={{ fontSize: 11, color: "#8c7e6a" }}>× {v.quantity}</span>
-                                          <span style={{ fontSize: 12, color: "#3d3325", fontWeight: 600, minWidth: 70, textAlign: "right" }}>{formatCurrency(v.sum || v.price * v.quantity)}</span>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                      {item.variants.map((v: { label: string; price: number; quantity: number; sum: number; image_url?: string; price_tiers?: { from_qty: number; to_qty: number | null; price: number }[] }, vi: number) => (
+                                        <div key={vi} style={{ padding: "8px", background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6 }}>
+                                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                            {v.image_url ? (
+                                              <img src={v.image_url} alt="" style={{ width: 48, height: 48, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
+                                            ) : (
+                                              <div style={{ width: 48, height: 48, borderRadius: 4, background: "#efe9df", flexShrink: 0 }} />
+                                            )}
+                                            <span style={{ flex: 1, fontSize: 12, color: "#3d3325", fontWeight: 500 }}>{v.label}</span>
+                                            {!v.price_tiers?.length && (
+                                              <>
+                                                <span style={{ fontSize: 12, color: "#6b5e4f", fontWeight: 700 }}>{formatCurrency(v.price)}</span>
+                                                <span style={{ fontSize: 11, color: "#8c7e6a" }}>× {v.quantity}</span>
+                                                <span style={{ fontSize: 12, color: "#3d3325", fontWeight: 600, minWidth: 70, textAlign: "right" }}>{formatCurrency(v.sum || v.price * v.quantity)}</span>
+                                              </>
+                                            )}
+                                          </div>
+                                          {v.price_tiers?.length ? (
+                                            <div style={{ marginTop: 6, paddingLeft: 56 }}>
+                                              <p style={{ fontSize: 10, color: "#8c7e6a", marginBottom: 3 }}>Цены при разном объёме:</p>
+                                              {v.price_tiers.map((tier, ti) => (
+                                                <div key={ti} style={{ display: "flex", gap: 6, alignItems: "baseline", fontSize: 12 }}>
+                                                  <span style={{ color: "#8c7e6a", minWidth: 70 }}>{tier.from_qty}{tier.to_qty ? `–${tier.to_qty}` : "+"} шт.</span>
+                                                  <span style={{ fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(tier.price)}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : null}
                                         </div>
                                       ))}
                                     </div>
