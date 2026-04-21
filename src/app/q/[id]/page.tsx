@@ -192,6 +192,10 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                                   );
                                 }
 
+                                // Build unified tier header from any variant that has tiers
+                                const anyTiers = variantList.find((v) => v.price_tiers?.length)?.price_tiers ?? [];
+                                const tierLabels = anyTiers.map((t) => `${t.from_qty}${t.to_qty ? `–${t.to_qty}` : "+"} шт.`);
+
                                 return (
                                   <div>
                                     <div style={{ marginBottom: 14 }}>
@@ -199,32 +203,76 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                                       {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
                                       {item.description && <p style={{ fontSize: 12, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
                                     </div>
-                                    <div className="quote-variants-layout" style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+                                    <div style={{ display: "grid", gridTemplateColumns: mainVariant ? "minmax(180px, 260px) 1fr" : "1fr", gap: 16 }} className="kp-variants-grid">
                                       {/* Main variant (with photo) */}
                                       {mainVariant && (
-                                        <div style={{ flex: "1 1 260px", maxWidth: 320, minWidth: 220, padding: 10, background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6 }}>
+                                        <div style={{ padding: 10, background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6 }}>
                                           <img src={mainVariant.image_url} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 4, background: "#fff", marginBottom: 8 }} />
                                           <p style={{ fontSize: 13, fontWeight: 700, color: "#3d3325", textAlign: "center", marginBottom: 8 }}>{mainVariant.label}</p>
                                           {renderTiersOrPrice(mainVariant, false)}
                                         </div>
                                       )}
-                                      {/* Other variants — compact list */}
+
+                                      {/* Other variants — table-like rows */}
                                       {otherVariants.length > 0 && (
-                                        <div style={{ flex: "2 1 320px", display: "flex", flexDirection: "column", gap: 8 }}>
-                                          {otherVariants.map((v, vi) => (
-                                            <div key={vi} style={{ padding: "8px 10px", background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6, display: "flex", alignItems: "flex-start", gap: 10 }}>
-                                              {!v.hide_photo && v.image_url && (
-                                                <img src={v.image_url} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} />
-                                              )}
-                                              <div style={{ flex: 1, minWidth: 0 }}>
-                                                <p style={{ fontSize: 12, fontWeight: 600, color: "#3d3325", marginBottom: 4 }}>{v.label}</p>
-                                                {renderTiersOrPrice(v, true)}
-                                              </div>
-                                            </div>
-                                          ))}
+                                        <div style={{ overflowX: "auto" }}>
+                                          {tierLabels.length > 0 ? (
+                                            // Render as table with tier columns
+                                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                                              <thead>
+                                                <tr style={{ background: "#efe9df" }}>
+                                                  <th style={{ padding: "6px 8px", textAlign: "left", fontWeight: 600, color: "#3d3325", borderBottom: "1px solid #d4c9b8" }}>Вариант</th>
+                                                  {tierLabels.map((lbl, ti) => (
+                                                    <th key={ti} style={{ padding: "6px 8px", textAlign: "right", fontWeight: 500, color: "#6b5e4f", borderBottom: "1px solid #d4c9b8", whiteSpace: "nowrap" }}>{lbl}</th>
+                                                  ))}
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {otherVariants.map((v, vi) => (
+                                                  <tr key={vi} style={{ borderBottom: "1px solid #efe9df" }}>
+                                                    <td style={{ padding: "8px", fontWeight: 500, color: "#3d3325" }}>{v.label}</td>
+                                                    {v.price_tiers?.length
+                                                      ? anyTiers.map((t, ti) => {
+                                                          const matchedTier = v.price_tiers!.find((pt) => pt.from_qty === t.from_qty);
+                                                          return (
+                                                            <td key={ti} style={{ padding: "8px", textAlign: "right", color: "#6b5e4f", fontWeight: 600, whiteSpace: "nowrap" }}>
+                                                              {matchedTier ? formatCurrency(matchedTier.price) : "—"}
+                                                            </td>
+                                                          );
+                                                        })
+                                                      : tierLabels.map((_, ti) => (
+                                                          // Fallback: single price repeated
+                                                          <td key={ti} style={{ padding: "8px", textAlign: "right", color: "#6b5e4f", fontWeight: 600, whiteSpace: "nowrap" }}>
+                                                            {ti === 0 ? formatCurrency(v.price) : ""}
+                                                          </td>
+                                                        ))}
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          ) : (
+                                            // Simple table — no tiers, just label and price
+                                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                                              <tbody>
+                                                {otherVariants.map((v, vi) => (
+                                                  <tr key={vi} style={{ borderBottom: "1px solid #efe9df" }}>
+                                                    <td style={{ padding: "8px 10px", color: "#3d3325", fontWeight: 500 }}>{v.label}</td>
+                                                    <td style={{ padding: "8px 10px", textAlign: "right", color: "#6b5e4f", fontWeight: 700, whiteSpace: "nowrap" }}>{formatCurrency(v.price)}</td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          )}
                                         </div>
                                       )}
                                     </div>
+
+                                    {/* Mobile-friendly CSS */}
+                                    <style>{`
+                                      @media (max-width: 640px) {
+                                        .kp-variants-grid { grid-template-columns: 1fr !important; }
+                                      }
+                                    `}</style>
                                   </div>
                                 );
                               })() : (
