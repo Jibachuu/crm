@@ -23,6 +23,16 @@ export function formatDateTime(date: string | Date | null | undefined): string {
   return `${dd}.${mm}.${d.getFullYear()} ${hh}:${min}`;
 }
 
+// Format liters value — append "л" only if not already present
+export function formatLiters(value: string | null | undefined): string {
+  if (!value) return "";
+  const v = String(value).trim();
+  if (!v) return "";
+  // Already ends with "л" or "мл" — don't double it
+  if (/(мл|л)$/i.test(v)) return v;
+  return `${v}л`;
+}
+
 export function formatCurrency(amount: number | null | undefined): string {
   if (amount == null) return "—";
   // Manual formatting to avoid Intl hydration mismatch (server locale ≠ client locale)

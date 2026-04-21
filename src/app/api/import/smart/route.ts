@@ -782,7 +782,8 @@ export async function POST(req: NextRequest) {
       // Auto-generate name if not provided
       let name = String(row.name ?? "").trim();
       if (!name) {
-        name = [cat, subcat, liters ? `${liters}л` : null, container].filter(Boolean).join(" ");
+        const lv = liters ? (/(мл|л)$/i.test(String(liters).trim()) ? liters : `${liters}л`) : null;
+        name = [cat, subcat, lv, container].filter(Boolean).join(" ");
       }
       if (!name) name = sku;
 

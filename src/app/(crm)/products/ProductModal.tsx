@@ -43,7 +43,8 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
     const s = overrides?.subcategory ?? subcategory;
     const l = overrides?.liters ?? liters;
     const co = overrides?.container ?? container;
-    return [c, s, l ? `${l}л` : "", co].filter(Boolean).join(" ");
+    const lv = l ? (/(мл|л)$/i.test(String(l).trim()) ? l : `${l}л`) : "";
+    return [c, s, lv, co].filter(Boolean).join(" ");
   }
 
   function updatePart(field: "category" | "subcategory" | "liters" | "container", value: string) {

@@ -7,7 +7,7 @@ import Badge from "@/components/ui/Badge";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
 import PurgeButton from "@/components/ui/PurgeButton";
 import ProductModal from "./ProductModal";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatLiters } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -293,7 +293,7 @@ async function updateField(productId: string, field: string, value: unknown) {
                       </td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.category || "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.subcategory || "—"}</td>
-                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.liters ? `${product.liters}л` : "—"}</td>
+                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{formatLiters(product.liters) || "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.container || "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.sku}</td>
                       <td className="px-4 py-2.5 font-medium" style={{ color: "#333" }}>{formatCurrency(product.base_price)}</td>

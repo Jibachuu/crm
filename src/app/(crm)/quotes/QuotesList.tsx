@@ -6,7 +6,7 @@ import { Plus, Search, FileSpreadsheet, Trash2, Eye, Download, Copy, Check, Send
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatLiters } from "@/lib/utils";
 
 const STATUS_LABELS: Record<string, string> = { draft: "Черновик", sent: "Отправлено", accepted: "Принято", rejected: "Отклонено" };
 const STATUS_VARIANTS: Record<string, "default" | "warning" | "success" | "danger"> = { draft: "default", sent: "warning", accepted: "success", rejected: "danger" };
@@ -353,13 +353,15 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setQuotes(quotes.filter((q: { id: string }) => q.id !== id));
   }
 
-  const filteredProducts = products.filter((p: { name: string; sku: string; category?: string; subcategory?: string; description?: string }) => {
+  const filteredProducts = products.filter((p: { name: string; sku: string; category?: string; subcategory?: string; liters?: string; container?: string; description?: string }) => {
     if (productSearch.length < 2) return false;
     const q = productSearch.toLowerCase();
     return p.name.toLowerCase().includes(q) ||
       p.sku.toLowerCase().includes(q) ||
       p.category?.toLowerCase().includes(q) ||
       p.subcategory?.toLowerCase().includes(q) ||
+      p.liters?.toLowerCase().includes(q) ||
+      p.container?.toLowerCase().includes(q) ||
       p.description?.toLowerCase().includes(q);
   });
 
@@ -486,9 +488,9 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
             </div>
             {filteredProducts.length > 0 && (
               <div className="mt-1 rounded shadow-lg max-h-40 overflow-y-auto" style={{ border: "1px solid #e4e4e4", background: "#fff" }}>
-                {filteredProducts.slice(0, 10).map((p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; description?: string; image_url?: string }) => (
+                {filteredProducts.slice(0, 50).map((p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; liters?: string; container?: string; description?: string; image_url?: string }) => (
                   <button key={p.id} onClick={() => addProduct(p)} className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between" style={{ borderBottom: "1px solid #f0f0f0" }}>
-                    <span>{[p.category, p.name].filter(Boolean).join(" / ")} <span style={{ color: "#aaa" }}>арт. {p.sku}</span></span>
+                    <span>{[p.category, p.subcategory, formatLiters(p.liters), p.container, p.name].filter(Boolean).join(" / ")} <span style={{ color: "#aaa" }}>арт. {p.sku}</span></span>
                     <span style={{ color: "#2e7d32" }}>{formatCurrency(p.base_price)}</span>
                   </button>
                 ))}

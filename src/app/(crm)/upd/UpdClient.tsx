@@ -5,7 +5,7 @@ import { Plus, Search, FileCheck, Trash2, Eye, Save, Upload, X, Copy } from "luc
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatLiters } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import UpdTemplate from "@/components/ui/UpdTemplate";
 
@@ -203,10 +203,12 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
     setPreviewItems(data ?? []);
   }
 
-  const filteredProducts = products.filter((p: { name: string; sku: string }) => {
+  const filteredProducts = products.filter((p: { name: string; sku: string; category?: string; subcategory?: string; liters?: string; container?: string }) => {
     if (productSearch.length < 2) return false;
     const q = productSearch.toLowerCase();
-    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+    return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) ||
+      p.category?.toLowerCase().includes(q) || p.subcategory?.toLowerCase().includes(q) ||
+      p.liters?.toLowerCase().includes(q) || p.container?.toLowerCase().includes(q);
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -326,9 +328,9 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
             </div>
             {filteredProducts.length > 0 && (
               <div className="mt-1 rounded shadow-lg max-h-40 overflow-y-auto" style={{ border: "1px solid #e4e4e4", background: "#fff" }}>
-                {filteredProducts.slice(0, 10).map((p: { id: string; name: string; sku: string; base_price: number }) => (
+                {filteredProducts.slice(0, 50).map((p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; liters?: string; container?: string }) => (
                   <button key={p.id} onClick={() => addProduct(p)} className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex justify-between" style={{ borderBottom: "1px solid #f0f0f0" }}>
-                    <span>{p.name} <span style={{ color: "#aaa" }}>({p.sku})</span></span>
+                    <span>{[p.category, p.subcategory, formatLiters(p.liters), p.container, p.name].filter(Boolean).join(" / ")} <span style={{ color: "#aaa" }}>арт. {p.sku}</span></span>
                     <span style={{ color: "#2e7d32" }}>{formatCurrency(p.base_price)}</span>
                   </button>
                 ))}
