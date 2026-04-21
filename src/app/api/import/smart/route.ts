@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json() as { entity: Entity; rows: Record<string, unknown>[]; mode?: "skip" | "update" };
   const { entity, rows, mode = "update" } = body;
 
-  if (!["companies", "contacts", "leads", "deals", "samples"].includes(entity)) {
+  if (!["companies", "contacts", "leads", "deals", "samples", "products"].includes(entity)) {
     return NextResponse.json({ error: "Unknown entity" }, { status: 400 });
   }
 
