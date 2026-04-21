@@ -70,6 +70,7 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
       container: container || null,
       description: (fd.get("description") as string) || null,
       base_price: Number(fd.get("base_price")) || 0,
+      stock: Number(fd.get("stock")) || 0,
       is_active: isEdit ? product.is_active : true,
     };
 
@@ -139,9 +140,10 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
           </label>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Input label="Артикул (SKU)" name="sku" defaultValue={product?.sku} required placeholder="АРТ-001" />
           <Input label="Цена за 1 шт (₽)" name="base_price" type="number" defaultValue={product?.base_price ?? ""} min="0" step="0.01" />
+          <Input label="Наличие (шт)" name="stock" type="number" defaultValue={product?.stock ?? 0} min="0" />
         </div>
 
         <Textarea label="Описание" name="description" defaultValue={product?.description ?? ""} />

@@ -19,18 +19,45 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
   async function handleZipUpload(file: File) {
     setZipUploading(true);
     setZipResult(null);
-    const fd = new FormData();
-    fd.append("file", file);
-    const res = await fetch("/api/products/bulk-upload-photos", { method: "POST", body: fd });
-    const data = await res.json();
-    setZipUploading(false);
-    if (res.ok) {
-      setZipResult(data);
-      // Reload page to show new images
+    try {
+      // Unzip on client side
+      const JSZip = (await import("jszip")).default;
+      const zip = await JSZip.loadAsync(file);
+      const entries = Object.values(zip.files).filter((f) => !f.dir);
+
+      const matched: { filename: string; productName: string }[] = [];
+      const unmatched: string[] = [];
+      let uploaded = 0;
+
+      // Process each file — upload one by one
+      for (const entry of entries) {
+        const filename = entry.name.split("/").pop() || entry.name;
+        const ext = filename.split(".").pop()?.toLowerCase();
+        if (!ext || !["jpg", "jpeg", "png", "webp", "gif", "heic", "svg"].includes(ext)) continue;
+
+        const blob = await entry.async("blob");
+        const imgFile = new File([blob], filename, { type: ext === "jpg" ? "image/jpeg" : `image/${ext}` });
+
+        const fd = new FormData();
+        fd.append("file", imgFile);
+        fd.append("filename", filename);
+
+        const res = await fetch("/api/products/upload-photo-match", { method: "POST", body: fd });
+        const data = await res.json();
+        if (res.ok && data.matched) {
+          matched.push({ filename, productName: data.productName });
+          uploaded++;
+        } else {
+          unmatched.push(filename);
+        }
+      }
+
+      setZipResult({ uploaded, total: entries.length, matched, unmatched });
       setTimeout(() => window.location.reload(), 500);
-    } else {
-      alert("Ошибка: " + (data.error ?? "неизвестная"));
+    } catch (err) {
+      alert("Ошибка: " + (err instanceof Error ? err.message : "неизвестная"));
     }
+    setZipUploading(false);
   }
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -218,7 +245,7 @@ async function updateField(productId: string, field: string, value: unknown) {
                   <th className="px-3 py-2.5 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleAll} className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
                   </th>
-                  {["Фото", "Товар", "Категория", "Вид", "Литры", "Тара", "Артикул", "Цена", "Статус", ""].map((h) => (
+                  {["Фото", "Товар", "Категория", "Вид", "Литры", "Тара", "Артикул", "Цена", "Наличие", "Статус", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>{h}</th>
                   ))}
                 </tr>
@@ -227,7 +254,7 @@ async function updateField(productId: string, field: string, value: unknown) {
                 {filtered.map((product: {
                   id: string; name: string; sku: string; base_price: number; is_active: boolean;
                   category?: string; subcategory?: string; image_url?: string;
-                  liters?: string; container?: string;
+                  liters?: string; container?: string; stock?: number;
                 }) => {
                   const isSel = selected.has(product.id);
                   return (
@@ -270,6 +297,16 @@ async function updateField(productId: string, field: string, value: unknown) {
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.container || "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.sku}</td>
                       <td className="px-4 py-2.5 font-medium" style={{ color: "#333" }}>{formatCurrency(product.base_price)}</td>
+                      <td className="px-4 py-2.5">
+                        <input type="number" defaultValue={product.stock ?? 0}
+                          onBlur={async (e) => {
+                            const val = Number(e.target.value) || 0;
+                            if (val === (product.stock ?? 0)) return;
+                            await updateField(product.id, "stock", val);
+                          }}
+                          className="w-16 text-xs text-right px-2 py-1 rounded outline-none"
+                          style={{ border: "1px solid #e0e0e0", color: (product.stock ?? 0) > 0 ? "#2e7d32" : "#c62828" }} />
+                      </td>
                       <td className="px-4 py-2.5">
                         <button
                           onClick={() => updateField(product.id, "is_active", !product.is_active)}
