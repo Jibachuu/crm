@@ -336,13 +336,13 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     let tiers: PriceTier[];
 
     if (isLogo) {
-      // For "+лого" variants: flat price across all quantity tiers (40% discount baked in)
+      // For "+лого" variants: flat -40% across all quantity tiers
       tiers = [
-        { from_qty: 1, to_qty: 4, price: bp, discount_pct: 0 },
-        { from_qty: 5, to_qty: 9, price: bp, discount_pct: 0 },
-        { from_qty: 10, to_qty: 29, price: bp, discount_pct: 0 },
-        { from_qty: 30, to_qty: 99, price: bp, discount_pct: 0 },
-        { from_qty: 100, to_qty: null, price: bp, discount_pct: 0 },
+        { from_qty: 1, to_qty: 4, price: bp, discount_pct: 40 },
+        { from_qty: 5, to_qty: 9, price: bp, discount_pct: 40 },
+        { from_qty: 10, to_qty: 29, price: bp, discount_pct: 40 },
+        { from_qty: 30, to_qty: 99, price: bp, discount_pct: 40 },
+        { from_qty: 100, to_qty: null, price: bp, discount_pct: 40 },
       ];
     } else {
       const catTier = findCategoryTiers("Флаконы");
