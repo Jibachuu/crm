@@ -419,11 +419,24 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
                 const { jsPDF } = await import("jspdf");
                 const el = document.getElementById("upd-content");
                 if (!el) return;
-                const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#fff" });
+                const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#fff", useCORS: true });
                 const pdf = new jsPDF("l", "mm", "a4");
-                const w = pdf.internal.pageSize.getWidth();
-                const h = (canvas.height * w) / canvas.width;
-                pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, w, h);
+                const pageW = pdf.internal.pageSize.getWidth(); // 297mm
+                const pageH = pdf.internal.pageSize.getHeight(); // 210mm
+                // Fit canvas into page preserving aspect ratio, centered
+                const margin = 4; // mm
+                const availW = pageW - margin * 2;
+                const availH = pageH - margin * 2;
+                const canvasRatio = canvas.width / canvas.height;
+                let imgW = availW;
+                let imgH = imgW / canvasRatio;
+                if (imgH > availH) {
+                  imgH = availH;
+                  imgW = imgH * canvasRatio;
+                }
+                const x = (pageW - imgW) / 2;
+                const y = (pageH - imgH) / 2;
+                pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", x, y, imgW, imgH);
                 pdf.save(`УПД_${previewUpd.upd_number}.pdf`);
               }}>Скачать PDF</Button>
               <Button size="sm" variant="secondary" onClick={() => setPreviewUpd(null)}>Закрыть</Button>
@@ -431,7 +444,7 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
           </div>
           {/* Document */}
           <div style={{ padding: "20px", display: "flex", justifyContent: "center" }}>
-            <div id="upd-content" style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.15)" }}>
+            <div id="upd-content" style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.15)", background: "#fff" }}>
               <UpdTemplate
                 upd={{ upd_number: previewUpd.upd_number, upd_date: previewUpd.upd_date, buyer_name: previewUpd.buyer_name, buyer_inn: previewUpd.buyer_inn, buyer_kpp: previewUpd.buyer_kpp, buyer_address: previewUpd.buyer_address, basis: previewUpd.basis, vat_included: previewUpd.vat_included }}
                 items={previewItems}

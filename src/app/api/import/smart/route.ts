@@ -765,8 +765,8 @@ export async function POST(req: NextRequest) {
     const toInsert: Record<string, unknown>[] = [];
     const toUpdate: { id: string; rec: Record<string, unknown> }[] = [];
 
-    // Existing products by SKU
-    const { data: existingProducts } = await admin.from("products").select("id, sku").not("sku", "is", null);
+    // Existing ACTIVE products by SKU — archived products don't conflict on SKU
+    const { data: existingProducts } = await admin.from("products").select("id, sku").not("sku", "is", null).eq("is_active", true);
     const skuMap = new Map((existingProducts ?? []).map((p) => [p.sku.toLowerCase().trim(), p.id]));
 
     for (let i = 0; i < rows.length; i++) {
