@@ -332,13 +332,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setUploadingImage(String(itemIndex));
     const fd = new FormData();
     fd.append("file", file);
-    // If item has a product_id, upload to product; otherwise upload to general quote-images
-    const item = items[itemIndex];
-    if (item?.product_id) {
-      fd.append("product_id", item.product_id);
-    } else {
-      fd.append("product_id", `quote-manual-${Date.now()}`);
-    }
+    // Always use placeholder — КП photo changes should NOT affect the product catalog
+    fd.append("product_id", `quote-manual-${Date.now()}`);
     const res = await fetch("/api/products/upload-image", { method: "POST", body: fd });
     if (res.ok) {
       const { url } = await res.json();
