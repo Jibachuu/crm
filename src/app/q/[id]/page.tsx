@@ -122,55 +122,61 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                         {(catItems ?? []).map((item) => {
                           const BOTTLE_LABELS: Record<string, string> = { uv: "С УФ печатью", uv_logo: "С УФ печатью и лого", sticker: "С наклейкой", sticker_logo: "С наклейкой и лого" };
                           const bottleLabel = item.bottle_variant && item.bottle_variant !== "none" ? BOTTLE_LABELS[item.bottle_variant] : null;
+                          const hasVariants = item.variants?.length > 0;
                           return (
-                            <div key={item.id} style={{ display: "flex", gap: 14, padding: 16, borderRadius: 8, background: "#faf8f5", border: "1px solid #efe9df", pageBreakInside: "avoid", breakInside: "avoid" }}>
-                              {item.image_url ? (
-                                <img src={item.image_url} alt="" style={{ width: 140, height: 140, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
-                              ) : (
-                                <div style={{ width: 140, height: 140, borderRadius: 6, background: "#efe9df", flexShrink: 0 }} />
-                              )}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginBottom: 2 }}>{item.name.split(" / ").pop()}</p>
-                                {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
-                                {bottleLabel && <p style={{ fontSize: 11, color: "#7b1fa2", fontWeight: 600, marginTop: 2 }}>{bottleLabel}</p>}
-                                {item.description && <p style={{ fontSize: 11, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
-                                {item.variants?.length ? (
-                                  <div style={{ marginTop: 8 }}>
-                                    <p style={{ fontSize: 11, color: "#8c7e6a", marginBottom: 6 }}>Варианты:</p>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                      {item.variants.map((v: { label: string; price: number; quantity: number; sum: number; image_url?: string; price_tiers?: { from_qty: number; to_qty: number | null; price: number }[] }, vi: number) => (
-                                        <div key={vi} style={{ padding: "8px", background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6 }}>
-                                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                            {v.image_url ? (
-                                              <img src={v.image_url} alt="" style={{ width: 48, height: 48, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
-                                            ) : (
-                                              <div style={{ width: 48, height: 48, borderRadius: 4, background: "#efe9df", flexShrink: 0 }} />
-                                            )}
-                                            <span style={{ flex: 1, fontSize: 12, color: "#3d3325", fontWeight: 500 }}>{v.label}</span>
-                                            {!v.price_tiers?.length && (
-                                              <>
-                                                <span style={{ fontSize: 12, color: "#6b5e4f", fontWeight: 700 }}>{formatCurrency(v.price)}</span>
-                                                <span style={{ fontSize: 11, color: "#8c7e6a" }}>× {v.quantity}</span>
-                                                <span style={{ fontSize: 12, color: "#3d3325", fontWeight: 600, minWidth: 70, textAlign: "right" }}>{formatCurrency(v.sum || v.price * v.quantity)}</span>
-                                              </>
+                            <div key={item.id} style={{ padding: 16, borderRadius: 8, background: "#faf8f5", border: "1px solid #efe9df", pageBreakInside: "avoid", breakInside: "avoid", gridColumn: hasVariants ? "1 / -1" : undefined }}>
+                              {hasVariants ? (
+                                // ═══ Горизонтальная раскладка для товаров с вариантами ═══
+                                <div>
+                                  <div style={{ marginBottom: 12 }}>
+                                    <p style={{ fontSize: 16, fontWeight: 700, color: "#3d3325", marginBottom: 2 }}>{item.name.split(" / ").pop()}</p>
+                                    {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
+                                    {item.description && <p style={{ fontSize: 12, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
+                                  </div>
+                                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(item.variants.length, 5)}, 1fr)`, gap: 8 }}>
+                                    {item.variants.map((v: { label: string; price: number; quantity: number; sum: number; image_url?: string; price_tiers?: { from_qty: number; to_qty: number | null; price: number }[] }, vi: number) => (
+                                      <div key={vi} style={{ padding: "10px 8px", background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6 }}>
+                                        {v.image_url ? (
+                                          <img src={v.image_url} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 4, background: "#fff" }} />
+                                        ) : (
+                                          <div style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 4, background: "#efe9df" }} />
+                                        )}
+                                        <p style={{ fontSize: 11, fontWeight: 600, color: "#3d3325", lineHeight: 1.3, minHeight: 28 }}>{v.label}</p>
+                                        {v.price_tiers?.length ? (
+                                          <div style={{ width: "100%", marginTop: "auto" }}>
+                                            {v.price_tiers.map((tier, ti) => (
+                                              <div key={ti} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "1px 2px" }}>
+                                                <span style={{ color: "#8c7e6a" }}>{tier.from_qty}{tier.to_qty ? `–${tier.to_qty}` : "+"} шт.</span>
+                                                <span style={{ fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(tier.price)}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div style={{ marginTop: "auto" }}>
+                                            <p style={{ fontSize: 13, fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(v.price)}</p>
+                                            {v.quantity > 1 && (
+                                              <p style={{ fontSize: 10, color: "#8c7e6a" }}>× {v.quantity} = {formatCurrency(v.sum || v.price * v.quantity)}</p>
                                             )}
                                           </div>
-                                          {v.price_tiers?.length ? (
-                                            <div style={{ marginTop: 6, paddingLeft: 56 }}>
-                                              <p style={{ fontSize: 10, color: "#8c7e6a", marginBottom: 3 }}>Цены при разном объёме:</p>
-                                              {v.price_tiers.map((tier, ti) => (
-                                                <div key={ti} style={{ display: "flex", gap: 6, alignItems: "baseline", fontSize: 12 }}>
-                                                  <span style={{ color: "#8c7e6a", minWidth: 70 }}>{tier.from_qty}{tier.to_qty ? `–${tier.to_qty}` : "+"} шт.</span>
-                                                  <span style={{ fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(tier.price)}</span>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          ) : null}
-                                        </div>
-                                      ))}
-                                    </div>
+                                        )}
+                                      </div>
+                                    ))}
                                   </div>
-                                ) : item.price_tiers?.length ? (
+                                </div>
+                              ) : (
+                                // ═══ Обычная раскладка с большим фото слева ═══
+                                <div style={{ display: "flex", gap: 14 }}>
+                                  {item.image_url ? (
+                                    <img src={item.image_url} alt="" style={{ width: 140, height: 140, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                                  ) : (
+                                    <div style={{ width: 140, height: 140, borderRadius: 6, background: "#efe9df", flexShrink: 0 }} />
+                                  )}
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <p style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginBottom: 2 }}>{item.name.split(" / ").pop()}</p>
+                                    {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
+                                    {bottleLabel && <p style={{ fontSize: 11, color: "#7b1fa2", fontWeight: 600, marginTop: 2 }}>{bottleLabel}</p>}
+                                    {item.description && <p style={{ fontSize: 11, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
+                                {item.price_tiers?.length ? (
                                   <div style={{ marginTop: 8 }}>
                                     <p style={{ fontSize: 11, color: "#8c7e6a", marginBottom: 4 }}>Цены при разном объёме:</p>
                                     {item.price_tiers.map((tier: { from_qty: number; to_qty: number | null; price: number }, ti: number) => (
@@ -193,7 +199,9 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                                     <span style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginLeft: "auto" }}>{formatCurrency(item.sum)}</span>
                                   </div>
                                 )}
-                              </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
