@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
 
   if (action === "create" || action === "update") {
-    const { id, company_id, contact_id, deal_id, manager_id, payment_terms, delivery_terms, comment, status, items, hide_total, category_overrides, column_titles } = body;
+    const { id, company_id, contact_id, deal_id, manager_id, payment_terms, delivery_terms, comment, status, items, hide_total, hide_photos, category_overrides, column_titles, custom_blocks } = body;
 
     const totalAmount = (items ?? []).reduce((s: number, i: { sum: number }) => s + (i.sum ?? 0), 0);
 
@@ -27,8 +27,10 @@ export async function POST(req: NextRequest) {
       status: status || "draft",
       total_amount: totalAmount,
       hide_total: hide_total ?? false,
+      hide_photos: hide_photos ?? false,
       category_overrides: category_overrides ?? {},
       column_titles: column_titles ?? {},
+      custom_blocks: custom_blocks ?? [],
       updated_at: new Date().toISOString(),
     };
 

@@ -53,6 +53,39 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
   // Match category descriptions — per-quote overrides take priority
   const catDescMap = new Map((catDescs ?? []).map((d) => [d.category.toLowerCase(), d]));
   const overrides = (quote.category_overrides ?? {}) as Record<string, { title: string; description: string }>;
+  const hidePhotos = !!quote.hide_photos;
+  type CustomBlock = { id: string; title: string; description: string; photos: string[]; position: string };
+  const customBlocks = (quote.custom_blocks ?? []) as CustomBlock[];
+  const blocksTop = customBlocks.filter((b) => b.position === "top");
+  const blocksBottom = customBlocks.filter((b) => b.position === "bottom");
+  const blocksByCategory = new Map<string, CustomBlock[]>();
+  for (const b of customBlocks) {
+    if (b.position?.startsWith("after:")) {
+      const cat = b.position.slice(6);
+      if (!blocksByCategory.has(cat)) blocksByCategory.set(cat, []);
+      blocksByCategory.get(cat)!.push(b);
+    }
+  }
+
+  function renderBlock(b: CustomBlock) {
+    return (
+      <div key={b.id} style={{ padding: "20px 40px", borderBottom: "1px solid #efe9df", pageBreakInside: "avoid" }}>
+        {b.title && <h2 style={{ fontSize: 18, fontWeight: 700, color: "#3d3325", marginBottom: 8, fontFamily: "Georgia, serif" }}>{b.title}</h2>}
+        {b.description && (
+          <div style={{ fontSize: 13, color: "#6b5e4f", lineHeight: 1.7, marginBottom: 14 }}>
+            {b.description.split("\n").map((line, i) => <p key={i} style={{ margin: "4px 0" }}>{line}</p>)}
+          </div>
+        )}
+        {b.photos?.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(b.photos.length, 4)}, 1fr)`, gap: 10 }}>
+            {b.photos.map((url, pi) => (
+              <img key={pi} src={url} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 6, border: "1px solid #efe9df" }} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const logoUrl = supplier?.logo_url;
 
@@ -80,6 +113,9 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
           </p>
         </div>
 
+        {/* Custom blocks at top */}
+        {blocksTop.map(renderBlock)}
+
         {/* Render columns — each column has its own categories and total */}
         {columnIndices.map((colIdx) => {
           const colItems = (items ?? []).filter((i: { column_index?: number }) => (i.column_index ?? 0) === colIdx);
@@ -105,7 +141,9 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                   const override = overrides[category];
                   const displayTitle = override?.title || desc?.title || category;
                   const displayDesc = override?.description ?? desc?.description ?? "";
+                  const catBlocks = blocksByCategory.get(category) ?? [];
                   return (
+                    <>
                     <div key={`${colIdx}-${category}`} style={{ padding: "28px 0", borderBottom: "1px solid #efe9df", pageBreakInside: "avoid" }}>
                       <h2 style={{ fontSize: 18, fontWeight: 700, color: "#3d3325", marginBottom: 8, fontFamily: "Georgia, serif" }}>
                         {displayTitle}
@@ -136,7 +174,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                                   <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(item.variants.length, 5)}, 1fr)`, gap: 8 }}>
                                     {item.variants.map((v: { label: string; price: number; quantity: number; sum: number; image_url?: string; price_tiers?: { from_qty: number; to_qty: number | null; price: number }[] }, vi: number) => (
                                       <div key={vi} style={{ padding: "10px 8px", background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6 }}>
-                                        {v.image_url ? (
+                                        {hidePhotos ? null : v.image_url ? (
                                           <img src={v.image_url} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 4, background: "#fff" }} />
                                         ) : (
                                           <div style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 4, background: "#efe9df" }} />
@@ -166,7 +204,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                               ) : (
                                 // ═══ Обычная раскладка с большим фото слева ═══
                                 <div style={{ display: "flex", gap: 14 }}>
-                                  {item.image_url ? (
+                                  {hidePhotos ? null : item.image_url ? (
                                     <img src={item.image_url} alt="" style={{ width: 140, height: 140, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
                                   ) : (
                                     <div style={{ width: 140, height: 140, borderRadius: 6, background: "#efe9df", flexShrink: 0 }} />
@@ -207,6 +245,8 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                         })}
                       </div>
                     </div>
+                    {catBlocks.map(renderBlock)}
+                    </>
                   );
                 })}
               </div>
@@ -227,6 +267,9 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
             </div>
           );
         })}
+
+        {/* Custom blocks at bottom */}
+        {blocksBottom.map(renderBlock)}
 
         {/* Terms */}
         {(quote.payment_terms || quote.delivery_terms || quote.comment) && (

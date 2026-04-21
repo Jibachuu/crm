@@ -117,7 +117,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   const [copied, setCopied] = useState(false);
 
   // Editor state
-  const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean; category_overrides?: Record<string, { title: string; description: string }>; column_titles?: Record<string, string> }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
+  const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean; hide_photos?: boolean; category_overrides?: Record<string, { title: string; description: string }>; column_titles?: Record<string, string>; custom_blocks?: Array<{ id: string; title: string; description: string; photos: string[]; position: string }> }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -134,7 +134,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setEditing({ id: quoteId });
     const q = quotes.find((qq: { id: string }) => qq.id === quoteId);
     if (q) {
-      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "", hide_total: q.hide_total ?? false, category_overrides: q.category_overrides ?? {}, column_titles: q.column_titles ?? {} });
+      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "", hide_total: q.hide_total ?? false, hide_photos: q.hide_photos ?? false, category_overrides: q.category_overrides ?? {}, column_titles: q.column_titles ?? {}, custom_blocks: q.custom_blocks ?? [] });
     }
     // Load items from DB
     const supabase = (await import("@/lib/supabase/client")).createClient();
@@ -421,6 +421,33 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     }));
   }
 
+  // Custom info blocks
+  function addCustomBlock() {
+    const newBlock = { id: `block-${Date.now()}`, title: "Новый блок", description: "", photos: [], position: "top" };
+    setForm({ ...form, custom_blocks: [...(form.custom_blocks ?? []), newBlock] });
+  }
+  function updateBlock(blockId: string, patch: Partial<{ title: string; description: string; photos: string[]; position: string }>) {
+    setForm({ ...form, custom_blocks: (form.custom_blocks ?? []).map((b) => b.id === blockId ? { ...b, ...patch } : b) });
+  }
+  function removeBlock(blockId: string) {
+    setForm({ ...form, custom_blocks: (form.custom_blocks ?? []).filter((b) => b.id !== blockId) });
+  }
+  async function uploadBlockPhoto(file: File, blockId: string) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("product_id", `quote-block-${Date.now()}`);
+    const res = await fetch("/api/products/upload-image", { method: "POST", body: fd });
+    if (res.ok) {
+      const { url } = await res.json();
+      const block = (form.custom_blocks ?? []).find((b) => b.id === blockId);
+      if (block) updateBlock(blockId, { photos: [...(block.photos ?? []), url] });
+    }
+  }
+  function removeBlockPhoto(blockId: string, photoIdx: number) {
+    const block = (form.custom_blocks ?? []).find((b) => b.id === blockId);
+    if (block) updateBlock(blockId, { photos: block.photos.filter((_, i) => i !== photoIdx) });
+  }
+
   function itemTotalSum(item: QuoteItem): number {
     if (item.variants?.length) return item.variants.reduce((s, v) => s + (v.sum || v.price * v.quantity || 0), 0);
     return item.sum;
@@ -462,7 +489,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setSaving(true);
     const res = await fetch("/api/quotes", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: editing ? "update" : "create", id: editing?.id, ...form, category_overrides: form.category_overrides ?? {}, status, items }),
+      body: JSON.stringify({ action: editing ? "update" : "create", id: editing?.id, ...form, category_overrides: form.category_overrides ?? {}, custom_blocks: form.custom_blocks ?? [], status, items }),
     });
     if (res.ok) {
       const data = await res.json();
@@ -659,9 +686,79 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
               const parts = item.name.split(" / ");
               if (parts.length >= 2) cats.add(parts[0]);
             }
-            if (cats.size === 0) return null;
             const overrides = form.category_overrides ?? {};
+            const blocks = form.custom_blocks ?? [];
+            const catsList = [...cats];
             return (
+              <>
+              {/* Hide photos toggle */}
+              <div className="p-3 rounded flex items-center gap-4" style={{ border: "1px solid #e4e4e4", background: "#fafafa" }}>
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input type="checkbox" checked={form.hide_photos ?? false}
+                    onChange={(e) => setForm({ ...form, hide_photos: e.target.checked })}
+                    style={{ accentColor: "#0067a5" }} />
+                  <span style={{ color: "#333" }}>Скрыть все фото в КП (оставить только названия и цены)</span>
+                </label>
+              </div>
+
+              {/* Custom info blocks */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label style={{ ...lblStyle, marginBottom: 0 }}>Информационные блоки</label>
+                  <button type="button" onClick={addCustomBlock}
+                    className="text-xs px-2 py-1 rounded" style={{ color: "#0067a5", border: "1px solid #0067a5" }}>+ Блок с фото</button>
+                </div>
+                <div className="space-y-2">
+                  {blocks.map((b) => (
+                    <div key={b.id} className="p-3 rounded" style={{ border: "1px solid #e4e4e4", background: "#fafafa" }}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <input value={b.title} onChange={(e) => updateBlock(b.id, { title: e.target.value })}
+                          placeholder="Заголовок блока"
+                          className="flex-1 text-xs px-2 py-1 rounded outline-none"
+                          style={{ border: "1px solid #e0e0e0", fontWeight: 600, fontSize: 13 }} />
+                        <select value={b.position} onChange={(e) => updateBlock(b.id, { position: e.target.value })}
+                          className="text-xs px-2 py-1 rounded outline-none"
+                          style={{ border: "1px solid #e0e0e0" }}>
+                          <option value="top">В начале КП</option>
+                          {catsList.map((cat) => <option key={cat} value={`after:${cat}`}>После &quot;{cat}&quot;</option>)}
+                          <option value="bottom">В конце КП</option>
+                        </select>
+                        <button onClick={() => removeBlock(b.id)} className="p-1 hover:bg-red-50 rounded">
+                          <X size={12} style={{ color: "#c62828" }} />
+                        </button>
+                      </div>
+                      <textarea value={b.description} onChange={(e) => updateBlock(b.id, { description: e.target.value })}
+                        placeholder="Описание (опционально)"
+                        rows={2}
+                        className="w-full text-xs px-2 py-1 rounded outline-none mb-2"
+                        style={{ border: "1px solid #e0e0e0", resize: "vertical", fontSize: 11 }} />
+                      {/* Photos row */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {b.photos.map((url, pi) => (
+                          <div key={pi} className="relative group">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={url} alt="" className="w-16 h-16 object-cover rounded" style={{ border: "1px solid #e0e0e0" }} />
+                            <button onClick={() => removeBlockPhoto(b.id, pi)}
+                              className="absolute -top-1 -right-1 bg-white rounded-full p-0.5 shadow opacity-0 group-hover:opacity-100 transition-opacity">
+                              <X size={10} style={{ color: "#c62828" }} />
+                            </button>
+                          </div>
+                        ))}
+                        <label className="w-16 h-16 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100"
+                          style={{ border: "1px dashed #ccc", background: "#fff" }}>
+                          <ImagePlus size={14} style={{ color: "#aaa" }} />
+                          <span style={{ fontSize: 9, color: "#aaa" }}>+ фото</span>
+                          <input type="file" accept="image/*" className="hidden"
+                            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBlockPhoto(f, b.id); e.target.value = ""; }} />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Category descriptions */}
+              {cats.size > 0 && (
               <div>
                 <label style={lblStyle}>Описания категорий (отображаются в КП)</label>
                 <div className="space-y-2">
@@ -689,6 +786,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                   ))}
                 </div>
               </div>
+              )}
+              </>
             );
           })()}
 
