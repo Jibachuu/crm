@@ -776,14 +776,13 @@ export async function POST(req: NextRequest) {
 
       const cat = String(row.category ?? "").trim() || null;
       const subcat = String(row.subcategory ?? "").trim() || null;
-      const kind = String(row.kind ?? "").trim() || null;
       const liters = String(row.liters ?? "").trim() || null;
       const container = String(row.container ?? "").trim() || null;
 
       // Auto-generate name if not provided
       let name = String(row.name ?? "").trim();
       if (!name) {
-        name = [cat, subcat, kind, liters ? `${liters}л` : null, container].filter(Boolean).join(" ");
+        name = [cat, subcat, liters ? `${liters}л` : null, container].filter(Boolean).join(" ");
       }
       if (!name) name = sku;
 
@@ -792,7 +791,6 @@ export async function POST(req: NextRequest) {
         sku,
         category: cat,
         subcategory: subcat,
-        kind,
         liters,
         container,
         base_price: Number(row.base_price) || 0,

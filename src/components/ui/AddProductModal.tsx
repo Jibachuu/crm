@@ -13,9 +13,8 @@ interface Product {
   base_price: number;
   category?: string;
   subcategory?: string;
-  flavor?: string;
-  volume_ml?: number;
-  product_variants: { id: string; attributes: Record<string, string>; price: number | null; stock: number }[];
+  liters?: string;
+  container?: string;
 }
 
 interface Props {
@@ -31,7 +30,6 @@ interface Props {
 export default function AddProductModal({ open, onClose, entityType, entityId, productBlock = "request", onAdded }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [selected, setSelected] = useState<Product | null>(null);
-  const [variantId, setVariantId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [basePrice, setBasePrice] = useState(0);
   const [salePrice, setSalePrice] = useState("");
@@ -44,7 +42,7 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
     if (!open) return;
     createClient()
       .from("products")
-      .select("*, product_variants(*)")
+      .select("*")
       .eq("is_active", true)
       .order("name")
       .then(({ data }) => setProducts(data ?? []));
@@ -52,22 +50,11 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
 
   function selectProduct(p: Product) {
     setSelected(p);
-    setVariantId(p.product_variants[0]?.id ?? "");
-    const v = p.product_variants[0];
-    const bp = v?.price ?? p.base_price;
+    const bp = p.base_price;
     setBasePrice(bp);
     setSalePrice(String(bp));
     setDiscountPct("0");
     setQuantity(1);
-  }
-
-  function onVariantChange(vid: string) {
-    setVariantId(vid);
-    const v = selected?.product_variants.find((vv) => vv.id === vid);
-    const bp = v?.price ?? selected?.base_price ?? 0;
-    setBasePrice(bp);
-    setSalePrice(String(bp));
-    setDiscountPct("0");
   }
 
   // Sale price changed → recalculate discount
@@ -103,7 +90,7 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
       .insert({
         [fkField]: entityId,
         product_id: selected.id,
-        variant_id: variantId || null,
+        variant_id: null,
         quantity,
         base_price: basePrice,
         unit_price: unitPrice,
@@ -112,8 +99,6 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
         product_block: productBlock,
         category: selected.category || null,
         subcategory: selected.subcategory || null,
-        flavor: selected.flavor || null,
-        volume_ml: selected.volume_ml ?? null,
         lifecycle_days: lifecycleDays > 0 ? lifecycleDays : null,
       })
       .select("*, products(name, sku)")
@@ -149,33 +134,24 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
               onChange={(e) => setSearch(e.target.value)}
             />
             <div className="space-y-2 max-h-80 overflow-y-auto">
-              {filtered.map((p) => {
-                const totalStock = p.product_variants.reduce((s, v) => s + v.stock, 0);
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => selectProduct(p)}
-                    className="w-full text-left px-4 py-3 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-slate-900">
-                          {p.name}
-                          {p.volume_ml ? <span className="text-xs font-normal ml-1 text-slate-500">{p.volume_ml} мл</span> : null}
-                        </p>
-                        <p className="text-xs text-slate-400">Арт. {p.sku}</p>
-                        {p.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{p.flavor}</p>}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-slate-900">{formatCurrency(p.base_price)}</p>
-                        <p className={`text-xs ${totalStock > 0 ? "text-green-600" : "text-red-500"}`}>
-                          {totalStock > 0 ? `${totalStock} шт.` : "Нет в наличии"}
-                        </p>
-                      </div>
+              {filtered.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => selectProduct(p)}
+                  className="w-full text-left px-4 py-3 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{p.name}</p>
+                      <p className="text-xs text-slate-400">Арт. {p.sku}</p>
+                      {(p.category || p.subcategory) && (
+                        <p className="text-xs" style={{ color: "#0067a5" }}>{[p.category, p.subcategory].filter(Boolean).join(" → ")}</p>
+                      )}
                     </div>
-                  </button>
-                );
-              })}
+                    <p className="text-sm font-semibold text-slate-900">{formatCurrency(p.base_price)}</p>
+                  </div>
+                </button>
+              ))}
               {filtered.length === 0 && <p className="text-sm text-slate-400 text-center py-8">Товары не найдены</p>}
             </div>
           </>
@@ -183,35 +159,14 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
           <>
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-slate-900">
-                  {selected.name}
-                  {selected.volume_ml ? <span className="text-sm font-normal ml-2 text-slate-500">{selected.volume_ml} мл</span> : null}
-                </h3>
+                <h3 className="font-semibold text-slate-900">{selected.name}</h3>
                 <p className="text-xs text-slate-400">Арт. {selected.sku}</p>
-                {selected.flavor && <p className="text-xs mt-0.5" style={{ color: "#7b1fa2" }}>Аромат: {selected.flavor}</p>}
                 {(selected.category || selected.subcategory) && (
                   <p className="text-xs mt-0.5" style={{ color: "#0067a5" }}>{[selected.category, selected.subcategory].filter(Boolean).join(" → ")}</p>
                 )}
               </div>
               <button onClick={() => setSelected(null)} className="text-xs text-blue-600 hover:underline">← Выбрать другой</button>
             </div>
-
-            {selected.product_variants.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Вариант</label>
-                <select
-                  className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={variantId}
-                  onChange={(e) => onVariantChange(e.target.value)}
-                >
-                  {selected.product_variants.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(" / ")} — {v.stock} шт.
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             {/* Price section */}
             <div className="rounded-lg p-3" style={{ background: "#f8f9fa", border: "1px solid #e4e4e4" }}>

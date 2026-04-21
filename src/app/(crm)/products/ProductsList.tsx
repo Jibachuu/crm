@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Search, Package, Edit2, Trash2, CheckSquare, ImagePlus } from "lucide-react";
+import { Plus, Search, Package, Edit2, Trash2, CheckSquare, ImagePlus, FileArchive } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
@@ -13,14 +13,31 @@ import { createClient } from "@/lib/supabase/client";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function ProductsList({ initialProducts }: { initialProducts: any[] }) {
   const [products, setProducts] = useState(initialProducts);
+  const [zipUploading, setZipUploading] = useState(false);
+  const [zipResult, setZipResult] = useState<{ uploaded: number; total: number; matched: { filename: string; productName: string }[]; unmatched: string[] } | null>(null);
+
+  async function handleZipUpload(file: File) {
+    setZipUploading(true);
+    setZipResult(null);
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/products/bulk-upload-photos", { method: "POST", body: fd });
+    const data = await res.json();
+    setZipUploading(false);
+    if (res.ok) {
+      setZipResult(data);
+      // Reload page to show new images
+      setTimeout(() => window.location.reload(), 500);
+    } else {
+      alert("Ошибка: " + (data.error ?? "неизвестная"));
+    }
+  }
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editing, setEditing] = useState<any | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [editingStock, setEditingStock] = useState<Record<string, string>>({});
 
   const [categoryFilter, setCategoryFilter] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("active");
@@ -95,35 +112,7 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
     setBulkDeleting(false);
   }
 
-  async function updateStock(productId: string, stock: number) {
-    const supabase = createClient();
-    // Update base stock on product_variants if exists, otherwise we'll store in description or ignore
-    const product = products.find((p: { id: string }) => p.id === productId);
-    if (product?.product_variants?.length > 0) {
-      // Update first variant's stock
-      await supabase.from("product_variants").update({ stock }).eq("id", product.product_variants[0].id);
-    } else {
-      // Create a default variant with the stock
-      await supabase.from("product_variants").insert({
-        product_id: productId,
-        attributes: {},
-        price: product?.base_price ?? 0,
-        stock,
-      });
-    }
-    // Reload product
-    const { data } = await supabase
-      .from("products")
-      .select("*, product_attributes(*), product_variants(*)")
-      .eq("id", productId)
-      .single();
-    if (data) {
-      setProducts((prev: typeof products) => prev.map((p: { id: string }) => p.id === productId ? data : p));
-    }
-    setEditingStock((prev) => { const n = { ...prev }; delete n[productId]; return n; });
-  }
-
-  async function updateField(productId: string, field: string, value: unknown) {
+async function updateField(productId: string, field: string, value: unknown) {
     const supabase = createClient();
     await supabase.from("products").update({ [field]: value }).eq("id", productId);
     setProducts((prev: typeof products) =>
@@ -159,11 +148,34 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
           <option value="inactive">Неактивные</option>
         </select>
         <ExportImportButtons entity="products" onImported={() => window.location.reload()} />
+        <label className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded cursor-pointer transition-colors hover:bg-blue-50"
+          style={{ border: "1px solid #0067a5", color: "#0067a5" }}>
+          <FileArchive size={13} /> {zipUploading ? "Загрузка..." : "Фото из ZIP"}
+          <input type="file" accept=".zip" className="hidden" disabled={zipUploading}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleZipUpload(f); e.target.value = ""; }} />
+        </label>
         <PurgeButton table="products" onPurged={() => window.location.reload()} />
         <Button size="sm" onClick={() => { setEditing(null); setModalOpen(true); }}>
           <Plus size={13} /> Новый товар
         </Button>
       </div>
+
+      {/* ZIP upload result */}
+      {zipResult && (
+        <div className="mb-3 p-3 rounded" style={{ background: "#e8f5e9", border: "1px solid #a5d6a7" }}>
+          <p className="text-sm font-semibold" style={{ color: "#2e7d32" }}>
+            Загружено: {zipResult.uploaded} из {zipResult.total} фото
+          </p>
+          {zipResult.unmatched.length > 0 && (
+            <details className="mt-2 text-xs">
+              <summary className="cursor-pointer" style={{ color: "#e65c00" }}>Не найдены товары для {zipResult.unmatched.length} фото</summary>
+              <ul className="mt-1" style={{ color: "#888" }}>
+                {zipResult.unmatched.slice(0, 20).map((f, i) => <li key={i}>— {f}</li>)}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
 
       {/* Bulk actions */}
       {someSelected && (
@@ -206,7 +218,7 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                   <th className="px-3 py-2.5 w-8">
                     <input type="checkbox" checked={allSelected} onChange={toggleAll} className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
                   </th>
-                  {["Фото", "Товар", "Категория", "Подкатегория", "Вид", "Литры", "Тара", "Артикул", "Цена", "Статус", ""].map((h) => (
+                  {["Фото", "Товар", "Категория", "Вид", "Литры", "Тара", "Артикул", "Цена", "Статус", ""].map((h) => (
                     <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#888" }}>{h}</th>
                   ))}
                 </tr>
@@ -215,9 +227,7 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                 {filtered.map((product: {
                   id: string; name: string; sku: string; base_price: number; is_active: boolean;
                   category?: string; subcategory?: string; image_url?: string;
-                  kind?: string; liters?: string; container?: string;
-                  volume_ml?: number; flavor?: string;
-                  product_variants?: { id: string; stock: number }[];
+                  liters?: string; container?: string;
                 }) => {
                   const isSel = selected.has(product.id);
                   return (
@@ -256,7 +266,6 @@ export default function ProductsList({ initialProducts }: { initialProducts: any
                       </td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.category || "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.subcategory || "—"}</td>
-                      <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.kind || "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.liters ? `${product.liters}л` : "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.container || "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{product.sku}</td>

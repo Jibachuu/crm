@@ -115,8 +115,7 @@ const ENTITY_FIELDS: Record<Entity, CrmField[]> = {
   ],
   products: [
     { key: "category", label: "Категория" },
-    { key: "subcategory", label: "Подкатегория" },
-    { key: "kind", label: "Вид" },
+    { key: "subcategory", label: "Вид" },
     { key: "name", label: "Название" },
     { key: "liters", label: "Литры" },
     { key: "container", label: "Тара" },

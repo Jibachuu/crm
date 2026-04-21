@@ -5,7 +5,7 @@ import ProductsList from "./ProductsList";
 
 export default async function ProductsPage() {
   const supabase = await createClient();
-  const products = await fetchAll(supabase, "products", "*, product_attributes(*), product_variants(id, attributes, price, stock)", {
+  const products = await fetchAll(supabase, "products", "*", {
     order: { column: "name" },
     // Load all products — active/inactive filter handled on client
   });
