@@ -14,24 +14,25 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient();
   const ext = file.name.split(".").pop() ?? "jpg";
-  const path = `products/${productId}.${ext}`;
+  // Unique path per upload — bypasses browser cache on replace
+  const path = `products/${productId}_${Date.now()}.${ext}`;
   const buffer = Buffer.from(new Uint8Array(await file.arrayBuffer()));
 
-  // Delete old if exists
-  await admin.storage.from("attachments").remove([path]);
-
-  const { error: upErr } = await admin.storage.from("attachments").upload(path, buffer, { contentType: file.type, upsert: true });
+  const { error: upErr } = await admin.storage.from("attachments").upload(path, buffer, { contentType: file.type });
   if (upErr) {
     if (upErr.message?.includes("not found") || upErr.message?.includes("Bucket")) {
       await admin.storage.createBucket("attachments", { public: true });
-      await admin.storage.from("attachments").upload(path, buffer, { contentType: file.type, upsert: true });
+      await admin.storage.from("attachments").upload(path, buffer, { contentType: file.type });
     } else {
       return NextResponse.json({ error: upErr.message }, { status: 500 });
     }
   }
 
   const { data: urlData } = admin.storage.from("attachments").getPublicUrl(path);
-  await admin.from("products").update({ image_url: urlData.publicUrl }).eq("id", productId);
+  // Only update product table if it's a real product (not a quote-manual placeholder)
+  if (!productId.startsWith("quote-manual-")) {
+    await admin.from("products").update({ image_url: urlData.publicUrl }).eq("id", productId);
+  }
 
   return NextResponse.json({ url: urlData.publicUrl });
 }
