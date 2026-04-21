@@ -162,45 +162,72 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                           const hasVariants = item.variants?.length > 0;
                           return (
                             <div key={item.id} style={{ padding: 16, borderRadius: 8, background: "#faf8f5", border: "1px solid #efe9df", pageBreakInside: "avoid", breakInside: "avoid", gridColumn: hasVariants ? "1 / -1" : undefined }}>
-                              {hasVariants ? (
-                                // ═══ Горизонтальная раскладка для товаров с вариантами ═══
-                                <div>
-                                  <div style={{ marginBottom: 12 }}>
-                                    <p style={{ fontSize: 16, fontWeight: 700, color: "#3d3325", marginBottom: 2 }}>{item.name.split(" / ").pop()}</p>
-                                    {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
-                                    {item.description && <p style={{ fontSize: 12, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
-                                  </div>
-                                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(item.variants.length, 5)}, 1fr)`, gap: 8 }}>
-                                    {item.variants.map((v: { label: string; price: number; quantity: number; sum: number; image_url?: string; price_tiers?: { from_qty: number; to_qty: number | null; price: number }[]; hide_photo?: boolean }, vi: number) => (
-                                      <div key={vi} style={{ padding: "10px 8px", background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6 }}>
-                                        {v.hide_photo ? null : v.image_url ? (
-                                          <img src={v.image_url} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 4, background: "#fff" }} />
-                                        ) : (
-                                          <div style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 4, background: "#efe9df" }} />
-                                        )}
-                                        <p style={{ fontSize: 11, fontWeight: 600, color: "#3d3325", lineHeight: 1.3, minHeight: 28 }}>{v.label}</p>
-                                        {v.price_tiers?.length ? (
-                                          <div style={{ width: "100%", marginTop: "auto" }}>
-                                            {v.price_tiers.map((tier, ti) => (
-                                              <div key={ti} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "1px 2px" }}>
-                                                <span style={{ color: "#8c7e6a" }}>{tier.from_qty}{tier.to_qty ? `–${tier.to_qty}` : "+"} шт.</span>
-                                                <span style={{ fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(tier.price)}</span>
-                                              </div>
-                                            ))}
+                              {hasVariants ? (() => {
+                                // ═══ Раскладка с вариантами: основной (с фото) слева, остальные справа таблицей ═══
+                                type V = { label: string; price: number; quantity: number; sum: number; image_url?: string; price_tiers?: { from_qty: number; to_qty: number | null; price: number }[]; hide_photo?: boolean };
+                                const variantList = item.variants as V[];
+                                // Find main variant: first with visible photo
+                                const mainIdx = variantList.findIndex((v) => !v.hide_photo && v.image_url);
+                                const mainVariant = mainIdx >= 0 ? variantList[mainIdx] : null;
+                                const otherVariants = mainIdx >= 0 ? variantList.filter((_, i) => i !== mainIdx) : variantList;
+
+                                function renderTiersOrPrice(v: V, compact = false) {
+                                  if (v.price_tiers?.length) {
+                                    return (
+                                      <div style={{ width: "100%" }}>
+                                        {v.price_tiers.map((tier, ti) => (
+                                          <div key={ti} style={{ display: "flex", justifyContent: "space-between", fontSize: compact ? 11 : 12, padding: compact ? "1px 0" : "2px 0", gap: 8 }}>
+                                            <span style={{ color: "#8c7e6a" }}>{tier.from_qty}{tier.to_qty ? `–${tier.to_qty}` : "+"} шт.</span>
+                                            <span style={{ fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(tier.price)}</span>
                                           </div>
-                                        ) : (
-                                          <div style={{ marginTop: "auto" }}>
-                                            <p style={{ fontSize: 13, fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(v.price)}</p>
-                                            {v.quantity > 1 && (
-                                              <p style={{ fontSize: 10, color: "#8c7e6a" }}>× {v.quantity} = {formatCurrency(v.sum || v.price * v.quantity)}</p>
-                                            )}
-                                          </div>
-                                        )}
+                                        ))}
                                       </div>
-                                    ))}
+                                    );
+                                  }
+                                  return (
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6, fontSize: compact ? 12 : 14 }}>
+                                      <span style={{ fontWeight: 700, color: "#6b5e4f" }}>{formatCurrency(v.price)}</span>
+                                      {v.quantity > 1 && <span style={{ fontSize: 10, color: "#8c7e6a" }}>× {v.quantity}</span>}
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <div>
+                                    <div style={{ marginBottom: 14 }}>
+                                      <p style={{ fontSize: 16, fontWeight: 700, color: "#3d3325", marginBottom: 2 }}>{item.name.split(" / ").pop()}</p>
+                                      {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
+                                      {item.description && <p style={{ fontSize: 12, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
+                                    </div>
+                                    <div className="quote-variants-layout" style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+                                      {/* Main variant (with photo) */}
+                                      {mainVariant && (
+                                        <div style={{ flex: "1 1 260px", maxWidth: 320, minWidth: 220, padding: 10, background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6 }}>
+                                          <img src={mainVariant.image_url} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 4, background: "#fff", marginBottom: 8 }} />
+                                          <p style={{ fontSize: 13, fontWeight: 700, color: "#3d3325", textAlign: "center", marginBottom: 8 }}>{mainVariant.label}</p>
+                                          {renderTiersOrPrice(mainVariant, false)}
+                                        </div>
+                                      )}
+                                      {/* Other variants — compact list */}
+                                      {otherVariants.length > 0 && (
+                                        <div style={{ flex: "2 1 320px", display: "flex", flexDirection: "column", gap: 8 }}>
+                                          {otherVariants.map((v, vi) => (
+                                            <div key={vi} style={{ padding: "8px 10px", background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6, display: "flex", alignItems: "flex-start", gap: 10 }}>
+                                              {!v.hide_photo && v.image_url && (
+                                                <img src={v.image_url} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 4, flexShrink: 0 }} />
+                                              )}
+                                              <div style={{ flex: 1, minWidth: 0 }}>
+                                                <p style={{ fontSize: 12, fontWeight: 600, color: "#3d3325", marginBottom: 4 }}>{v.label}</p>
+                                                {renderTiersOrPrice(v, true)}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              ) : (
+                                );
+                              })() : (
                                 // ═══ Обычная раскладка с большим фото слева ═══
                                 <div style={{ display: "flex", gap: 14 }}>
                                   {item.hide_photo ? null : item.image_url ? (
