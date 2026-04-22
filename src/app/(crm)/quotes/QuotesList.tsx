@@ -121,6 +121,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean; hide_photos?: boolean; category_overrides?: Record<string, { title: string; description: string }>; column_titles?: Record<string, string>; custom_blocks?: Array<{ id: string; title: string; description: string; photos: string[]; position: string }> }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
 
@@ -159,6 +160,20 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       hide_photo: i.hide_photo ?? false,
     })));
     setEditorOpen(true);
+  }
+
+  function addSelectedProducts() {
+    const toAdd = products.filter((p: { id: string }) => selectedProductIds.has(p.id));
+    for (const p of toAdd) addProduct(p);
+    setSelectedProductIds(new Set());
+    setProductSearch("");
+  }
+  function toggleProductSelection(id: string) {
+    setSelectedProductIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
   }
 
   function addProduct(p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; liters?: string; container?: string; description?: string; image_url?: string }) {
@@ -671,13 +686,32 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
               <input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Поиск по названию или артикулу..." className="w-full pl-8 pr-3 py-1.5 text-xs focus:outline-none" style={{ border: "1px solid #d0d0d0", borderRadius: 4 }} />
             </div>
             {filteredProducts.length > 0 && (
-              <div className="mt-1 rounded shadow-lg max-h-40 overflow-y-auto" style={{ border: "1px solid #e4e4e4", background: "#fff" }}>
-                {filteredProducts.slice(0, 50).map((p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; liters?: string; container?: string; description?: string; image_url?: string }) => (
-                  <button key={p.id} onClick={() => addProduct(p)} className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center justify-between" style={{ borderBottom: "1px solid #f0f0f0" }}>
-                    <span>{[p.category, p.subcategory, formatLiters(p.liters), p.container, p.name].filter(Boolean).join(" / ")} <span style={{ color: "#aaa" }}>арт. {p.sku}</span></span>
-                    <span style={{ color: "#2e7d32" }}>{formatCurrency(p.base_price)}</span>
-                  </button>
-                ))}
+              <div className="mt-1">
+                {selectedProductIds.size > 0 && (
+                  <div className="flex items-center justify-between px-3 py-2 mb-1 rounded" style={{ background: "#e8f4fd", border: "1px solid #b3d4f0" }}>
+                    <span className="text-xs" style={{ color: "#0067a5" }}>Выбрано: <strong>{selectedProductIds.size}</strong></span>
+                    <div className="flex gap-2">
+                      <button onClick={() => setSelectedProductIds(new Set())} className="text-xs" style={{ color: "#888" }}>Снять</button>
+                      <button onClick={addSelectedProducts} className="text-xs px-3 py-1 rounded" style={{ background: "#0067a5", color: "#fff" }}>+ Добавить все</button>
+                    </div>
+                  </div>
+                )}
+                <div className="rounded shadow-lg max-h-60 overflow-y-auto" style={{ border: "1px solid #e4e4e4", background: "#fff" }}>
+                  {filteredProducts.slice(0, 50).map((p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; liters?: string; container?: string; description?: string; image_url?: string }) => {
+                    const isSelected = selectedProductIds.has(p.id);
+                    return (
+                      <div key={p.id} className="w-full text-xs flex items-center gap-2 px-3 py-2 hover:bg-blue-50"
+                        style={{ borderBottom: "1px solid #f0f0f0", background: isSelected ? "#e8f4fd" : "transparent" }}>
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleProductSelection(p.id)}
+                          className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
+                        <button onClick={() => addProduct(p)} className="flex-1 text-left flex items-center justify-between cursor-pointer">
+                          <span>{[p.category, p.subcategory, formatLiters(p.liters), p.container, p.name].filter(Boolean).join(" / ")} <span style={{ color: "#aaa" }}>арт. {p.sku}</span></span>
+                          <span style={{ color: "#2e7d32" }}>{formatCurrency(p.base_price)}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
