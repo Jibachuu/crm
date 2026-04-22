@@ -58,15 +58,20 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
   const blocksTop = customBlocks.filter((b) => b.position === "top");
   const blocksBottom = customBlocks.filter((b) => b.position === "bottom");
   const blocksByCategory = new Map<string, CustomBlock[]>();
+  const blocksAfterBlock = new Map<string, CustomBlock[]>();
   for (const b of customBlocks) {
     if (b.position?.startsWith("after:")) {
       const cat = b.position.slice(6);
       if (!blocksByCategory.has(cat)) blocksByCategory.set(cat, []);
       blocksByCategory.get(cat)!.push(b);
+    } else if (b.position?.startsWith("after_block:")) {
+      const parentId = b.position.slice("after_block:".length);
+      if (!blocksAfterBlock.has(parentId)) blocksAfterBlock.set(parentId, []);
+      blocksAfterBlock.get(parentId)!.push(b);
     }
   }
 
-  function renderBlock(b: CustomBlock) {
+  function renderBlockCard(b: CustomBlock) {
     const isHtml = b.description?.includes("<");
     return (
       <div key={b.id} style={{ padding: "20px 40px", borderBottom: "1px solid #efe9df", pageBreakInside: "avoid" }}>
@@ -88,6 +93,17 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
           </div>
         )}
       </div>
+    );
+  }
+
+  // Recursively render block and any blocks positioned after it
+  function renderBlock(b: CustomBlock): React.ReactNode {
+    const after = blocksAfterBlock.get(b.id) ?? [];
+    return (
+      <>
+        {renderBlockCard(b)}
+        {after.map(renderBlock)}
+      </>
     );
   }
 
@@ -377,7 +393,10 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
         <div style={{ padding: "24px 40px", borderTop: "1px solid #efe9df" }}>
           <p style={{ fontSize: 11, fontWeight: 600, color: "#b3a894", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Ваш менеджер</p>
           <p style={{ fontSize: 15, fontWeight: 600, color: "#3d3325" }}>{manager?.full_name}</p>
-          {manager?.email && <p style={{ fontSize: 13, color: "#6b5e4f" }}>{manager.email}</p>}
+          <p style={{ fontSize: 13, color: "#6b5e4f" }}>info@art-evo.ru</p>
+          <p style={{ fontSize: 13, color: "#6b5e4f" }}>
+            <a href="https://art-evo.ru/" target="_blank" rel="noopener noreferrer" style={{ color: "#6b5e4f", textDecoration: "underline" }}>art-evo.ru</a>
+          </p>
           {sigData?.body && (
             <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #efe9df", fontSize: 12, color: "#8c7e6a", whiteSpace: "pre-wrap" }}>
               {sigData.body}
@@ -386,12 +405,14 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
 
           {/* CTA */}
           <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
-            {manager?.email && (
-              <a href={`mailto:${manager.email}`}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 24px", background: "#6b5e4f", color: "#fff", borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
-                Email
-              </a>
-            )}
+            <a href="mailto:info@art-evo.ru"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 24px", background: "#6b5e4f", color: "#fff", borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+              Email
+            </a>
+            <a href="https://art-evo.ru/" target="_blank" rel="noopener noreferrer"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 24px", background: "#fff", color: "#6b5e4f", borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: "none", border: "1px solid #6b5e4f" }}>
+              Сайт
+            </a>
           </div>
         </div>
 

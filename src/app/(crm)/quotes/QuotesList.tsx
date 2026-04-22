@@ -841,6 +841,9 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                           style={{ border: "1px solid #e0e0e0" }}>
                           <option value="top">В начале КП</option>
                           {catsList.map((cat) => <option key={cat} value={`after:${cat}`}>После &quot;{cat}&quot;</option>)}
+                          {blocks.filter((ob) => ob.id !== b.id && ob.title).map((ob) => (
+                            <option key={ob.id} value={`after_block:${ob.id}`}>После блока &quot;{ob.title}&quot;</option>
+                          ))}
                           <option value="bottom">В конце КП</option>
                         </select>
                         <button onClick={() => removeBlock(b.id)} className="p-1 hover:bg-red-50 rounded">
