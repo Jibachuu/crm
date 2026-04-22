@@ -38,12 +38,13 @@ export async function novofonApi(method: string, params: Record<string, string> 
   return res.json();
 }
 
-// Initiate callback: CRM calls manager first, then connects to client
+// Initiate callback: Novofon first calls the client, then connects to the operator's SIP
 // `from` — virtual number (e.g. "78432126777") to display as caller ID
 // `to` — client phone
 // `sip` — SIP login to receive the callback (e.g. "0108429")
+// `predicted` — if "1", Novofon calls the client first; bypasses operator availability checks
 export async function initiateCall(from: string, to: string, sip?: string) {
-  const params: Record<string, string> = { from, to };
+  const params: Record<string, string> = { from, to, predicted: "1" };
   if (sip) params.sip = sip;
   return novofonApi("/request/callback", params);
 }
