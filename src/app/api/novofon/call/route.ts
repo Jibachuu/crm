@@ -13,13 +13,14 @@ export async function POST(req: NextRequest) {
   if (!phone) return NextResponse.json({ error: "phone required" }, { status: 400 });
 
   try {
-    // Get manager's SIP from user profile
+    // Get manager's SIP from user profile.
+    // Novofon callback API expects sip_login (e.g. "0108429"), NOT the PBX extension (e.g. "101").
     const admin = createAdminClient();
-    const { data: profile } = await admin.from("users").select("sip_number").eq("id", user.id).single();
-    const managerSip = sip || profile?.sip_number || process.env.NOVOFON_DEFAULT_SIP || "";
+    const { data: profile } = await admin.from("users").select("sip_login, sip_number").eq("id", user.id).single();
+    const managerSip = sip || profile?.sip_login || profile?.sip_number || process.env.NOVOFON_DEFAULT_SIP || "";
 
     if (!managerSip) {
-      return NextResponse.json({ error: "SIP номер не настроен. Укажите его в настройках профиля." }, { status: 400 });
+      return NextResponse.json({ error: "SIP логин не настроен. Укажите его в настройках профиля." }, { status: 400 });
     }
 
     console.log("[novofon/call] from:", managerSip, "to:", phone);
