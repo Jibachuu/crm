@@ -8,7 +8,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
   const admin = createAdminClient();
 
   const [{ data: quote }, { data: items }, { data: supplier }, { data: catDescs }] = await Promise.all([
-    admin.from("quotes").select("*, companies(name, inn), contacts(full_name, phone, email), users!quotes_manager_id_fkey(id, full_name, email)").eq("id", id).single(),
+    admin.from("quotes").select("*, companies(name, inn), contacts(full_name, phone, email), users!quotes_manager_id_fkey(id, full_name, email, phone)").eq("id", id).single(),
     admin.from("quote_items").select("*").eq("quote_id", id).order("sort_order"),
     admin.from("supplier_settings").select("*").limit(1).single(),
     admin.from("category_descriptions").select("*").order("sort_order"),
@@ -28,7 +28,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
     return i.sum ?? 0;
   }
   const totalAmount = (items ?? []).reduce((s, i) => s + itemSum(i), 0);
-  const manager = quote.users as { full_name: string; email?: string } | null;
+  const manager = quote.users as { full_name: string; email?: string; phone?: string } | null;
 
   // Multiple columns support
   const colTitles = (quote.column_titles ?? {}) as Record<string, string>;
@@ -398,6 +398,11 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
         <div style={{ padding: "24px 40px", borderTop: "1px solid #efe9df" }}>
           <p style={{ fontSize: 11, fontWeight: 600, color: "#b3a894", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Ваш менеджер</p>
           <p style={{ fontSize: 15, fontWeight: 600, color: "#3d3325" }}>{manager?.full_name}</p>
+          {manager?.phone && (
+            <p style={{ fontSize: 13, color: "#6b5e4f" }}>
+              <a href={`tel:${manager.phone}`} style={{ color: "#6b5e4f", textDecoration: "none" }}>{manager.phone}</a>
+            </p>
+          )}
           <p style={{ fontSize: 13, color: "#6b5e4f" }}>info@art-evo.ru</p>
           <p style={{ fontSize: 13, color: "#6b5e4f" }}>
             <a href="https://art-evo.ru/" target="_blank" rel="noopener noreferrer" style={{ color: "#6b5e4f", textDecoration: "underline" }}>art-evo.ru</a>
