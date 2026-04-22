@@ -187,18 +187,15 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
 
         // If we initiated an outbound call via callback API, auto-answer this
         if (stateRef.current === "calling") {
-          console.log("[WebPhone] auto-answering Novofon callback");
+          console.log("[WebPhone] auto-answering Novofon callback, session status:", session.status);
           if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
-          // Small delay to let JsSIP process the SIP session fully before answering
-          setTimeout(() => {
-            console.log("[WebPhone] answering now, session status:", session.status);
-            try {
-              session.answer(answerOptions);
-            } catch (err) {
-              console.error("[WebPhone] answer error:", err);
-              endCall();
-            }
-          }, 300);
+          // Answer immediately — any delay risks Novofon dropping the call
+          try {
+            session.answer(answerOptions);
+          } catch (err) {
+            console.error("[WebPhone] answer error:", err);
+            endCall();
+          }
           return;
         }
 
