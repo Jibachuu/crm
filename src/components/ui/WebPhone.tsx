@@ -125,6 +125,7 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
         password: sipPassword,
         display_name: displayName,
         register: true,
+        register_expires: 300, // re-register every 5 minutes (Novofon default might expire faster)
         session_timers: false,
         connection_recovery_min_interval: 2,
         connection_recovery_max_interval: 30,
