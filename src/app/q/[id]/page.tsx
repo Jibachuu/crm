@@ -67,13 +67,18 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
   }
 
   function renderBlock(b: CustomBlock) {
+    const isHtml = b.description?.includes("<");
     return (
       <div key={b.id} style={{ padding: "20px 40px", borderBottom: "1px solid #efe9df", pageBreakInside: "avoid" }}>
         {b.title && <h2 style={{ fontSize: 18, fontWeight: 700, color: "#3d3325", marginBottom: 8, fontFamily: "Georgia, serif" }}>{b.title}</h2>}
         {b.description && (
-          <div style={{ fontSize: 13, color: "#6b5e4f", lineHeight: 1.7, marginBottom: 14 }}>
-            {b.description.split("\n").map((line, i) => <p key={i} style={{ margin: "4px 0" }}>{line}</p>)}
-          </div>
+          isHtml ? (
+            <div style={{ fontSize: 13, color: "#6b5e4f", lineHeight: 1.7, marginBottom: 14 }} dangerouslySetInnerHTML={{ __html: b.description }} />
+          ) : (
+            <div style={{ fontSize: 13, color: "#6b5e4f", lineHeight: 1.7, marginBottom: 14 }}>
+              {b.description.split("\n").map((line, i) => <p key={i} style={{ margin: "4px 0" }}>{line}</p>)}
+            </div>
+          )
         )}
         {b.photos?.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(b.photos.length, 4)}, 1fr)`, gap: 10 }}>
@@ -105,7 +110,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
             Коммерческое предложение
           </h1>
           <p style={{ fontSize: 14, color: "#8c7e6a", marginTop: 4 }}>
-            для {quote.companies?.name ?? quote.contacts?.full_name ?? "клиента"}
+            {quote.custom_recipient || `для ${quote.companies?.name ?? quote.contacts?.full_name ?? "клиента"}`}
           </p>
           <p style={{ fontSize: 12, color: "#b3a894", marginTop: 2 }}>
             №{quote.quote_number} от {new Date(quote.created_at).toLocaleDateString("ru-RU")}

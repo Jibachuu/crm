@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Plus, Search, FileSpreadsheet, Trash2, Eye, EyeOff, Download, Copy, Check, Send, X, ImagePlus, RotateCcw } from "lucide-react";
+import RichTextEditor from "@/components/ui/RichTextEditor";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
@@ -111,6 +112,35 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   }
   const [quotes, setQuotes] = useState(initialQuotes);
   const [showTrash, setShowTrash] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [companiesList, setCompaniesList] = useState<any[]>(companies);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [contactsList, setContactsList] = useState<any[]>(contacts);
+
+  async function createCompanyInline() {
+    const name = prompt("Название компании:");
+    if (!name) return;
+    const supabase = (await import("@/lib/supabase/client")).createClient();
+    const { data, error } = await supabase.from("companies").insert({ name, created_by: currentUserId }).select("id, name, inn").single();
+    if (error) { alert("Ошибка: " + error.message); return; }
+    if (data) {
+      setCompaniesList([...companiesList, data]);
+      setForm({ ...form, company_id: data.id, contact_id: "", custom_recipient: "" });
+    }
+  }
+
+  async function createContactInline() {
+    if (!form.company_id) { alert("Сначала выберите компанию"); return; }
+    const name = prompt("ФИО контакта:");
+    if (!name) return;
+    const supabase = (await import("@/lib/supabase/client")).createClient();
+    const { data, error } = await supabase.from("contacts").insert({ full_name: name, company_id: form.company_id, created_by: currentUserId }).select("id, full_name, phone, email, company_id").single();
+    if (error) { alert("Ошибка: " + error.message); return; }
+    if (data) {
+      setContactsList([...contactsList, data]);
+      setForm({ ...form, contact_id: data.id });
+    }
+  }
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
@@ -119,7 +149,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   const [copied, setCopied] = useState(false);
 
   // Editor state
-  const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean; hide_photos?: boolean; category_overrides?: Record<string, { title: string; description: string }>; column_titles?: Record<string, string>; custom_blocks?: Array<{ id: string; title: string; description: string; photos: string[]; position: string }> }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
+  const [form, setForm] = useState<{ company_id: string; contact_id: string; deal_id: string; manager_id: string; payment_terms: string; delivery_terms: string; comment: string; hide_total?: boolean; hide_photos?: boolean; category_overrides?: Record<string, { title: string; description: string }>; column_titles?: Record<string, string>; custom_blocks?: Array<{ id: string; title: string; description: string; photos: string[]; position: string }>; custom_recipient?: string }>({ company_id: "", contact_id: "", deal_id: "", manager_id: currentUserId, payment_terms: "предоплата", delivery_terms: "", comment: "" });
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
@@ -137,7 +167,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setEditing({ id: quoteId });
     const q = quotes.find((qq: { id: string }) => qq.id === quoteId);
     if (q) {
-      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "", hide_total: q.hide_total ?? false, hide_photos: q.hide_photos ?? false, category_overrides: q.category_overrides ?? {}, column_titles: q.column_titles ?? {}, custom_blocks: q.custom_blocks ?? [] });
+      setForm({ company_id: q.company_id ?? "", contact_id: q.contact_id ?? "", deal_id: q.deal_id ?? "", manager_id: q.manager_id ?? currentUserId, payment_terms: q.payment_terms ?? "предоплата", delivery_terms: q.delivery_terms ?? "", comment: q.comment ?? "", hide_total: q.hide_total ?? false, hide_photos: q.hide_photos ?? false, category_overrides: q.category_overrides ?? {}, column_titles: q.column_titles ?? {}, custom_blocks: q.custom_blocks ?? [], custom_recipient: q.custom_recipient ?? "" });
     }
     // Load items from DB
     const supabase = (await import("@/lib/supabase/client")).createClient();
@@ -519,7 +549,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   }
 
   function copySummary() {
-    const contact = contacts.find((c: { id: string }) => c.id === form.contact_id);
+    const contact = contactsList.find((c: { id: string }) => c.id === form.contact_id);
     const manager = users.find((u: { id: string }) => u.id === form.manager_id);
     const lines = [`Добрый день${contact ? ", " + contact.full_name : ""}!`, "", "Направляем наше коммерческое предложение от Artevo:", ""];
     for (const item of items) {
@@ -600,7 +630,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   const inputStyle: React.CSSProperties = { border: "1px solid #d0d0d0", borderRadius: 4, padding: "6px 10px", fontSize: 13, width: "100%", outline: "none" };
   const lblStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: "#888", display: "block", marginBottom: 4 };
 
-  const companyContacts = form.company_id ? contacts.filter((c: { company_id: string }) => c.company_id === form.company_id) : contacts;
+  const companyContacts = form.company_id ? contactsList.filter((c: { company_id: string }) => c.company_id === form.company_id) : contactsList;
 
   return (
     <div>
@@ -687,9 +717,12 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
           {/* Header fields */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label style={lblStyle}>Компания</label>
+              <div className="flex items-center justify-between mb-1">
+                <label style={{ ...lblStyle, marginBottom: 0 }}>Компания</label>
+                <button type="button" onClick={createCompanyInline} className="text-xs" style={{ color: "#0067a5" }}>+ Новая</button>
+              </div>
               <SearchableSelect
-                options={companies.map((c: { id: string; name: string }) => ({ id: c.id, label: c.name }))}
+                options={companiesList.map((c: { id: string; name: string }) => ({ id: c.id, label: c.name }))}
                 value={form.company_id}
                 onChange={(id) => setForm({ ...form, company_id: id, contact_id: "" })}
                 inputStyle={inputStyle}
@@ -697,7 +730,10 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
               />
             </div>
             <div>
-              <label style={lblStyle}>Контакт</label>
+              <div className="flex items-center justify-between mb-1">
+                <label style={{ ...lblStyle, marginBottom: 0 }}>Контакт</label>
+                <button type="button" onClick={createContactInline} className="text-xs" style={{ color: "#0067a5" }}>+ Новый</button>
+              </div>
               <SearchableSelect
                 options={companyContacts.map((c: { id: string; full_name: string }) => ({ id: c.id, label: c.full_name }))}
                 value={form.contact_id}
@@ -705,6 +741,12 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                 inputStyle={inputStyle}
                 placeholder="Поиск контакта..."
               />
+            </div>
+            <div className="col-span-2">
+              <label style={lblStyle}>Или «для кого» свободным текстом (если нет компании)</label>
+              <input value={form.custom_recipient ?? ""} onChange={(e) => setForm({ ...form, custom_recipient: e.target.value })}
+                placeholder="Например: для отелей и гостиниц / Уважаемые партнёры"
+                style={inputStyle} />
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3">
@@ -805,11 +847,11 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                           <X size={12} style={{ color: "#c62828" }} />
                         </button>
                       </div>
-                      <textarea value={b.description} onChange={(e) => updateBlock(b.id, { description: e.target.value })}
-                        placeholder="Описание (опционально)"
-                        rows={2}
-                        className="w-full text-xs px-2 py-1 rounded outline-none mb-2"
-                        style={{ border: "1px solid #e0e0e0", resize: "vertical", fontSize: 11 }} />
+                      <div className="mb-2">
+                        <RichTextEditor value={b.description} onChange={(html) => updateBlock(b.id, { description: html })}
+                          placeholder="Текст блока — можно использовать жирный, курсив, подчёркивание, разные размеры"
+                          minHeight={140} />
+                      </div>
                       {/* Photos row */}
                       <div className="flex items-center gap-2 flex-wrap">
                         {b.photos.map((url, pi) => (
