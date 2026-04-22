@@ -149,8 +149,10 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
     setUploading(false);
   }
 
-  function addProduct(p: { id: string; name: string; sku: string; base_price: number }) {
-    setItems([...items, { product_id: p.id, name: p.name, quantity: 1, unit: "шт", price: p.base_price, total: p.base_price }]);
+  function addProduct(p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; liters?: string; container?: string }) {
+    const litersPart = p.liters ? formatLiters(p.liters) : "";
+    const fullName = [p.category, p.subcategory, litersPart, p.container, p.name].filter(Boolean).join(" / ");
+    setItems([...items, { product_id: p.id, name: fullName, quantity: 1, unit: "шт", price: p.base_price, total: p.base_price }]);
     setProductSearch("");
   }
 

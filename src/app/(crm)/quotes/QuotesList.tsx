@@ -161,9 +161,10 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setEditorOpen(true);
   }
 
-  function addProduct(p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; description?: string; image_url?: string }) {
-    // Build full name: category + subcategory + name
-    const fullName = [p.category, p.subcategory, p.name].filter(Boolean).join(" / ");
+  function addProduct(p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; liters?: string; container?: string; description?: string; image_url?: string }) {
+    // Build full name: category / subcategory / liters / container / name
+    const litersPart = p.liters ? formatLiters(p.liters) : "";
+    const fullName = [p.category, p.subcategory, litersPart, p.container, p.name].filter(Boolean).join(" / ");
     // Extract characteristics from description (lines with ":")
     const chars = (p.description ?? "").split("\n")
       .filter((l) => l.includes(":"))
