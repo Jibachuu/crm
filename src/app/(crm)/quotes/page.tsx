@@ -12,6 +12,10 @@ export default async function QuotesPage() {
 
   const admin = createAdminClient();
 
+  // Auto-cleanup trash: permanently delete quotes deleted more than 30 days ago
+  const trashCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  await admin.from("quotes").delete().lt("deleted_at", trashCutoff);
+
   const [{ data: quotes }, { data: companies }, { data: contacts }, products, { data: users }, { data: invoices }] = await Promise.all([
     admin.from("quotes")
       .select("*, companies(id, name), contacts(id, full_name), users!quotes_manager_id_fkey(id, full_name), deals(id, title)")

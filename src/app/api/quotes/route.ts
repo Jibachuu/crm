@@ -73,10 +73,53 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ id: quoteId });
   }
 
+  // Soft delete — move to trash (30 days before permanent deletion)
   if (action === "delete") {
+    const { id } = body;
+    await admin.from("quotes").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    return NextResponse.json({ ok: true });
+  }
+
+  // Restore from trash
+  if (action === "restore") {
+    const { id } = body;
+    await admin.from("quotes").update({ deleted_at: null }).eq("id", id);
+    return NextResponse.json({ ok: true });
+  }
+
+  // Permanently delete from trash
+  if (action === "purge") {
     const { id } = body;
     await admin.from("quotes").delete().eq("id", id);
     return NextResponse.json({ ok: true });
+  }
+
+  // Auto-purge quotes deleted more than 30 days ago
+  if (action === "cleanup_trash") {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { data } = await admin.from("quotes").delete().lt("deleted_at", cutoff).select("id");
+    return NextResponse.json({ ok: true, purged: data?.length ?? 0 });
+  }
+
+  // Duplicate quote
+  if (action === "duplicate") {
+    const { id } = body;
+    const { data: source } = await admin.from("quotes").select("*").eq("id", id).single();
+    if (!source) return NextResponse.json({ error: "Quote not found" }, { status: 404 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { id: _, quote_number, created_at, updated_at, deleted_at, ...copy } = source as any;
+    void _; void quote_number; void created_at; void updated_at; void deleted_at;
+    const { data: newQuote, error } = await admin.from("quotes").insert({ ...copy, status: "draft", comment: source.comment ? `[Копия] ${source.comment}` : "[Копия]" }).select("id").single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Copy items
+    const { data: sourceItems } = await admin.from("quote_items").select("*").eq("quote_id", id);
+    if (sourceItems?.length) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const newItems = sourceItems.map(({ id: _iid, created_at: _cr, ...rest }: any) => ({ ...rest, quote_id: newQuote.id }));
+      await admin.from("quote_items").insert(newItems);
+    }
+    return NextResponse.json({ id: newQuote.id });
   }
 
   if (action === "update_status") {

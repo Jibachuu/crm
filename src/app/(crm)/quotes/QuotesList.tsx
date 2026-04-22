@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Plus, Search, FileSpreadsheet, Trash2, Eye, EyeOff, Download, Copy, Check, Send, X, ImagePlus } from "lucide-react";
+import { Plus, Search, FileSpreadsheet, Trash2, Eye, EyeOff, Download, Copy, Check, Send, X, ImagePlus, RotateCcw } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
@@ -110,6 +110,7 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     return undefined;
   }
   const [quotes, setQuotes] = useState(initialQuotes);
+  const [showTrash, setShowTrash] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
@@ -547,9 +548,31 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   }
 
   async function deleteQuote(id: string) {
-    if (!confirm("Удалить КП?")) return;
+    if (!confirm("Переместить КП в корзину? (Будет удалено окончательно через 30 дней)")) return;
     await fetch("/api/quotes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", id }) });
+    setQuotes(quotes.map((q: { id: string }) => q.id === id ? { ...q, deleted_at: new Date().toISOString() } : q));
+  }
+
+  async function restoreQuote(id: string) {
+    await fetch("/api/quotes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore", id }) });
+    setQuotes(quotes.map((q: { id: string }) => q.id === id ? { ...q, deleted_at: null } : q));
+  }
+
+  async function purgeQuote(id: string) {
+    if (!confirm("Удалить КП окончательно? Это действие необратимо.")) return;
+    await fetch("/api/quotes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "purge", id }) });
     setQuotes(quotes.filter((q: { id: string }) => q.id !== id));
+  }
+
+  async function duplicateQuote(id: string) {
+    const res = await fetch("/api/quotes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "duplicate", id }) });
+    if (res.ok) {
+      alert("КП скопировано");
+      window.location.reload();
+    } else {
+      const d = await res.json();
+      alert("Ошибка: " + (d.error ?? "неизвестная"));
+    }
   }
 
   const filteredProducts = products.filter((p: { name: string; sku: string; category?: string; subcategory?: string; liters?: string; container?: string; description?: string }) => {
@@ -565,7 +588,10 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const trashCount = quotes.filter((q: { deleted_at?: string | null }) => !!q.deleted_at).length;
   const filtered = quotes.filter((q: any) => {
+    const inTrash = !!q.deleted_at;
+    if (showTrash !== inTrash) return false;
     const matchSearch = !search || q.companies?.name?.toLowerCase().includes(search.toLowerCase()) || q.contacts?.full_name?.toLowerCase().includes(search.toLowerCase());
     const matchStatus = !statusFilter || q.status === statusFilter;
     return matchSearch && matchStatus;
@@ -578,6 +604,20 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
 
   return (
     <div>
+      {/* Tabs */}
+      <div className="flex items-center gap-1 mb-3">
+        <button onClick={() => setShowTrash(false)}
+          className="px-3 py-1.5 text-sm rounded-t"
+          style={{ background: !showTrash ? "#fff" : "transparent", border: !showTrash ? "1px solid #e4e4e4" : "1px solid transparent", borderBottom: "none", fontWeight: !showTrash ? 600 : 400, color: !showTrash ? "#333" : "#888" }}>
+          Активные
+        </button>
+        <button onClick={() => setShowTrash(true)}
+          className="px-3 py-1.5 text-sm rounded-t flex items-center gap-1"
+          style={{ background: showTrash ? "#fff" : "transparent", border: showTrash ? "1px solid #e4e4e4" : "1px solid transparent", borderBottom: "none", fontWeight: showTrash ? 600 : 400, color: showTrash ? "#333" : "#888" }}>
+          <Trash2 size={12} /> Корзина {trashCount > 0 && <span className="px-1.5 rounded-full text-xs" style={{ background: "#ffebee", color: "#c62828" }}>{trashCount}</span>}
+        </button>
+      </div>
+
       {/* Toolbar */}
       <div className="flex flex-wrap gap-2 mb-4">
         <div className="relative flex-1 min-w-48">
@@ -585,8 +625,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск по компании, контакту..."
             className="w-full pl-8 pr-3 py-1.5 text-sm focus:outline-none" style={{ border: "1px solid #d0d0d0", borderRadius: 4 }} />
         </div>
-        {/* filters can be added here */}
-        <Button onClick={openCreate} size="sm"><Plus size={13} /> Новое КП</Button>
+        {showTrash && <span className="text-xs self-center" style={{ color: "#888" }}>Удалённые КП хранятся 30 дней, затем удаляются окончательно</span>}
+        {!showTrash && <Button onClick={openCreate} size="sm"><Plus size={13} /> Новое КП</Button>}
       </div>
 
       {/* List */}
@@ -616,12 +656,23 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                   <td className="px-3 py-2 font-medium" style={{ color: "#2e7d32" }}>{formatCurrency(q.total_amount)}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: "#888" }}>{formatDate(q.created_at)}</td>
                   <td className="px-3 py-2">
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => openEdit(q.id)} className="p-1 rounded hover:bg-blue-50" title="Открыть"><Eye size={12} style={{ color: "#0067a5" }} /></button>
-                      <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/q/${q.id}`); }} className="p-1 rounded hover:bg-blue-50" title="Копировать ссылку"><Copy size={12} style={{ color: "#888" }} /></button>
-                      <a href={`/q/${q.id}`} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-blue-50" title="Открыть публичную страницу"><Send size={12} style={{ color: "#2e7d32" }} /></a>
-                      <button onClick={() => deleteQuote(q.id)} className="p-1 rounded hover:bg-red-50" title="Удалить"><Trash2 size={12} style={{ color: "#c62828" }} /></button>
-                    </div>
+                    {showTrash ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs mr-2" style={{ color: "#888" }} title={q.deleted_at ? new Date(q.deleted_at).toLocaleDateString("ru-RU") : ""}>
+                          удалено {q.deleted_at ? `${Math.max(0, 30 - Math.floor((Date.now() - new Date(q.deleted_at).getTime()) / 86400000))} дн. до удаления` : ""}
+                        </span>
+                        <button onClick={() => restoreQuote(q.id)} className="p-1 rounded hover:bg-green-50" title="Восстановить"><RotateCcw size={12} style={{ color: "#2e7d32" }} /></button>
+                        <button onClick={() => purgeQuote(q.id)} className="p-1 rounded hover:bg-red-50" title="Удалить окончательно"><Trash2 size={12} style={{ color: "#c62828" }} /></button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openEdit(q.id)} className="p-1 rounded hover:bg-blue-50" title="Открыть"><Eye size={12} style={{ color: "#0067a5" }} /></button>
+                        <button onClick={() => duplicateQuote(q.id)} className="p-1 rounded hover:bg-blue-50" title="Дублировать"><Copy size={12} style={{ color: "#0067a5" }} /></button>
+                        <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/q/${q.id}`); }} className="p-1 rounded hover:bg-blue-50" title="Копировать ссылку"><FileSpreadsheet size={12} style={{ color: "#888" }} /></button>
+                        <a href={`/q/${q.id}`} target="_blank" rel="noopener noreferrer" className="p-1 rounded hover:bg-blue-50" title="Открыть публичную страницу"><Send size={12} style={{ color: "#2e7d32" }} /></a>
+                        <button onClick={() => deleteQuote(q.id)} className="p-1 rounded hover:bg-red-50" title="В корзину"><Trash2 size={12} style={{ color: "#c62828" }} /></button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
