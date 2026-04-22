@@ -39,6 +39,9 @@ export async function novofonApi(method: string, params: Record<string, string> 
 }
 
 // Initiate callback: CRM calls manager first, then connects to client
+// `from` — virtual number (e.g. "78432126777") to display as caller ID
+// `to` — client phone
+// `sip` — SIP login to receive the callback (e.g. "0108429")
 export async function initiateCall(from: string, to: string, sip?: string) {
   const params: Record<string, string> = { from, to };
   if (sip) params.sip = sip;
