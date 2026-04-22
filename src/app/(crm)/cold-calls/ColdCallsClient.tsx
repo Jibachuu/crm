@@ -31,9 +31,9 @@ const COLUMNS: { key: string; label: string; width?: number; editable?: boolean 
   { key: "additional_email_3", label: "Доп. почта 3", width: 150, editable: true },
   { key: "founders", label: "Учредители", width: 200, editable: true },
   { key: "company_type", label: "Тип компании", width: 130, editable: true },
-  { key: "additional_phone_1", label: "Доп. телефон 1", width: 130, editable: true },
-  { key: "additional_phone_2", label: "Доп. телефон 2", width: 130, editable: true },
-  { key: "additional_phone_3", label: "Доп. телефон 3", width: 130, editable: true },
+  { key: "additional_phone_1", label: "Доп. телефон 1", width: 180, editable: true },
+  { key: "additional_phone_2", label: "Доп. телефон 2", width: 180, editable: true },
+  { key: "additional_phone_3", label: "Доп. телефон 3", width: 180, editable: true },
   { key: "company_name", label: "Наименование", width: 200, editable: true },
   { key: "main_website", label: "Основной сайт", width: 150, editable: true },
   { key: "director_name", label: "ФИО директора", width: 180, editable: true },
@@ -41,7 +41,7 @@ const COLUMNS: { key: string; label: string; width?: number; editable?: boolean 
   { key: "postal_code", label: "Почтовый индекс", width: 110, editable: true },
   { key: "registration_date", label: "Дата регистрации", width: 130, editable: true },
   { key: "director_inn", label: "ИНН руководителя", width: 130, editable: true },
-  { key: "main_phone", label: "Основной телефон", width: 130, editable: true },
+  { key: "main_phone", label: "Основной телефон", width: 180, editable: true },
   { key: "director_gender", label: "Пол руководителя", width: 120, editable: true },
   { key: "years_since_registration", label: "Лет с регистрации", width: 120, editable: true },
   { key: "legal_address", label: "Юридический адрес", width: 200, editable: true },
@@ -59,7 +59,7 @@ const COLUMNS: { key: string; label: string; width?: number; editable?: boolean 
   { key: "profit_2024", label: "Чистая прибыль, тыс. руб. (2024)", width: 180, editable: true },
   { key: "profit_2025", label: "Чистая прибыль, тыс. руб. (2025)", width: 180, editable: true },
   { key: "call_reached", label: "Дозвон/нет", width: 90 },
-  { key: "comment", label: "Комментарий", width: 200, editable: true },
+  { key: "comment", label: "Комментарий", width: 280, editable: true },
 ];
 
 const DB_FIELDS = [
@@ -342,8 +342,9 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
             <tr style={{ background: "#fafafa", borderBottom: "2px solid #e4e4e4" }}>
               <th className="px-2 py-2 text-left font-semibold sticky left-0 bg-gray-50 z-20" style={{ width: 40, color: "#888" }}>✓</th>
               {COLUMNS.map((col) => (
-                <th key={col.key} className="px-2 py-2 text-left font-semibold whitespace-nowrap hover:bg-gray-100 relative select-none"
-                  style={{ width: colWidths[col.key], minWidth: 40, color: "#888" }}
+                <th key={col.key} className="px-2 py-2 text-left font-semibold hover:bg-gray-100 relative select-none"
+                  style={{ width: colWidths[col.key], minWidth: 40, color: "#888", whiteSpace: "normal", wordBreak: "break-word", verticalAlign: "top" }}
+                  title={col.label}
                   onClick={() => col.key.includes("revenue") || col.key.includes("profit") ? toggleSort(col.key) : null}>
                   {col.label}
                   {sortField === col.key && <span className="ml-1">{sortDir === "desc" ? "↓" : "↑"}</span>}
@@ -388,7 +389,7 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
                   const isPrimary = (isPhoneCol && row.primary_phone === row[col.key] && row[col.key]) ||
                     (isEmailCol && row.primary_email === row[col.key] && row[col.key]);
                   return (
-                  <td key={col.key} className="px-2 py-1.5">
+                  <td key={col.key} className="px-2 py-1.5" style={{ verticalAlign: "top" }}>
                     {col.key === "status" ? (
                       <select value={row.status} onChange={(e) => updateField(row.id, "status", e.target.value)}
                         className="text-xs px-1.5 py-0.5 rounded"
@@ -423,6 +424,13 @@ export default function ColdCallsClient({ initialRows, users }: { initialRows: a
                           </button>
                         )}
                       </div>
+                    ) : col.key === "comment" ? (
+                      <textarea value={row[col.key] ?? ""} onChange={(e) => updateField(row.id, col.key, e.target.value)}
+                        rows={2}
+                        className="w-full text-xs px-1 py-0.5 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        style={{ border: "1px solid transparent", background: "transparent", resize: "vertical", wordBreak: "break-word", whiteSpace: "pre-wrap" }}
+                        onFocus={(e) => { (e.target as HTMLTextAreaElement).style.borderColor = "#d0d0d0"; }}
+                        onBlur={(e) => { (e.target as HTMLTextAreaElement).style.borderColor = "transparent"; }} />
                     ) : col.editable ? (
                       <input value={row[col.key] ?? ""} onChange={(e) => updateField(row.id, col.key, e.target.value)}
                         className="w-full text-xs px-1 py-0.5 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
