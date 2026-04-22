@@ -162,12 +162,6 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     setEditorOpen(true);
   }
 
-  function addSelectedProducts() {
-    const toAdd = products.filter((p: { id: string }) => selectedProductIds.has(p.id));
-    for (const p of toAdd) addProduct(p);
-    setSelectedProductIds(new Set());
-    setProductSearch("");
-  }
   function toggleProductSelection(id: string) {
     setSelectedProductIds((prev) => {
       const n = new Set(prev);
@@ -176,17 +170,12 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     });
   }
 
-  function addProduct(p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; liters?: string; container?: string; description?: string; image_url?: string }) {
-    // Build full name: category / subcategory / liters / container / name
+  // Build a QuoteItem from a catalog product
+  function buildQuoteItem(p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; liters?: string; container?: string; description?: string; image_url?: string }): QuoteItem {
     const litersPart = p.liters ? formatLiters(p.liters) : "";
     const fullName = [p.category, p.subcategory, litersPart, p.container, p.name].filter(Boolean).join(" / ");
-    // Extract characteristics from description (lines with ":")
-    const chars = (p.description ?? "").split("\n")
-      .filter((l) => l.includes(":"))
-      .map((l) => l.trim())
-      .join("; ");
+    const chars = (p.description ?? "").split("\n").filter((l) => l.includes(":")).map((l) => l.trim()).join("; ");
 
-    // Auto-generate price tiers from category defaults
     let priceTiers: PriceTier[] | undefined;
     if (p.category) {
       const catTier = findCategoryTiers(p.category ?? "");
@@ -197,14 +186,13 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
           price: Math.round(p.base_price * (1 - t.discount_pct / 100)),
           discount_pct: t.discount_pct,
         }));
-        // Prepend base price tier (1 to first discount qty - 1)
         if (priceTiers.length > 0 && priceTiers[0].from_qty > 1) {
           priceTiers.unshift({ from_qty: 1, to_qty: priceTiers[0].from_qty - 1, price: p.base_price, discount_pct: 0 });
         }
       }
     }
 
-    setItems([...items, {
+    return {
       product_id: p.id,
       name: fullName,
       article: p.sku,
@@ -216,7 +204,19 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
       image_url: p.image_url ?? "",
       description: chars || p.description || "",
       price_tiers: priceTiers,
-    }]);
+    };
+  }
+
+  function addSelectedProducts() {
+    const toAdd = products.filter((p: { id: string }) => selectedProductIds.has(p.id));
+    const newItems = toAdd.map(buildQuoteItem);
+    setItems((prev) => [...prev, ...newItems]);
+    setSelectedProductIds(new Set());
+    setProductSearch("");
+  }
+
+  function addProduct(p: { id: string; name: string; sku: string; base_price: number; category?: string; subcategory?: string; liters?: string; container?: string; description?: string; image_url?: string }) {
+    setItems((prev) => [...prev, buildQuoteItem(p)]);
     setProductSearch("");
   }
 
