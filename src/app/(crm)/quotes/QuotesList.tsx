@@ -481,20 +481,34 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   function removeBlock(blockId: string) {
     setForm({ ...form, custom_blocks: (form.custom_blocks ?? []).filter((b) => b.id !== blockId) });
   }
-  async function uploadBlockPhoto(file: File, blockId: string) {
+  async function uploadOnePhoto(file: File): Promise<string | null> {
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("product_id", `quote-block-${Date.now()}`);
+    fd.append("product_id", `quote-block-${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
     const res = await fetch("/api/products/upload-image", { method: "POST", body: fd });
-    if (res.ok) {
-      const { url } = await res.json();
-      const block = (form.custom_blocks ?? []).find((b) => b.id === blockId);
-      if (block) updateBlock(blockId, { photos: [...(block.photos ?? []), url] });
+    if (!res.ok) return null;
+    const { url } = await res.json();
+    return url;
+  }
+  async function uploadBlockPhotos(files: FileList | File[], blockId: string) {
+    const arr = Array.from(files);
+    const uploaded: string[] = [];
+    for (const f of arr) {
+      const url = await uploadOnePhoto(f);
+      if (url) uploaded.push(url);
+    }
+    if (uploaded.length > 0) {
+      setForm((prev) => ({
+        ...prev,
+        custom_blocks: (prev.custom_blocks ?? []).map((b) => b.id === blockId ? { ...b, photos: [...(b.photos ?? []), ...uploaded] } : b),
+      }));
     }
   }
   function removeBlockPhoto(blockId: string, photoIdx: number) {
-    const block = (form.custom_blocks ?? []).find((b) => b.id === blockId);
-    if (block) updateBlock(blockId, { photos: block.photos.filter((_, i) => i !== photoIdx) });
+    setForm((prev) => ({
+      ...prev,
+      custom_blocks: (prev.custom_blocks ?? []).map((b) => b.id === blockId ? { ...b, photos: b.photos.filter((_, i) => i !== photoIdx) } : b),
+    }));
   }
 
   function itemTotalSum(item: QuoteItem): number {
@@ -542,7 +556,20 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     });
     if (res.ok) {
       const data = await res.json();
-      setEditing({ id: data.id ?? editing?.id });
+      const savedId = data.id ?? editing?.id;
+      setEditing({ id: savedId });
+      // Update local quotes state so re-opening the КП shows fresh data without reload
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const patched: any = { ...form, id: savedId, status, total_amount: items.reduce((s, i) => s + (i.sum ?? 0), 0) };
+      setQuotes((prev: any[]) => {
+        const idx = prev.findIndex((q: { id: string }) => q.id === savedId);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = { ...copy[idx], ...patched };
+          return copy;
+        }
+        return [patched, ...prev];
+      });
       alert("КП сохранено!");
     } else { const d = await res.json(); alert(d.error ?? "Ошибка"); }
     setSaving(false);
@@ -855,8 +882,21 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                           placeholder="Текст блока — можно использовать жирный, курсив, подчёркивание, разные размеры"
                           minHeight={140} />
                       </div>
-                      {/* Photos row */}
-                      <div className="flex items-center gap-2 flex-wrap">
+                      {/* Photos row — supports multi-select + Ctrl+V paste + drag&drop */}
+                      <div className="flex items-center gap-2 flex-wrap"
+                        onPaste={(e) => {
+                          const items = e.clipboardData?.items;
+                          if (!items) return;
+                          const files: File[] = [];
+                          for (const it of Array.from(items)) {
+                            if (it.type.startsWith("image/")) { const f = it.getAsFile(); if (f) files.push(f); }
+                          }
+                          if (files.length > 0) { e.preventDefault(); uploadBlockPhotos(files, b.id); }
+                        }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) uploadBlockPhotos(e.dataTransfer.files, b.id); }}
+                        tabIndex={0}
+                      >
                         {b.photos.map((url, pi) => (
                           <div key={pi} className="relative group">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -868,11 +908,12 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                           </div>
                         ))}
                         <label className="w-16 h-16 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100"
-                          style={{ border: "1px dashed #ccc", background: "#fff" }}>
+                          style={{ border: "1px dashed #ccc", background: "#fff" }}
+                          title="Файлы, Ctrl+V из буфера, или перетащите сюда">
                           <ImagePlus size={14} style={{ color: "#aaa" }} />
                           <span style={{ fontSize: 9, color: "#aaa" }}>+ фото</span>
-                          <input type="file" accept="image/*" className="hidden"
-                            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBlockPhoto(f, b.id); e.target.value = ""; }} />
+                          <input type="file" accept="image/*" multiple className="hidden"
+                            onChange={(e) => { if (e.target.files?.length) uploadBlockPhotos(e.target.files, b.id); e.target.value = ""; }} />
                         </label>
                       </div>
                     </div>
@@ -897,13 +938,11 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                         className="w-full text-xs px-2 py-1 rounded outline-none mb-1"
                         style={{ border: "1px solid #e0e0e0", fontSize: 12, fontWeight: 600 }}
                       />
-                      <textarea
+                      <RichTextEditor
                         value={overrides[cat]?.description ?? ""}
-                        onChange={(e) => setForm({ ...form, category_overrides: { ...overrides, [cat]: { title: overrides[cat]?.title ?? cat, description: e.target.value } } })}
-                        placeholder="Описание категории (отображается под заголовком в КП)"
-                        className="w-full text-xs px-2 py-1 rounded outline-none"
-                        rows={2}
-                        style={{ border: "1px solid #e0e0e0", resize: "vertical", fontSize: 11 }}
+                        onChange={(html) => setForm({ ...form, category_overrides: { ...overrides, [cat]: { title: overrides[cat]?.title ?? cat, description: html } } })}
+                        placeholder="Описание категории (можно использовать жирный, курсив, подчёркивание, размеры)"
+                        minHeight={120}
                       />
                     </div>
                   ))}

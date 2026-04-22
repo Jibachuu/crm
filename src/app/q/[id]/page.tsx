@@ -169,11 +169,16 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                         {displayTitle}
                       </h2>
                       {displayDesc && (
-                        <div style={{ fontSize: 13, color: "#6b5e4f", lineHeight: 1.7, marginBottom: 20, paddingLeft: 16, borderLeft: "3px solid #d4c9b8" }}>
-                          {displayDesc.split("\n").map((line: string, i: number) => (
-                            <p key={i} style={{ margin: "4px 0" }}>{line.startsWith("- ") ? `• ${line.slice(2)}` : line}</p>
-                          ))}
-                        </div>
+                        displayDesc.includes("<") ? (
+                          <div style={{ fontSize: 13, color: "#6b5e4f", lineHeight: 1.7, marginBottom: 20, paddingLeft: 16, borderLeft: "3px solid #d4c9b8" }}
+                            dangerouslySetInnerHTML={{ __html: displayDesc }} />
+                        ) : (
+                          <div style={{ fontSize: 13, color: "#6b5e4f", lineHeight: 1.7, marginBottom: 20, paddingLeft: 16, borderLeft: "3px solid #d4c9b8" }}>
+                            {displayDesc.split("\n").map((line: string, i: number) => (
+                              <p key={i} style={{ margin: "4px 0" }}>{line.startsWith("- ") ? `• ${line.slice(2)}` : line}</p>
+                            ))}
+                          </div>
+                        )
                       )}
 
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>

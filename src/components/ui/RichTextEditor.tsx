@@ -12,12 +12,18 @@ interface Props {
 
 export default function RichTextEditor({ value, onChange, placeholder, minHeight = 120 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const lastValueRef = useRef<string>(value);
+  // Track what value we've already set into the DOM so we don't overwrite user input
+  const domValueRef = useRef<string>("");
 
+  // On mount, seed the innerHTML with value
   useEffect(() => {
-    if (ref.current && value !== lastValueRef.current && value !== ref.current.innerHTML) {
-      ref.current.innerHTML = value || "";
-      lastValueRef.current = value;
+    if (ref.current && (value ?? "") !== domValueRef.current) {
+      // Only update if it's genuinely different from what's in the DOM
+      const currentDom = ref.current.innerHTML;
+      if ((value ?? "") !== currentDom) {
+        ref.current.innerHTML = value ?? "";
+      }
+      domValueRef.current = value ?? "";
     }
   }, [value]);
 
@@ -26,14 +32,14 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
     ref.current.focus();
     document.execCommand(cmd, false, arg);
     const html = ref.current.innerHTML;
-    lastValueRef.current = html;
+    domValueRef.current = html;
     onChange(html);
   }
 
   function handleInput() {
     if (!ref.current) return;
     const html = ref.current.innerHTML;
-    lastValueRef.current = html;
+    domValueRef.current = html;
     onChange(html);
   }
 
@@ -42,11 +48,11 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
   return (
     <div>
       <div style={{ display: "flex", gap: 4, padding: 4, background: "#fafafa", border: "1px solid #e0e0e0", borderBottom: "none", borderRadius: "4px 4px 0 0", flexWrap: "wrap" }}>
-        <button type="button" onClick={() => exec("bold")} title="Жирный (Ctrl+B)" style={btnStyle}><Bold size={12} /></button>
-        <button type="button" onClick={() => exec("italic")} title="Курсив (Ctrl+I)" style={btnStyle}><Italic size={12} /></button>
-        <button type="button" onClick={() => exec("underline")} title="Подчёркнутый (Ctrl+U)" style={btnStyle}><Underline size={12} /></button>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("bold")} title="Жирный (Ctrl+B)" style={btnStyle}><Bold size={12} /></button>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("italic")} title="Курсив (Ctrl+I)" style={btnStyle}><Italic size={12} /></button>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("underline")} title="Подчёркнутый (Ctrl+U)" style={btnStyle}><Underline size={12} /></button>
         <div style={{ width: 1, background: "#e0e0e0", margin: "0 2px" }} />
-        <select onChange={(e) => { exec("fontSize", e.target.value); e.target.value = ""; }}
+        <select onMouseDown={(e) => e.stopPropagation()} onChange={(e) => { exec("fontSize", e.target.value); e.target.value = ""; }}
           style={{ ...btnStyle, padding: "4px 6px" }} defaultValue="">
           <option value="">Размер</option>
           <option value="2">Маленький</option>
@@ -54,9 +60,9 @@ export default function RichTextEditor({ value, onChange, placeholder, minHeight
           <option value="5">Крупный</option>
           <option value="6">Заголовок</option>
         </select>
-        <button type="button" onClick={() => exec("formatBlock", "<h3>")} title="Заголовок" style={btnStyle}><Type size={12} /> H</button>
-        <button type="button" onClick={() => exec("insertUnorderedList")} title="Список" style={btnStyle}>•</button>
-        <button type="button" onClick={() => exec("removeFormat")} title="Убрать форматирование" style={btnStyle}>×</button>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("formatBlock", "<h3>")} title="Заголовок" style={btnStyle}><Type size={12} /> H</button>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("insertUnorderedList")} title="Список" style={btnStyle}>•</button>
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => exec("removeFormat")} title="Убрать форматирование" style={btnStyle}>×</button>
       </div>
       <div
         ref={ref}
