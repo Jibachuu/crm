@@ -17,6 +17,7 @@ import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
 import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import AddProductModal from "@/components/ui/AddProductModal";
+import EditProductModal from "@/components/ui/EditProductModal";
 import EditLeadModal from "../EditLeadModal";
 import { formatDate, formatDateTime, getInitials } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -82,6 +83,8 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [addProductBlock, setAddProductBlock] = useState<"request" | "order" | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [convertLoading, setConvertLoading] = useState(false);
   const [statusSaving, setStatusSaving] = useState(false);
@@ -451,6 +454,8 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                   items={requestProducts}
                   total={totalRequest}
                   onAdd={() => setAddProductBlock("request")}
+                  onEdit={(it) => setEditingProduct(it)}
+                  onRemove={(id) => setLeadProducts((p: { id: string }[]) => p.filter((x) => x.id !== id))}
                 />
                 <ProductBlock
                   title="Заказ"
@@ -458,6 +463,8 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                   items={orderProducts}
                   total={totalOrder}
                   onAdd={() => setAddProductBlock("order")}
+                  onEdit={(it) => setEditingProduct(it)}
+                  onRemove={(id) => setLeadProducts((p: { id: string }[]) => p.filter((x) => x.id !== id))}
                 />
               </div>
             )}
@@ -650,6 +657,13 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
         productBlock={addProductBlock ?? "request"}
         onAdded={(item) => setLeadProducts((p: unknown[]) => [...p, item])}
       />
+      <EditProductModal
+        open={editingProduct !== null}
+        onClose={() => setEditingProduct(null)}
+        entityType="lead"
+        item={editingProduct}
+        onSaved={(updated) => setLeadProducts((p: { id: string }[]) => p.map((x) => x.id === updated.id ? updated : x))}
+      />
       <CreateTaskModal
         open={taskOpen}
         onClose={() => setTaskOpen(false)}
@@ -662,7 +676,13 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ProductBlock({ title, description, items, total, onAdd }: { title: string; description: string; items: any[]; total: number; onAdd: () => void }) {
+function ProductBlock({ title, description, items, total, onAdd, onEdit, onRemove }: { title: string; description: string; items: any[]; total: number; onAdd: () => void; onEdit?: (item: any) => void; onRemove?: (id: string) => void }) {
+  async function handleDelete(id: string) {
+    if (!confirm("Удалить товар?")) return;
+    const { error } = await createClient().from("lead_products").delete().eq("id", id);
+    if (!error) onRemove?.(id);
+    else alert("Ошибка: " + error.message);
+  }
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -693,31 +713,44 @@ function ProductBlock({ title, description, items, total, onAdd }: { title: stri
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Цена продажи</th>
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Скидка</th>
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Сумма</th>
+                  <th className="px-2 py-2 text-xs font-medium" style={{ color: "#888", width: 70 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; quantity: number; unit_price: number; discount_percent: number; total_price: number; variants?: { label: string; price: number; quantity: number; sum: number }[] }) => (
+                {items.map((item: { id: string; products: { name: string; sku: string; image_url?: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; quantity: number; unit_price: number; discount_percent: number; total_price: number; variants?: { label: string; price: number; quantity: number; sum: number }[] }) => (
                   <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                     <td className="px-4 py-2">
-                      <p className="font-medium" style={{ color: "#333" }}>
-                        {item.products?.name}
-                        {item.volume_ml && <span className="text-xs font-normal ml-1" style={{ color: "#888" }}>{item.volume_ml} мл</span>}
-                      </p>
-                      <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products?.sku}</p>
-                      {item.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{item.flavor}</p>}
-                      {(item.category || item.subcategory) && (
-                        <p className="text-xs" style={{ color: "#0067a5" }}>{[item.category, item.subcategory].filter(Boolean).join(" → ")}</p>
-                      )}
-                      {item.variants && item.variants.length > 0 && (
-                        <div className="mt-1.5 space-y-0.5">
-                          {item.variants.map((v, i) => (
-                            <div key={i} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#e65c00" }}>
-                              <span>• {v.label}</span>
-                              <span className="whitespace-nowrap" style={{ color: "#bf7600" }}>{v.quantity} × {formatCurrency(v.price)} = {formatCurrency(v.sum)}</span>
+                      <div className="flex items-start gap-3">
+                        {item.products?.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={item.products.image_url} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0 border" style={{ borderColor: "#e0e0e0" }} />
+                        ) : (
+                          <div className="w-12 h-12 rounded flex-shrink-0 flex items-center justify-center" style={{ background: "#f5f5f5", border: "1px solid #e0e0e0" }}>
+                            <Package size={18} style={{ color: "#bbb" }} />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium" style={{ color: "#333" }}>
+                            {item.products?.name}
+                            {item.volume_ml && <span className="text-xs font-normal ml-1" style={{ color: "#888" }}>{item.volume_ml} мл</span>}
+                          </p>
+                          <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products?.sku}</p>
+                          {item.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{item.flavor}</p>}
+                          {(item.category || item.subcategory) && (
+                            <p className="text-xs" style={{ color: "#0067a5" }}>{[item.category, item.subcategory].filter(Boolean).join(" → ")}</p>
+                          )}
+                          {item.variants && item.variants.length > 0 && (
+                            <div className="mt-1.5 space-y-0.5">
+                              {item.variants.map((v, i) => (
+                                <div key={i} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#e65c00" }}>
+                                  <span>• {v.label}</span>
+                                  <span className="whitespace-nowrap" style={{ color: "#bf7600" }}>{v.quantity} × {formatCurrency(v.price)} = {formatCurrency(v.sum)}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      )}
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-right" style={{ color: "#555" }}>{item.quantity} шт.</td>
                     <td className="px-4 py-2 text-right" style={{ color: "#aaa" }}>{item.base_price ? formatCurrency(item.base_price) : "—"}</td>
@@ -726,6 +759,16 @@ function ProductBlock({ title, description, items, total, onAdd }: { title: stri
                       {item.discount_percent > 0 ? `-${item.discount_percent}%` : "—"}
                     </td>
                     <td className="px-4 py-2 text-right font-semibold" style={{ color: "#333" }}>{formatCurrency(item.total_price)}</td>
+                    <td className="px-2 py-2 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => onEdit?.(item)} className="p-1 rounded hover:bg-blue-50" title="Редактировать">
+                          <Edit2 size={13} style={{ color: "#0067a5" }} />
+                        </button>
+                        <button onClick={() => handleDelete(item.id)} className="p-1 rounded hover:bg-red-50" title="Удалить">
+                          <Trash2 size={13} style={{ color: "#c62828" }} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -733,6 +776,7 @@ function ProductBlock({ title, description, items, total, onAdd }: { title: stri
                 <tr style={{ borderTop: "1px solid #e4e4e4", background: "#fafafa" }}>
                   <td colSpan={5} className="px-4 py-2 text-sm font-semibold text-right" style={{ color: "#555" }}>Итого:</td>
                   <td className="px-4 py-2 text-right font-bold" style={{ color: "#333" }}>{formatCurrency(total)}</td>
+                  <td />
                 </tr>
               </tfoot>
             </table>

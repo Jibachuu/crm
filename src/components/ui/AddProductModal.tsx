@@ -146,7 +146,7 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
         lifecycle_days: lifecycleDays > 0 ? lifecycleDays : null,
         variants: hasVariants ? variants : [],
       })
-      .select("*, products(name, sku)")
+      .select("*, products(name, sku, image_url)")
       .single();
 
     if (!error && data) {

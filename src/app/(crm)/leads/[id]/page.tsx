@@ -51,7 +51,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   const { data: leadProducts } = await admin
     .from("lead_products")
-    .select("*, products(name, sku)")
+    .select("*, products(name, sku, image_url)")
     .eq("lead_id", id);
 
   return (

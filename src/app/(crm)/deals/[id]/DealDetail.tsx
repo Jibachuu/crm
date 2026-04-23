@@ -16,6 +16,7 @@ import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
 import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import AddProductModal from "@/components/ui/AddProductModal";
+import EditProductModal from "@/components/ui/EditProductModal";
 import ContractsClient from "@/app/(crm)/contracts/ContractsClient";
 import EditDealModal from "../EditDealModal";
 import AddressList from "@/components/ui/AddressList";
@@ -66,6 +67,8 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [addProductBlock, setAddProductBlock] = useState<"request" | "order" | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [extraContacts, setExtraContacts] = useState<any[]>([]);
@@ -556,6 +559,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   items={requestProducts}
                   total={totalRequest}
                   onAdd={() => setAddProductBlock("request")}
+                  onEdit={(item) => setEditingProduct(item)}
                   onRemove={(id) => { const updated = dealProducts.filter((x: { id: string }) => x.id !== id); setDealProducts(updated); recalcDealAmount(updated); }}
                   onUpdate={(id, fields) => { const updated = dealProducts.map((x: { id: string }) => x.id === id ? { ...x, ...fields } : x); setDealProducts(updated); recalcDealAmount(updated); }}
                 />
@@ -566,6 +570,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   total={totalOrder}
                   onAdd={() => setAddProductBlock("order")}
                   block="order"
+                  onEdit={(item) => setEditingProduct(item)}
                   onRemove={(id) => { const updated = dealProducts.filter((x: { id: string }) => x.id !== id); setDealProducts(updated); recalcDealAmount(updated); }}
                   onUpdate={(id, fields) => { const updated = dealProducts.map((x: { id: string }) => x.id === id ? { ...x, ...fields } : x); setDealProducts(updated); recalcDealAmount(updated); }}
                 />
@@ -709,6 +714,17 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
           recalcDealAmount(updated);
         }}
       />
+      <EditProductModal
+        open={editingProduct !== null}
+        onClose={() => setEditingProduct(null)}
+        entityType="deal"
+        item={editingProduct}
+        onSaved={(updatedItem) => {
+          const updated = dealProducts.map((x: { id: string }) => x.id === updatedItem.id ? updatedItem : x);
+          setDealProducts(updated);
+          recalcDealAmount(updated);
+        }}
+      />
       <CreateTaskModal
         open={taskOpen}
         onClose={() => setTaskOpen(false)}
@@ -721,7 +737,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function DealProductBlock({ title, description, items, total, onAdd, block = "request", onRemove, onUpdate }: { title: string; description: string; items: any[]; total: number; onAdd: () => void; block?: string; onRemove?: (id: string) => void; onUpdate?: (id: string, fields: Record<string, unknown>) => void }) {
+function DealProductBlock({ title, description, items, total, onAdd, block = "request", onRemove, onUpdate, onEdit }: { title: string; description: string; items: any[]; total: number; onAdd: () => void; block?: string; onRemove?: (id: string) => void; onUpdate?: (id: string, fields: Record<string, unknown>) => void; onEdit?: (item: any) => void }) {
 
   async function handleDelete(id: string) {
     if (!confirm("Удалить товар из заказа?")) return;
@@ -773,32 +789,44 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Цена продажи</th>
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Скидка</th>
                   <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Сумма</th>
-                  <th className="px-2 py-2 text-xs font-medium" style={{ color: "#888", width: 40 }}></th>
+                  <th className="px-2 py-2 text-xs font-medium" style={{ color: "#888", width: 70 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; lifecycle_days?: number; quantity: number; unit_price: number; discount_percent: number; total_price: number; variants?: { label: string; price: number; quantity: number; sum: number }[] }) => (
+                {items.map((item: { id: string; products: { name: string; sku: string; image_url?: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; lifecycle_days?: number; quantity: number; unit_price: number; discount_percent: number; total_price: number; variants?: { label: string; price: number; quantity: number; sum: number }[] }) => (
                   <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                     <td className="px-4 py-2">
-                      <p className="font-medium" style={{ color: "#333" }}>
-                        {item.products?.name}
-                        {item.volume_ml && <span className="text-xs font-normal ml-1" style={{ color: "#888" }}>{item.volume_ml} мл</span>}
-                      </p>
-                      <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products?.sku}</p>
-                      {item.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{item.flavor}</p>}
-                      {(item.category || item.subcategory) && (
-                        <p className="text-xs" style={{ color: "#0067a5" }}>{[item.category, item.subcategory].filter(Boolean).join(" → ")}</p>
-                      )}
-                      {item.variants && item.variants.length > 0 && (
-                        <div className="mt-1.5 space-y-0.5">
-                          {item.variants.map((v, i) => (
-                            <div key={i} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#e65c00" }}>
-                              <span>• {v.label}</span>
-                              <span className="whitespace-nowrap" style={{ color: "#bf7600" }}>{v.quantity} × {formatCurrency(v.price)} = {formatCurrency(v.sum)}</span>
+                      <div className="flex items-start gap-3">
+                        {item.products?.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={item.products.image_url} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0 border" style={{ borderColor: "#e0e0e0" }} />
+                        ) : (
+                          <div className="w-12 h-12 rounded flex-shrink-0 flex items-center justify-center" style={{ background: "#f5f5f5", border: "1px solid #e0e0e0" }}>
+                            <Package size={18} style={{ color: "#bbb" }} />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium" style={{ color: "#333" }}>
+                            {item.products?.name}
+                            {item.volume_ml && <span className="text-xs font-normal ml-1" style={{ color: "#888" }}>{item.volume_ml} мл</span>}
+                          </p>
+                          <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products?.sku}</p>
+                          {item.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{item.flavor}</p>}
+                          {(item.category || item.subcategory) && (
+                            <p className="text-xs" style={{ color: "#0067a5" }}>{[item.category, item.subcategory].filter(Boolean).join(" → ")}</p>
+                          )}
+                          {item.variants && item.variants.length > 0 && (
+                            <div className="mt-1.5 space-y-0.5">
+                              {item.variants.map((v, i) => (
+                                <div key={i} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#e65c00" }}>
+                                  <span>• {v.label}</span>
+                                  <span className="whitespace-nowrap" style={{ color: "#bf7600" }}>{v.quantity} × {formatCurrency(v.price)} = {formatCurrency(v.sum)}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      )}
+                      </div>
                       {item.category?.toLowerCase().includes("косметик") && block === "order" && (
                         <div className="flex items-center gap-1 mt-0.5">
                           <span className="text-xs" style={{ color: "#e65c00" }}>🔄</span>
@@ -829,9 +857,14 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                     </td>
                     <td className="px-4 py-2 text-right font-semibold" style={{ color: "#333" }}>{formatCurrency(item.total_price)}</td>
                     <td className="px-2 py-2 text-center">
-                      <button onClick={() => handleDelete(item.id)} className="p-1 rounded hover:bg-red-50" title="Удалить">
-                        <Trash2 size={13} style={{ color: "#c62828" }} />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => onEdit?.(item)} className="p-1 rounded hover:bg-blue-50" title="Редактировать">
+                          <Edit2 size={13} style={{ color: "#0067a5" }} />
+                        </button>
+                        <button onClick={() => handleDelete(item.id)} className="p-1 rounded hover:bg-red-50" title="Удалить">
+                          <Trash2 size={13} style={{ color: "#c62828" }} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

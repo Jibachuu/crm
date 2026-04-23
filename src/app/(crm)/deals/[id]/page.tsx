@@ -44,7 +44,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
 
   const { data: dealProducts } = await admin
     .from("deal_products")
-    .select("*, products(name, sku)")
+    .select("*, products(name, sku, image_url)")
     .eq("deal_id", id);
 
   return (
