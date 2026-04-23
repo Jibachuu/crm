@@ -130,12 +130,6 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
       status: newStatus,
       stage_changed_at: new Date().toISOString(),
     }).eq("id", lead.id);
-    // Trigger automations
-    fetch("/api/automations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "stage_change", entity_type: "lead", entity_id: lead.id, stage_id: stage.id, old_stage_id: oldStageId }),
-    }).catch(() => {});
     setStatusSaving(false);
   }
 
@@ -702,7 +696,7 @@ function ProductBlock({ title, description, items, total, onAdd }: { title: stri
                 </tr>
               </thead>
               <tbody>
-                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; quantity: number; unit_price: number; discount_percent: number; total_price: number }) => (
+                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; quantity: number; unit_price: number; discount_percent: number; total_price: number; variants?: { label: string; price: number; quantity: number; sum: number }[] }) => (
                   <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                     <td className="px-4 py-2">
                       <p className="font-medium" style={{ color: "#333" }}>
@@ -713,6 +707,16 @@ function ProductBlock({ title, description, items, total, onAdd }: { title: stri
                       {item.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{item.flavor}</p>}
                       {(item.category || item.subcategory) && (
                         <p className="text-xs" style={{ color: "#0067a5" }}>{[item.category, item.subcategory].filter(Boolean).join(" → ")}</p>
+                      )}
+                      {item.variants && item.variants.length > 0 && (
+                        <div className="mt-1.5 space-y-0.5">
+                          {item.variants.map((v, i) => (
+                            <div key={i} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#e65c00" }}>
+                              <span>• {v.label}</span>
+                              <span className="whitespace-nowrap" style={{ color: "#bf7600" }}>{v.quantity} × {formatCurrency(v.price)} = {formatCurrency(v.sum)}</span>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-2 text-right" style={{ color: "#555" }}>{item.quantity} шт.</td>

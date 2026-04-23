@@ -117,7 +117,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
     // Stock management: deduct on "won", restore if moving back from "won"
     const orderProducts = dealProducts.filter((p: { product_block: string }) => p.product_block === "order");
     if (newStage === "won" && oldStage !== "won" && orderProducts.length > 0) {
-      let warnings: string[] = [];
+      const warnings: string[] = [];
       for (const dp of orderProducts) {
         if (!dp.product_id) continue;
         const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
@@ -139,14 +139,6 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
       }
     }
 
-    // Trigger automations
-    if (newStage === "proposal") {
-      fetch("/api/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deal_stage_change", deal_id: deal.id }) });
-    }
-    if (newStage === "won" && oldStage !== "won") {
-      fetch("/api/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deal_won", deal_id: deal.id }) });
-    }
-
     setDeal((p: typeof deal) => ({ ...p, stage: newStage }));
   }
 
@@ -165,7 +157,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
     // Stock management same as before
     const orderProds = dealProducts.filter((p: { product_block: string }) => p.product_block === "order");
     if (stage.slug === "won" && oldStageSlug !== "won" && orderProds.length > 0) {
-      let warnings: string[] = [];
+      const warnings: string[] = [];
       for (const dp of orderProds) {
         if (!dp.product_id) continue;
         const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
@@ -195,12 +187,6 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
     }).eq("id", deal.id);
 
     setDeal((p: typeof deal) => ({ ...p, stage: newOldStage, stage_id: stage.id }));
-    // Trigger automations
-    fetch("/api/automations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "stage_change", entity_type: "deal", entity_id: deal.id, stage_id: stage.id, old_stage_id: oldStageId }),
-    }).catch(() => {});
   }
 
   async function deleteDeal() {
@@ -791,7 +777,7 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                 </tr>
               </thead>
               <tbody>
-                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; lifecycle_days?: number; quantity: number; unit_price: number; discount_percent: number; total_price: number }) => (
+                {items.map((item: { id: string; products: { name: string; sku: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; lifecycle_days?: number; quantity: number; unit_price: number; discount_percent: number; total_price: number; variants?: { label: string; price: number; quantity: number; sum: number }[] }) => (
                   <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                     <td className="px-4 py-2">
                       <p className="font-medium" style={{ color: "#333" }}>
@@ -802,6 +788,16 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                       {item.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{item.flavor}</p>}
                       {(item.category || item.subcategory) && (
                         <p className="text-xs" style={{ color: "#0067a5" }}>{[item.category, item.subcategory].filter(Boolean).join(" → ")}</p>
+                      )}
+                      {item.variants && item.variants.length > 0 && (
+                        <div className="mt-1.5 space-y-0.5">
+                          {item.variants.map((v, i) => (
+                            <div key={i} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#e65c00" }}>
+                              <span>• {v.label}</span>
+                              <span className="whitespace-nowrap" style={{ color: "#bf7600" }}>{v.quantity} × {formatCurrency(v.price)} = {formatCurrency(v.sum)}</span>
+                            </div>
+                          ))}
+                        </div>
                       )}
                       {item.category?.toLowerCase().includes("косметик") && block === "order" && (
                         <div className="flex items-center gap-1 mt-0.5">

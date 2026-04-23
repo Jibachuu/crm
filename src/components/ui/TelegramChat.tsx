@@ -270,10 +270,20 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
     return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Track last message count to scroll only on new messages (not on any re-render)
+  const prevMsgCountRef = useRef(0);
   useEffect(() => {
-    if (wasAtBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    const prev = prevMsgCountRef.current;
+    const curr = messages.length;
+    prevMsgCountRef.current = curr;
+    // Only scroll when a new message is appended AND the user was near bottom
+    if (curr <= prev) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    // Recompute "at bottom" right now — scroll event may not have fired yet
+    const threshold = 80;
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    if (atBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   async function sendMessage() {

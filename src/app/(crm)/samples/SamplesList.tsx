@@ -7,6 +7,7 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import { formatDate } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
@@ -410,10 +411,13 @@ export default function SamplesList({ initialSamples, companies, contacts, users
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={lblStyle}>Компания</label>
-              <select value={form.company_id} onChange={(e) => setForm({ ...form, company_id: e.target.value })} style={inputStyle}>
-                <option value="">Выберите...</option>
-                {companies.map((c: { id: string; name: string }) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              <SearchableSelect
+                options={companies.map((c: { id: string; name: string }) => ({ id: c.id, label: c.name }))}
+                value={form.company_id}
+                onChange={(id) => setForm({ ...form, company_id: id })}
+                placeholder="Поиск компании..."
+                style={inputStyle}
+              />
             </div>
             <div>
               <label style={lblStyle}>Фактическое название заведения</label>
@@ -423,13 +427,20 @@ export default function SamplesList({ initialSamples, companies, contacts, users
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label style={lblStyle}>Контактное лицо</label>
-              <select value={form.contact_id} onChange={(e) => {
-                const contact = contacts.find((c: { id: string }) => c.id === e.target.value);
-                setForm({ ...form, contact_id: e.target.value, contact_phone: contact?.phone ?? form.contact_phone });
-              }} style={inputStyle}>
-                <option value="">Выберите...</option>
-                {contacts.map((c: { id: string; full_name: string; companies?: { name: string } | null }) => <option key={c.id} value={c.id}>{c.full_name}{(c as { companies?: { name: string } | null }).companies?.name ? ` · ${(c as { companies?: { name: string } | null }).companies!.name}` : ""}</option>)}
-              </select>
+              <SearchableSelect
+                options={contacts.map((c: { id: string; full_name: string; phone?: string; companies?: { name: string } | null }) => ({
+                  id: c.id,
+                  label: c.full_name,
+                  sublabel: (c as { companies?: { name: string } | null }).companies?.name ?? c.phone ?? undefined,
+                }))}
+                value={form.contact_id}
+                onChange={(id) => {
+                  const contact = contacts.find((c: { id: string }) => c.id === id);
+                  setForm({ ...form, contact_id: id, contact_phone: contact?.phone ?? form.contact_phone });
+                }}
+                placeholder="Поиск контакта..."
+                style={inputStyle}
+              />
             </div>
             <div>
               <label style={lblStyle}>Номер телефона</label>

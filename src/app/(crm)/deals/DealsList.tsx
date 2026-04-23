@@ -106,11 +106,6 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
       stage_changed_at: new Date().toISOString(),
       ...(stage.slug === "won" ? { closed_at: new Date().toISOString() } : {}),
     }).eq("id", dealId);
-    fetch("/api/automations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "stage_change", entity_type: "deal", entity_id: dealId, stage_id: newStageId, old_stage_id: deal.stage_id }),
-    }).catch(() => {});
   }
 
   function getStageName(deal: { stage_id?: string; stage?: string }) {

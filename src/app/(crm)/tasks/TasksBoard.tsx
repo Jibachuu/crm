@@ -49,6 +49,24 @@ interface Task {
 export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
   const { user: currentUser, isManager } = useCurrentUser();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+
+  async function bulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`Удалить выбранные задачи (${ids.length})?`)) return;
+    await createClient().from("tasks").delete().in("id", ids);
+    setTasks((p) => p.filter((t) => !selectedIds.has(t.id)));
+    setSelectedIds(new Set());
+  }
   const [modalOpen, setModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -115,6 +133,17 @@ export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
         </Button>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 mb-3 px-4 py-2 rounded-lg bg-red-50 border border-red-200">
+          <span className="text-sm font-medium text-red-700">Выбрано: {selectedIds.size}</span>
+          <button onClick={() => setSelectedIds(new Set())} className="text-xs text-slate-600 hover:underline">Снять</button>
+          <div className="flex-1" />
+          <Button size="sm" variant="danger" onClick={bulkDelete}>
+            <Trash2 size={13} /> Удалить выбранные
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {(["pending", "in_progress", "done"] as const).map((status) => (
           <div key={status}>
@@ -129,7 +158,15 @@ export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
                 <Card key={task.id}>
                   <CardBody className="py-3">
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <p className="text-sm font-medium text-slate-900 leading-snug">{task.title}</p>
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(task.id)}
+                          onChange={() => toggleSelect(task.id)}
+                          className="mt-0.5 cursor-pointer"
+                        />
+                        <p className="text-sm font-medium text-slate-900 leading-snug">{task.title}</p>
+                      </div>
                       <Badge variant={PRIORITY_VARIANTS[task.priority]}>{PRIORITY_LABELS[task.priority]}</Badge>
                     </div>
                     {task.description && (

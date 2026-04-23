@@ -147,9 +147,12 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
     const lastId = messages[messages.length - 1]?.id ?? "";
     if (lastId && lastId !== lastMsgIdRef.current) {
       lastMsgIdRef.current = lastId;
-      if (wasAtBottomRef.current) {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      }
+      // Recompute position right now — scroll event may not have fired yet
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      const threshold = 80;
+      const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+      if (atBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
   useEffect(() => {

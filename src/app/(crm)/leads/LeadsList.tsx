@@ -163,10 +163,6 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
     setDraggingId(null);
     const supabase = createClient();
     await supabase.from("leads").update({ stage_id: stageId, status: newStatus, stage_changed_at: new Date().toISOString() }).eq("id", draggingId);
-    fetch("/api/automations", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "stage_change", entity_type: "lead", entity_id: draggingId, stage_id: stageId, old_stage_id: oldStageId }),
-    }).catch(() => {});
   }
 
   // Determine which funnel stages to show in kanban

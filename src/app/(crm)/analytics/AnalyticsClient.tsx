@@ -73,6 +73,15 @@ const PRODUCT_COLS: ColDef[] = [
   { key: "unit_price", label: "Цена", render: (v) => formatCurrency(v as number) },
   { key: "discount_percent", label: "Скидка %", render: (v) => v ? `${v}%` : "—" },
   { key: "total_price", label: "Сумма", render: (v) => formatCurrency(v as number) },
+  {
+    key: "variants",
+    label: "Варианты",
+    render: (v) => {
+      const arr = (v as { label: string; quantity: number; price: number; sum: number }[] | null) ?? [];
+      if (!arr.length) return "—";
+      return arr.map((x) => `${x.label} (${x.quantity}×${x.price})`).join("; ");
+    },
+  },
   { key: "created_at", label: "Дата", render: (v) => formatDate(v as string) },
 ];
 
