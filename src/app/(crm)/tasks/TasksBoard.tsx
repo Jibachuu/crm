@@ -63,7 +63,16 @@ export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     if (!confirm(`Удалить выбранные задачи (${ids.length})?`)) return;
-    await createClient().from("tasks").delete().in("id", ids);
+    const res = await fetch("/api/tasks", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("Не удалось удалить: " + (err.error || res.status));
+      return;
+    }
     setTasks((p) => p.filter((t) => !selectedIds.has(t.id)));
     setSelectedIds(new Set());
   }
@@ -94,7 +103,17 @@ export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
   async function deleteTask(id: string) {
     if (!confirm("Удалить задачу?")) return;
     setDeletingId(id);
-    await createClient().from("tasks").delete().eq("id", id);
+    const res = await fetch("/api/tasks", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("Не удалось удалить: " + (err.error || res.status));
+      setDeletingId(null);
+      return;
+    }
     setTasks((p) => p.filter((t) => t.id !== id));
     setDeletingId(null);
   }

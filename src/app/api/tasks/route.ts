@@ -36,10 +36,11 @@ export async function DELETE(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  const ids: string[] = Array.isArray(body.ids) ? body.ids : body.id ? [body.id] : [];
+  if (ids.length === 0) return NextResponse.json({ error: "id or ids required" }, { status: 400 });
 
   const admin = createAdminClient();
-  const { error } = await admin.from("tasks").delete().eq("id", body.id);
+  const { error } = await admin.from("tasks").delete().in("id", ids);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, deleted: ids.length });
 }
