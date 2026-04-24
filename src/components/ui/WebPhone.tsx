@@ -28,6 +28,8 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
   const [muted, setMuted] = useState(false);
   const [minimized, setMinimized] = useState(true);
   const [dialNumber, setDialNumber] = useState("");
+  const [extension, setExtension] = useState("");
+  const extensionRef = useRef("");
 
   const stateRef = useRef<CallState>("idle");
   // Sync ref immediately on state change (useEffect is too late for fast callbacks)
@@ -99,9 +101,11 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     stopRingback();
     sessionRef.current = null;
     outboundNumberRef.current = "";
+    extensionRef.current = "";
     setDuration(0);
     setMuted(false);
     setCallerInfo("");
+    setExtension("");
   }, [stopRingback]);
 
   const endCall = useCallback(() => {
@@ -164,6 +168,19 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
           if (mounted) setStateAndRef("connected");
           startTimer();
           attachAudio(session);
+          // Auto-send extension as DTMF after a short delay (let IVR load)
+          const ext = extensionRef.current.replace(/\D/g, "");
+          if (ext) {
+            setTimeout(() => {
+              try {
+                console.log("[WebPhone] sending DTMF extension:", ext);
+                session.sendDTMF(ext, { duration: 200, interToneGap: 150 });
+              } catch (err) {
+                console.error("[WebPhone] sendDTMF failed:", err);
+              }
+              extensionRef.current = "";
+            }, 1500);
+          }
         });
 
         session.on("ended", (e: any) => {
@@ -276,19 +293,29 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     else { sessionRef.current.mute(); setMuted(true); }
   }
 
+  function sendDtmf(digit: string) {
+    if (!sessionRef.current) return;
+    try {
+      sessionRef.current.sendDTMF(digit, { duration: 200, interToneGap: 100 });
+    } catch (err) {
+      console.error("[WebPhone] sendDTMF failed:", err);
+    }
+  }
+
   function normalizePhone(raw: string): string {
     const digits = raw.replace(/\D/g, "");
     if (digits.length === 11 && digits.startsWith("8")) return "7" + digits.slice(1);
     return digits;
   }
 
-  async function makeCall(number: string) {
+  async function makeCall(number: string, ext?: string) {
     if (!uaRef.current || !number) return;
 
     const normalized = normalizePhone(number);
     console.log("[WebPhone] calling via callback API:", normalized, "(raw:", number, ")", "ua registered:", uaRef.current?.isRegistered(), "ua connected:", uaRef.current?.isConnected());
     outboundNumberRef.current = number;
-    setCallerInfo(number);
+    extensionRef.current = (ext ?? extension).replace(/\D/g, "");
+    setCallerInfo(ext ? `${number} доб. ${ext}` : number);
     setStateAndRef("calling");
     setMinimized(false);
     startRingback();
@@ -370,25 +397,14 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
 
       {/* Active call panel */}
       {state === "connected" && (
-        <div className="fixed top-4 right-4 z-[100] bg-white rounded-xl shadow-2xl p-4" style={{ border: "1px solid #e4e4e4", minWidth: 260 }}>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#e8f5e9" }}>
-              <Phone size={16} style={{ color: "#2e7d32" }} />
-            </div>
-            <div>
-              <p className="text-sm font-semibold" style={{ color: "#333" }}>{callerInfo}</p>
-              <p className="text-xs font-mono" style={{ color: "#2e7d32" }}>{fmtDur}</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={toggleMute} className="flex-1 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-1" style={{ background: muted ? "#fff3e0" : "#f5f5f5", color: muted ? "#e65c00" : "#555" }}>
-              {muted ? <MicOff size={14} /> : <Mic size={14} />} {muted ? "Вкл. микро" : "Мьют"}
-            </button>
-            <button onClick={hangup} className="flex-1 py-2 rounded-lg text-white text-sm font-medium flex items-center justify-center gap-1" style={{ background: "#c62828" }}>
-              <PhoneOff size={14} /> Завершить
-            </button>
-          </div>
-        </div>
+        <ActiveCallPanel
+          callerInfo={callerInfo}
+          fmtDur={fmtDur}
+          muted={muted}
+          onToggleMute={toggleMute}
+          onHangup={hangup}
+          onDtmf={sendDtmf}
+        />
       )}
 
       {/* Calling / Ringing (outbound) */}
@@ -423,26 +439,107 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
               <X size={14} style={{ color: "#888" }} />
             </button>
           </div>
-          <div className="flex gap-2">
+          <div className="space-y-2">
             <input
               value={dialNumber}
               onChange={(e) => setDialNumber(e.target.value)}
               placeholder="+7..."
-              className="flex-1 text-sm px-3 py-2 rounded-lg"
+              className="w-full text-sm px-3 py-2 rounded-lg"
               style={{ border: "1px solid #e0e0e0" }}
               onKeyDown={(e) => { if (e.key === "Enter" && dialNumber) makeCall(dialNumber); }}
             />
-            <button
-              onClick={() => { if (dialNumber) makeCall(dialNumber); }}
-              disabled={state !== "registered" || !dialNumber}
-              className="px-3 py-2 rounded-lg text-white disabled:opacity-40"
-              style={{ background: "#2e7d32" }}
-            >
-              <Phone size={16} />
-            </button>
+            <div className="flex gap-2">
+              <input
+                value={extension}
+                onChange={(e) => setExtension(e.target.value.replace(/\D/g, ""))}
+                placeholder="Доб. номер (необязат.)"
+                className="flex-1 text-sm px-3 py-2 rounded-lg"
+                style={{ border: "1px solid #e0e0e0" }}
+                onKeyDown={(e) => { if (e.key === "Enter" && dialNumber) makeCall(dialNumber); }}
+              />
+              <button
+                onClick={() => { if (dialNumber) makeCall(dialNumber); }}
+                disabled={state !== "registered" || !dialNumber}
+                className="px-3 py-2 rounded-lg text-white disabled:opacity-40"
+                style={{ background: "#2e7d32" }}
+                title="Позвонить"
+              >
+                <Phone size={16} />
+              </button>
+            </div>
+            {extension && (
+              <p className="text-[10px]" style={{ color: "#888" }}>
+                Доб. <b>{extension}</b> будет набран тонально после соединения
+              </p>
+            )}
           </div>
         </div>
       )}
     </>
+  );
+}
+
+function ActiveCallPanel({ callerInfo, fmtDur, muted, onToggleMute, onHangup, onDtmf }: {
+  callerInfo: string; fmtDur: string; muted: boolean;
+  onToggleMute: () => void; onHangup: () => void; onDtmf: (digit: string) => void;
+}) {
+  const [keypadOpen, setKeypadOpen] = useState(false);
+  const [sent, setSent] = useState("");
+  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+
+  function press(k: string) {
+    onDtmf(k);
+    setSent((s) => (s + k).slice(-12));
+  }
+
+  return (
+    <div className="fixed top-4 right-4 z-[100] bg-white rounded-xl shadow-2xl p-4" style={{ border: "1px solid #e4e4e4", minWidth: 260 }}>
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#e8f5e9" }}>
+          <Phone size={16} style={{ color: "#2e7d32" }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold truncate" style={{ color: "#333" }}>{callerInfo}</p>
+          <p className="text-xs font-mono" style={{ color: "#2e7d32" }}>{fmtDur}</p>
+        </div>
+      </div>
+      {keypadOpen && (
+        <div className="mb-3">
+          {sent && (
+            <p className="text-center font-mono text-sm mb-2 py-1.5 rounded" style={{ background: "#f5f5f5", color: "#333" }}>
+              {sent}
+            </p>
+          )}
+          <div className="grid grid-cols-3 gap-1.5">
+            {keys.map((k) => (
+              <button
+                key={k}
+                onClick={() => press(k)}
+                className="py-2 rounded-lg text-sm font-semibold hover:bg-blue-50 transition-colors"
+                style={{ background: "#f5f5f5", color: "#333" }}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setKeypadOpen((o) => !o)}
+          className="py-2 px-3 rounded-lg text-sm font-medium flex items-center justify-center"
+          style={{ background: keypadOpen ? "#e3f2fd" : "#f5f5f5", color: keypadOpen ? "#0067a5" : "#555" }}
+          title="Тональный набор (DTMF)"
+        >
+          #
+        </button>
+        <button onClick={onToggleMute} className="flex-1 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-1" style={{ background: muted ? "#fff3e0" : "#f5f5f5", color: muted ? "#e65c00" : "#555" }}>
+          {muted ? <MicOff size={14} /> : <Mic size={14} />} {muted ? "Вкл" : "Мьют"}
+        </button>
+        <button onClick={onHangup} className="flex-1 py-2 rounded-lg text-white text-sm font-medium flex items-center justify-center gap-1" style={{ background: "#c62828" }}>
+          <PhoneOff size={14} />
+        </button>
+      </div>
+    </div>
   );
 }
