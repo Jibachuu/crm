@@ -16,7 +16,7 @@ import PhoneLink from "@/components/ui/PhoneLink";
 import CreateContactModal from "./CreateContactModal";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function ContactsList({ initialContacts, companies, users }: any) {
+export default function ContactsList({ initialContacts, companies, users, totalActive = initialContacts.length, pageLimit = 1000 }: any) {
   const { user: currentUser, isManager } = useCurrentUser();
   const [contacts, setContacts] = useState(initialContacts);
   const [search, setSearch] = useState("");
@@ -109,6 +109,12 @@ export default function ContactsList({ initialContacts, companies, users }: any)
       <div className="flex gap-4 mb-3 text-xs" style={{ color: "#888" }}>
         <span>Контактов: <strong style={{ color: "#333" }}>{filtered.length}</strong></span>
       </div>
+
+      {contacts.length >= pageLimit && totalActive > pageLimit && (
+        <div className="mb-3 px-3 py-2 rounded text-xs" style={{ background: "#fff8e1", border: "1px solid #ffe082", color: "#7c5e00" }}>
+          Показаны последние {pageLimit} контактов из {totalActive}. Используйте поиск/фильтр по дате чтобы увидеть старые.
+        </div>
+      )}
 
       <div className="bg-white overflow-hidden" style={{ border: "1px solid #e4e4e4", borderRadius: 6 }}>
         {filtered.length === 0 ? (

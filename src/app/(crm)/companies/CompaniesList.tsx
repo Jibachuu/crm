@@ -27,7 +27,7 @@ const CONTRACT_COLORS: Record<string, { bg: string; color: string }> = {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function CompaniesList({ initialCompanies, users }: any) {
+export default function CompaniesList({ initialCompanies, users, totalActive = initialCompanies.length, pageLimit = 1000 }: any) {
   const { user: currentUser, isManager } = useCurrentUser();
   const [companies, setCompanies] = useState(initialCompanies);
   const [search, setSearch] = useState("");
@@ -129,6 +129,12 @@ export default function CompaniesList({ initialCompanies, users }: any) {
       <div className="flex gap-4 mb-3 text-xs" style={{ color: "#888" }}>
         <span>Компаний: <strong style={{ color: "#333" }}>{filtered.length}</strong></span>
       </div>
+
+      {companies.length >= pageLimit && totalActive > pageLimit && (
+        <div className="mb-3 px-3 py-2 rounded text-xs" style={{ background: "#fff8e1", border: "1px solid #ffe082", color: "#7c5e00" }}>
+          Показаны первые {pageLimit} компаний из {totalActive}. Используйте поиск чтобы найти конкретную.
+        </div>
+      )}
 
       <div className="bg-white overflow-hidden" style={{ border: "1px solid #e4e4e4", borderRadius: 6 }}>
         {filtered.length === 0 ? (

@@ -32,7 +32,7 @@ interface FunnelStage { id: string; funnel_id: string; name: string; slug: strin
 interface Funnel { id: string; name: string; type: string; is_default: boolean; }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function LeadsList({ initialLeads, users, funnelStages = [], funnels = [] }: { initialLeads: any[]; users: any[]; funnelStages?: FunnelStage[]; funnels?: Funnel[] }) {
+export default function LeadsList({ initialLeads, users, funnelStages = [], funnels = [], totalActive = initialLeads.length, pageLimit = 1000 }: { initialLeads: any[]; users: any[]; funnelStages?: FunnelStage[]; funnels?: Funnel[]; totalActive?: number; pageLimit?: number }) {
   const { user: currentUser, isManager } = useCurrentUser();
   const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
   const funnelMap = Object.fromEntries(funnels.map((f) => [f.id, f]));
@@ -280,6 +280,15 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
           return count > 0 ? <span key={s.key}>{s.label}: <strong style={{ color: "#333" }}>{count}</strong></span> : null;
         })}
       </div>
+
+      {/* Initial-load truncation hint — when there are more rows than the
+          page-loader fetched, the user needs to know that older entries
+          aren't yet visible until they refine the filter or open archive. */}
+      {leads.length >= pageLimit && totalActive > pageLimit && (
+        <div className="mb-3 px-3 py-2 rounded text-xs" style={{ background: "#fff8e1", border: "1px solid #ffe082", color: "#7c5e00" }}>
+          Показаны последние {pageLimit} лидов из {totalActive}. Сузьте поиск/фильтр по дате, чтобы увидеть старые.
+        </div>
+      )}
 
       {/* LIST VIEW */}
       {viewMode === "list" && (

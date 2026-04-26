@@ -24,7 +24,7 @@ const OLD_STAGE_LABELS: Record<string, string> = {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function DealsList({ initialDeals, users, funnelStages = [] }: { initialDeals: any[]; users: any[]; funnelStages?: FunnelStage[] }) {
+export default function DealsList({ initialDeals, users, funnelStages = [], totalActive = initialDeals.length, pageLimit = 1000 }: { initialDeals: any[]; users: any[]; funnelStages?: FunnelStage[]; totalActive?: number; pageLimit?: number }) {
   const { user: currentUser, isManager } = useCurrentUser();
   const stageMap = Object.fromEntries(funnelStages.map((s) => [s.id, s]));
   const hasFunnelStages = funnelStages.length > 0;
@@ -186,6 +186,12 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
         <span>Сумма: <strong style={{ color: "#333" }}>{formatCurrency(totalAmount)}</strong></span>
         <span>Выиграно: <strong style={{ color: "#2e7d32" }}>{formatCurrency(wonAmount)}</strong></span>
       </div>
+
+      {deals.length >= pageLimit && totalActive > pageLimit && (
+        <div className="mb-3 px-3 py-2 rounded text-xs" style={{ background: "#fff8e1", border: "1px solid #ffe082", color: "#7c5e00" }}>
+          Показаны последние {pageLimit} сделок из {totalActive}. Используйте поиск/фильтр по дате чтобы увидеть старые.
+        </div>
+      )}
 
       {view === "table" ? (
         <><div className="bg-white" style={{ border: "1px solid #e4e4e4", borderRadius: 6 }}>

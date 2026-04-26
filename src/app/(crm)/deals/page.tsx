@@ -1,21 +1,23 @@
 import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchAll } from "@/lib/supabase/fetchAll";
+import { fetchAll, countRows } from "@/lib/supabase/fetchAll";
 import Header from "@/components/layout/Header";
 import DealsList from "./DealsList";
 
 export const metadata: Metadata = { title: "Сделки" };
 
+const PAGE_LIMIT = 1000;
+
 export default async function DealsPage() {
   const admin = createAdminClient();
 
-  const [deals, users, funnelStages] = await Promise.all([
+  const [deals, users, funnelStages, totalActive] = await Promise.all([
     fetchAll(admin, "deals", `
       *,
       contacts(id, full_name),
       companies(id, name),
       users!deals_assigned_to_fkey(id, full_name)
-    `, { order: { column: "created_at", ascending: false }, notDeleted: true }),
+    `, { order: { column: "created_at", ascending: false }, notDeleted: true, limit: PAGE_LIMIT }),
     fetchAll(admin, "users", "id, full_name", {
       eq: { is_active: true },
       order: { column: "full_name" },
@@ -23,6 +25,7 @@ export default async function DealsPage() {
     fetchAll(admin, "funnel_stages", "id, funnel_id, name, slug, color, sort_order, is_final, is_success", {
       order: { column: "sort_order" },
     }),
+    countRows(admin, "deals", { notDeleted: true }),
   ]);
 
   // Get deal funnel stages
@@ -35,7 +38,7 @@ export default async function DealsPage() {
     <>
       <Header title="Сделки" />
       <main className="p-6">
-        <DealsList initialDeals={deals} users={users} funnelStages={dealStages} />
+        <DealsList initialDeals={deals} users={users} funnelStages={dealStages} totalActive={totalActive} pageLimit={PAGE_LIMIT} />
       </main>
     </>
   );
