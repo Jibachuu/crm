@@ -24,15 +24,17 @@ interface Signature {
 
 interface Props {
   to: string;
+  recipients?: { label: string; value: string }[];
   entityType?: string;
   entityId?: string;
   defaultSubject?: string;
   onSent?: () => void;
   onClose?: () => void;
+  onChangeTo?: (to: string) => void;
   compact?: boolean;
 }
 
-export default function EmailCompose({ to, entityType, entityId, defaultSubject, onSent, onClose, compact = false }: Props) {
+export default function EmailCompose({ to, recipients, entityType, entityId, defaultSubject, onSent, onClose, onChangeTo, compact = false }: Props) {
   const [subject, setSubject] = useState(defaultSubject ?? "");
   const [body, setBody] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -185,7 +187,20 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
       <div className="p-3 space-y-2">
         <div className="flex items-center gap-2 text-xs" style={{ color: "#888" }}>
           <span>Кому:</span>
-          <span className="font-medium" style={{ color: "#333" }}>{to}</span>
+          {recipients && recipients.length > 1 ? (
+            <select
+              value={to}
+              onChange={(e) => onChangeTo?.(e.target.value)}
+              className="text-xs px-2 py-1 rounded font-medium"
+              style={{ border: "1px solid #d0d0d0", color: "#333" }}
+            >
+              {recipients.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="font-medium" style={{ color: "#333" }}>{to}</span>
+          )}
         </div>
         <input
           value={subject}
@@ -203,7 +218,16 @@ export default function EmailCompose({ to, entityType, entityId, defaultSubject,
             for (const item of Array.from(items)) {
               if (item.type.startsWith("image/")) {
                 const file = item.getAsFile();
-                if (file) imageFiles.push(file);
+                if (file) {
+                  // Clipboard images come in with empty `name`. Give them a
+                  // real filename derived from the MIME type so the
+                  // recipient sees image.png instead of "unnamed".
+                  const ext = (file.type.split("/")[1] || "png").split(";")[0];
+                  const safe = file.name?.trim()
+                    ? file
+                    : new File([file], `image_${Date.now()}.${ext}`, { type: file.type });
+                  imageFiles.push(safe);
+                }
               }
             }
             if (imageFiles.length > 0) {

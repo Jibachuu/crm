@@ -33,7 +33,7 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }) + " " + time;
 }
 
-export default function EmailThread({ email, compact = false, entityType, entityId }: { email: string; compact?: boolean; entityType?: string; entityId?: string }) {
+export default function EmailThread({ email, compact = false, entityType, entityId, extraRecipients }: { email: string; compact?: boolean; entityType?: string; entityId?: string; extraRecipients?: { label: string; value: string }[] }) {
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +41,13 @@ export default function EmailThread({ email, compact = false, entityType, entity
   const [detail, setDetail] = useState<EmailDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [composeTo, setComposeTo] = useState(email);
+
+  // Build recipient list: primary email first, then any extras (e.g. company email).
+  const recipients = [
+    { label: email, value: email },
+    ...(extraRecipients ?? []).filter((r) => r.value && r.value !== email),
+  ];
 
   async function loadEmails() {
     setLoading(true);
@@ -119,8 +126,9 @@ export default function EmailThread({ email, compact = false, entityType, entity
         </button>
         {composeOpen && (
           <div className="mt-3 text-left">
-            <EmailCompose to={email} entityType={entityType} entityId={entityId} compact
-              onClose={() => setComposeOpen(false)} onSent={() => { setComposeOpen(false); loadEmails(); }} />
+            <EmailCompose to={composeTo} recipients={recipients} entityType={entityType} entityId={entityId} compact
+              onClose={() => setComposeOpen(false)} onSent={() => { setComposeOpen(false); loadEmails(); }}
+              onChangeTo={setComposeTo} />
           </div>
         )}
       </div>
@@ -148,12 +156,14 @@ export default function EmailThread({ email, compact = false, entityType, entity
       {composeOpen && (
         <div className="mb-3">
           <EmailCompose
-            to={email}
+            to={composeTo}
+            recipients={recipients}
             entityType={entityType}
             entityId={entityId}
             compact
             onClose={() => setComposeOpen(false)}
             onSent={() => { setComposeOpen(false); loadEmails(); }}
+            onChangeTo={setComposeTo}
           />
         </div>
       )}
@@ -185,7 +195,7 @@ export default function EmailThread({ email, compact = false, entityType, entity
               </button>
 
               {isExpanded && (
-                <div className="px-4 pb-4" style={{ borderTop: "1px solid #f0f0f0" }}>
+                <div className="px-4 pb-4" style={{ borderTop: "1px solid #f0f0f0", maxHeight: 600, overflowY: "auto" }}>
                   {loadingDetail ? (
                     <p className="text-xs py-4 text-center" style={{ color: "#aaa" }}>Загрузка...</p>
                   ) : detail ? (

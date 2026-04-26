@@ -255,7 +255,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
         <button onClick={refreshAndLoad} className="p-1 rounded hover:bg-gray-100" title="Обновить"><RefreshCw size={12} style={{ color: "#888" }} /></button>
       </div>
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2" style={{ background: "#f8f9fa" }}>
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2" style={{ background: "#f8f9fa", overflowAnchor: "none", overscrollBehavior: "contain" }}>
         {loading && messages.length === 0 && <p className="text-xs text-center py-4" style={{ color: "#aaa" }}>Загрузка...</p>}
         {!loading && messages.length === 0 && <p className="text-xs text-center py-4" style={{ color: "#aaa" }}>Отправьте первое сообщение</p>}
         {!loading && hasMore && messages.length > 0 && (

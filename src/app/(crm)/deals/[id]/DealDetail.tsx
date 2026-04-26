@@ -429,7 +429,16 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
 
             {activeTab === "email" && (
               deal.contacts?.email ? (
-                <EmailThread email={deal.contacts.email} compact entityType="deal" entityId={deal.id} />
+                <EmailThread
+                  email={deal.contacts.email}
+                  compact
+                  entityType="deal"
+                  entityId={deal.id}
+                  extraRecipients={[
+                    deal.contacts.email_other ? { label: `${deal.contacts.email_other} (доп.)`, value: deal.contacts.email_other } : null,
+                    deal.companies?.email ? { label: `${deal.companies.email} (компания)`, value: deal.companies.email } : null,
+                  ].filter(Boolean) as { label: string; value: string }[]}
+                />
               ) : (
                 <div className="text-center py-8"><p className="text-sm" style={{ color: "#aaa" }}>{deal.contacts ? "У контакта не указан email" : "Привяжите контакт с email"}</p></div>
               )

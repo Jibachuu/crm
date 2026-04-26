@@ -321,7 +321,16 @@ export default function ContactDetail({ contact: initialContact, communications:
             )}
 
             {activeTab === "email" && contact.email && (
-              <EmailThread email={contact.email} compact entityType="contact" entityId={contact.id} />
+              <EmailThread
+                email={contact.email}
+                compact
+                entityType="contact"
+                entityId={contact.id}
+                extraRecipients={[
+                  contact.email_other ? { label: `${contact.email_other} (доп.)`, value: contact.email_other } : null,
+                  contact.companies?.email ? { label: `${contact.companies.email} (компания)`, value: contact.companies.email } : null,
+                ].filter(Boolean) as { label: string; value: string }[]}
+              />
             )}
 
             {activeTab === "telegram" && contact.telegram_id && (

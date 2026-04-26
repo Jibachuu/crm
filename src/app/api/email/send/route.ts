@@ -52,10 +52,22 @@ export async function POST(req: NextRequest) {
         encoding: "base64" as const,
       }));
 
+    // Convert URLs to clickable links and preserve line breaks. Manager
+    // wanted hyperlinks; doing it server-side keeps the textarea simple.
+    const escaped = body
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    const linkified = escaped.replace(
+      /(https?:\/\/[^\s<>"')\]]+)/g,
+      '<a href="$1" target="_blank" rel="noopener">$1</a>'
+    );
+    const html = linkified.replace(/\n/g, "<br>");
+
     await transporter.sendMail({
       from, to, subject,
       text: body,
-      html: body.replace(/\n/g, "<br>"),
+      html,
       attachments,
     });
 

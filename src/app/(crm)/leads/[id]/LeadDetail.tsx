@@ -558,7 +558,16 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
 
             {activeTab === "email" && (
               resolvedEmail ? (
-                <EmailThread email={resolvedEmail} compact entityType="lead" entityId={lead.id} />
+                <EmailThread
+                  email={resolvedEmail}
+                  compact
+                  entityType="lead"
+                  entityId={lead.id}
+                  extraRecipients={[
+                    lead.contacts?.email_other && lead.contacts.email_other !== resolvedEmail ? { label: `${lead.contacts.email_other} (доп.)`, value: lead.contacts.email_other } : null,
+                    lead.companies?.email && lead.companies.email !== resolvedEmail ? { label: `${lead.companies.email} (компания)`, value: lead.companies.email } : null,
+                  ].filter(Boolean) as { label: string; value: string }[]}
+                />
               ) : (
                 <div className="text-center py-8">
                   <Mail size={24} className="mx-auto mb-2" style={{ color: "#ddd" }} />

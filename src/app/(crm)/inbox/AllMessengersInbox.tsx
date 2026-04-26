@@ -51,6 +51,7 @@ export default function AllMessengersInbox() {
   const [addingContact, setAddingContact] = useState<string | false>(false);
   const [addError, setAddError] = useState("");
   const [linkedOpen, setLinkedOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function addContact(channel: "telegram" | "maks") {
     const raw = newPhone.trim();
@@ -174,11 +175,22 @@ export default function AllMessengersInbox() {
 
   async function loadAll() {
     setLoading(true);
+    setLoadError(null);
     const all: UnifiedDialog[] = [];
+
+    // Per-channel timeout — TG/MAX proxy hangs sometimes; without this the
+    // whole inbox spins forever and the page looks broken.
+    const TIMEOUT_MS = 15000;
+    function withTimeout<T>(p: Promise<T>, ms = TIMEOUT_MS): Promise<T> {
+      return Promise.race([
+        p,
+        new Promise<T>((_, rej) => setTimeout(() => rej(new Error("timeout")), ms)),
+      ]);
+    }
 
     // Load Telegram dialogs
     try {
-      const res = await fetch("/api/telegram/dialogs");
+      const res = await withTimeout(fetch("/api/telegram/dialogs"));
       if (res.ok) {
         const data = await res.json();
         for (const d of data.dialogs ?? []) {
@@ -200,7 +212,7 @@ export default function AllMessengersInbox() {
 
     // Load MAX chats
     try {
-      const res = await fetch("/api/max?action=chats");
+      const res = await withTimeout(fetch("/api/max?action=chats"));
       if (res.ok) {
         const data = await res.json();
         for (const c of data.chats ?? []) {
@@ -325,6 +337,9 @@ export default function AllMessengersInbox() {
     // Sort by last message time, newest first
     all.sort((a, b) => (b.lastTime || 0) - (a.lastTime || 0));
     setDialogs(all);
+    if (all.length === 0) {
+      setLoadError("Не удалось загрузить чаты. Проверьте подключение или попробуйте обновить.");
+    }
     setLoading(false);
   }
 
@@ -398,7 +413,13 @@ export default function AllMessengersInbox() {
 
         <div className="flex-1 overflow-y-auto">
           {loading && <p className="text-xs text-center py-12" style={{ color: "#aaa" }}>Загрузка чатов...</p>}
-          {!loading && filtered.length === 0 && (
+          {!loading && loadError && (
+            <div className="text-center py-12 px-4">
+              <p className="text-xs mb-2" style={{ color: "#c62828" }}>{loadError}</p>
+              <button onClick={refresh} className="text-xs underline" style={{ color: "#0067a5" }}>Попробовать снова</button>
+            </div>
+          )}
+          {!loading && !loadError && filtered.length === 0 && (
             <p className="text-xs text-center py-12" style={{ color: "#aaa" }}>Нет диалогов</p>
           )}
           {filtered.map((d) => {

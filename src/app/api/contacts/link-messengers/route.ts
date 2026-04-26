@@ -2,22 +2,35 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-/** Normalize Russian phone: 89xx → +79xx, 79xx → +79xx */
+/**
+ * Generate every Russian phone variant a messenger proxy might accept.
+ * Covers: 89xx (Russian local), 79xx (international without plus),
+ * +79xx (E.164), bare 9xx (10-digit national without country code) —
+ * and any +CC… input that's already canonical.
+ *
+ * The MAX/TG proxies are picky about format; the more we try, the
+ * more contacts get successfully linked. Bug фикс по жалобам Рустема
+ * 13.04 ("89616363487 не находится в TG").
+ */
 function normalizePhone(raw: string): string[] {
   const digits = raw.replace(/\D/g, "");
   const variants: string[] = [];
-  if (digits.startsWith("8") && digits.length === 11) {
-    variants.push("+7" + digits.slice(1));
-    variants.push("7" + digits.slice(1));
-    variants.push(digits); // raw 8xxx
-  } else if (digits.startsWith("7") && digits.length === 11) {
-    variants.push("+" + digits);
-    variants.push(digits);
-    variants.push("8" + digits.slice(1));
+
+  if (digits.length === 11 && digits.startsWith("8")) {
+    // 89991234567 — Russian local
+    const tail = digits.slice(1); // 9991234567
+    variants.push("+7" + tail, "7" + tail, digits);
+  } else if (digits.length === 11 && digits.startsWith("7")) {
+    // 79991234567
+    variants.push("+" + digits, digits, "8" + digits.slice(1));
+  } else if (digits.length === 10) {
+    // 9991234567 — bare national number
+    variants.push("+7" + digits, "7" + digits, "8" + digits);
   } else if (digits.length >= 10) {
-    variants.push("+" + digits);
-    variants.push(digits);
+    // Any other foreign number — try with and without +
+    variants.push("+" + digits, digits);
   }
+
   return [...new Set(variants)];
 }
 

@@ -310,7 +310,15 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   async function sendFile(file: File) {
     setUploading(true);
     const fd = new FormData();
-    fd.append("file", file);
+    // Browser hands us File objects with empty .name when the user pastes
+    // a screenshot via Ctrl+V (or drops one from the system clipboard
+    // on Windows). The TG proxy then sends it as "unnamed" with no
+    // extension, so the recipient can't open it. Synthesize a name
+    // based on the MIME type so it stays a real .png/.jpg/etc.
+    const ext = (file.type.split("/")[1] || "bin").replace("jpeg", "jpg").split(";")[0];
+    const safeName = file.name?.trim() || `image_${Date.now()}.${ext}`;
+    const named = file.name === safeName ? file : new File([file], safeName, { type: file.type });
+    fd.append("file", named);
     fd.append("peer", peer);
     await fetch("/api/telegram/upload", { method: "POST", body: fd });
     await fetchMessages(true);
@@ -375,7 +383,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   return (
     <div className="flex flex-col" style={{ height, border: compact ? "1px solid #e4e4e4" : "none", borderRadius: compact ? 6 : 0, overflow: "hidden", background: "#fff" }}>
       {/* Messages */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-3" style={{ background: "#f5f5f5" }}>
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-3" style={{ background: "#f5f5f5", overflowAnchor: "none", overscrollBehavior: "contain" }}>
         {messages.length === 0 && (
           <div className="text-center text-sm py-8" style={{ color: "#aaa" }}>Нет сообщений</div>
         )}

@@ -17,8 +17,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const fileName = file.name || "file";
     const mimeType = file.type || "application/octet-stream";
+    // Clipboard images and some drag-and-drop sources hand us empty
+    // file.name → TG proxy sends them as "unnamed" with no extension,
+    // recipient can't open. Synthesize a name from the MIME type.
+    const ext = (mimeType.split("/")[1] || "bin").replace("jpeg", "jpg").split(";")[0];
+    const fileName = file.name?.trim() || `attachment_${Date.now()}.${ext}`;
     // Determine kind: images → photo (inline), everything else → file (as document with filename)
     const isImage = mimeType.startsWith("image/") && !mimeType.includes("svg");
     const kind = isImage ? "photo" : "file";
