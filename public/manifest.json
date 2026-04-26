@@ -1,24 +1,46 @@
 {
-  "name": "CRM система",
-  "short_name": "CRM",
-  "description": "Корпоративная CRM система",
+  "name": "CRM Артево",
+  "short_name": "Артево",
+  "description": "CRM система Артево HoReCa",
   "start_url": "/dashboard",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#1e293b",
-  "theme_color": "#1e293b",
-  "orientation": "portrait-primary",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#1e2330",
+  "theme_color": "#0067a5",
+  "orientation": "any",
+  "lang": "ru-RU",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    { "name": "Лиды", "url": "/leads", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Сделки", "url": "/deals", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Inbox", "url": "/inbox", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Задачи", "url": "/tasks", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ]
 }

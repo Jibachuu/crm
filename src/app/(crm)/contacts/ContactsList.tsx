@@ -161,15 +161,15 @@ export default function ContactsList({ initialContacts, companies, users, totalA
                       </td>
                       <td className="px-4 py-2.5">
                         {contact.phone ? (
-                          <PhoneLink phone={contact.phone} iconSize={11} className="text-xs flex items-center gap-1 hover:underline" showIcon={true}>
+                          <PhoneLink phone={contact.phone} iconSize={12} className="text-sm font-mono whitespace-nowrap flex items-center gap-1 hover:underline" showIcon={true}>
                             {contact.phone}
                           </PhoneLink>
                         ) : <span style={{ color: "#ccc" }}>—</span>}
                       </td>
                       <td className="px-4 py-2.5">
                         {contact.email ? (
-                          <a href={`mailto:${contact.email}`} className="text-xs flex items-center gap-1 hover:underline truncate max-w-[160px]" style={{ color: "#555" }}>
-                            <Mail size={11} style={{ color: "#aaa" }} />{contact.email}
+                          <a href={`mailto:${contact.email}`} className="text-sm flex items-center gap-1 hover:underline truncate max-w-[200px]" style={{ color: "#555" }}>
+                            <Mail size={12} style={{ color: "#aaa" }} />{contact.email}
                           </a>
                         ) : <span style={{ color: "#ccc" }}>—</span>}
                       </td>
