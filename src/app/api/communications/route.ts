@@ -19,6 +19,10 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient();
+  // NB: only fields that actually exist in the communications table.
+  // Schema lives in supabase/schema.sql + migrations v31/v36/v53.
+  // attachments was wishful — no such column → каждая заметка падала
+  // с "Could not find the 'attachments' column" пока этот ключ был.
   const { data, error } = await admin
     .from("communications")
     .insert({
@@ -31,7 +35,11 @@ export async function POST(req: NextRequest) {
       to_address: body.to_address || null,
       subject: body.subject || null,
       external_id: body.external_id || null,
-      attachments: body.attachments ?? null,
+      sender_name: body.sender_name || null,
+      contact_id: body.contact_id || null,
+      company_id: body.company_id || null,
+      lead_id: body.lead_id || null,
+      deal_id: body.deal_id || null,
       created_by: body.created_by || user.id,
     })
     .select("*, users!communications_created_by_fkey(full_name)")
