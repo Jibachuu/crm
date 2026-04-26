@@ -195,5 +195,21 @@ export async function GET() {
   // Sort by date, newest first
   notifications.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  return NextResponse.json({ notifications, count: notifications.length });
+  // Stamp each notification with read state from server-persisted table.
+  // Was previously frontend-only (localStorage) → after browser clear
+  // every old notification re-surfaced as "new".
+  const ids = notifications.map((n) => n.id);
+  const readSet = new Set<string>();
+  if (ids.length > 0) {
+    const { data: reads } = await admin
+      .from("user_notification_reads")
+      .select("notification_id")
+      .eq("user_id", user.id)
+      .in("notification_id", ids);
+    for (const r of reads ?? []) readSet.add(r.notification_id);
+  }
+  const annotated = notifications.map((n) => ({ ...n, is_read: readSet.has(n.id) }));
+  const unreadCount = annotated.filter((n) => !n.is_read).length;
+
+  return NextResponse.json({ notifications: annotated, count: unreadCount, total: annotated.length });
 }

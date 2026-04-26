@@ -49,6 +49,37 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(data);
 }
 
+// Update an existing communication (pin/unpin, edit note body, etc.).
+// Communications has no UPDATE RLS policy → direct client updates fail
+// silently for non-admins. Going through admin client makes pin/edit
+// work for everyone authenticated.
+export async function PATCH(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
+
+  const updates: Record<string, unknown> = {};
+  if (body.body !== undefined) updates.body = body.body;
+  if (body.subject !== undefined) updates.subject = body.subject;
+  if (body.is_pinned !== undefined) updates.is_pinned = !!body.is_pinned;
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "no fields to update" }, { status: 400 });
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("communications")
+    .update(updates)
+    .eq("id", body.id)
+    .select("*, users!communications_created_by_fkey(full_name)")
+    .single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json(data);
+}
+
 // Single or bulk delete by id(s). Schema policy restricts DELETE to admin,
 // so we do it via service role and authorise at the API layer.
 export async function DELETE(req: NextRequest) {

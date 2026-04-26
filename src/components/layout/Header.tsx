@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Bell, CheckSquare, MessageSquare, Users, X, CheckCheck, Clock } from "lucide-react";
+import { Bell, CheckSquare, MessageSquare, Users, X, CheckCheck, Clock, Volume2, VolumeX } from "lucide-react";
 
 interface Notification {
   id: string;
@@ -11,6 +11,7 @@ interface Notification {
   subtitle?: string;
   link?: string;
   date: string;
+  is_read?: boolean;
 }
 
 interface HeaderProps {
@@ -30,15 +31,15 @@ export default function Header({ title }: HeaderProps) {
   const [checkedIn, setCheckedIn] = useState(false);
   const [checkTime, setCheckTime] = useState<string | null>(null);
   const [checkLoading, setCheckLoading] = useState(false);
+  // Per-browser sound mute. Stored in localStorage so it survives reloads.
+  const [soundOn, setSoundOn] = useState(true);
+  useEffect(() => { setSoundOn(localStorage.getItem("notification_sound") !== "off"); }, []);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Load read IDs from localStorage & request notification permission
+  // Read state now lives on the server (user_notification_reads); we
+  // mirror it into a local Set for fast count math after every fetch.
+  // Browser-clear no longer makes "old" notifications resurface.
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("read_notifications");
-      if (stored) setReadIds(new Set(JSON.parse(stored)));
-    } catch { /* ignore */ }
-    // Request browser notification permission
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
       Notification.requestPermission().catch(() => {});
     }
@@ -61,9 +62,13 @@ export default function Header({ title }: HeaderProps) {
         const data = await res.json();
         const newNotifs: Notification[] = data.notifications ?? [];
         setNotifications(newNotifs);
+        // Server-side read state — single source of truth.
+        const serverRead = new Set(newNotifs.filter((n) => n.is_read).map((n) => n.id));
+        setReadIds(serverRead);
 
-        // Beep dedup: don't replay sound for IDs we already beeped on today.
-        // Stored as { date: "YYYY-MM-DD", ids: [...] } in localStorage.
+        // Beep dedup remains local — purely a client-side audio guard,
+        // not actual read state. Per-day key avoids endless beeping
+        // when the API repeats unread items across polls.
         const today = new Date().toISOString().slice(0, 10);
         let beeped: { date: string; ids: string[] } = { date: today, ids: [] };
         try {
@@ -75,16 +80,19 @@ export default function Header({ title }: HeaderProps) {
         } catch { /* ignore */ }
         const beepedSet = new Set(beeped.ids);
 
-        const unread = newNotifs.filter((n) => !readIds.has(n.id)).length;
+        const unread = newNotifs.filter((n) => !n.is_read).length;
 
-        // Find IDs that are NEW (not yet beeped today and not yet read)
+        // Beep on truly new (unread + not beeped today). Sound toggle
+        // lives in localStorage so each user can mute it locally.
+        const soundEnabled = localStorage.getItem("notification_sound") !== "off";
         const freshIds = newNotifs
-          .filter((n) => !readIds.has(n.id) && !beepedSet.has(n.id))
+          .filter((n) => !n.is_read && !beepedSet.has(n.id))
           .map((n) => n.id);
 
         if (freshIds.length > 0) {
-          // Beep once per session burst, regardless of count
-          try { new Audio("/notification.mp3").play().catch(() => {}); } catch {}
+          if (soundEnabled) {
+            try { new Audio("/notification.mp3").play().catch(() => {}); } catch {}
+          }
           freshIds.forEach((id) => beepedSet.add(id));
           try {
             localStorage.setItem("beeped_notifications", JSON.stringify({ date: today, ids: Array.from(beepedSet) }));
@@ -170,20 +178,25 @@ export default function Header({ title }: HeaderProps) {
     setOpen(!open);
   }
 
-  function markAsRead(id: string) {
-    const updated = new Set(readIds);
-    updated.add(id);
-    setReadIds(updated);
-    localStorage.setItem("read_notifications", JSON.stringify([...updated]));
+  async function markAsRead(id: string) {
+    setReadIds((p) => { const s = new Set(p); s.add(id); return s; });
+    fetch("/api/notifications/read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    }).catch(() => {});
   }
 
-  function markAllAsRead() {
-    const updated = new Set(readIds);
-    notifications.forEach((n) => updated.add(n.id));
-    setReadIds(updated);
+  async function markAllAsRead() {
+    const ids = notifications.map((n) => n.id);
+    setReadIds(new Set(ids));
     setCount(0);
-    localStorage.setItem("read_notifications", JSON.stringify([...updated]));
     setOpen(false);
+    fetch("/api/notifications/read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }).catch(() => {});
   }
 
   function timeAgo(dateStr: string) {
@@ -250,6 +263,18 @@ export default function Header({ title }: HeaderProps) {
             <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid #f0f0f0" }}>
               <span className="text-sm font-semibold" style={{ color: "#333" }}>Уведомления</span>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const next = !soundOn;
+                    setSoundOn(next);
+                    localStorage.setItem("notification_sound", next ? "on" : "off");
+                  }}
+                  className="p-1 rounded hover:bg-gray-100 transition-colors"
+                  title={soundOn ? "Звук включён — выключить" : "Звук выключен — включить"}
+                  style={{ color: soundOn ? "#0067a5" : "#bbb" }}
+                >
+                  {soundOn ? <Volume2 size={13} /> : <VolumeX size={13} />}
+                </button>
                 {count > 0 && (
                   <button
                     onClick={markAllAsRead}

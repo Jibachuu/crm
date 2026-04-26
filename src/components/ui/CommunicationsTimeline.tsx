@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { MessageSquare, Mail, Phone, ArrowLeft, ArrowRight, ChevronDown, Search, Edit2, Trash2, Check, X, Pin } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { apiPatch, apiDelete } from "@/lib/api/client";
 import DateRangeFilter from "./DateRangeFilter";
 import { usePagination } from "@/hooks/usePagination";
 
@@ -158,8 +159,13 @@ export default function CommunicationsTimeline({ entityType, entityId, refreshKe
                     <div className="flex-1" />
                     <button onClick={async () => {
                       const newPinned = !c.is_pinned;
-                      await createClient().from("communications").update({ is_pinned: newPinned }).eq("id", c.id);
+                      // Optimistic; rollback on error.
                       setComms((prev) => prev.map((x) => x.id === c.id ? { ...x, is_pinned: newPinned } : x));
+                      const { error } = await apiPatch("/api/communications", { id: c.id, is_pinned: newPinned });
+                      if (error) {
+                        setComms((prev) => prev.map((x) => x.id === c.id ? { ...x, is_pinned: !newPinned } : x));
+                        alert("Не удалось закрепить: " + error);
+                      }
                     }} className="p-0.5 rounded hover:bg-yellow-50" title={c.is_pinned ? "Открепить" : "Закрепить"}>
                       <Pin size={11} style={{ color: c.is_pinned ? "#e65c00" : "#ccc" }} />
                     </button>
@@ -170,7 +176,8 @@ export default function CommunicationsTimeline({ entityType, entityId, refreshKe
                     )}
                     <button onClick={async () => {
                       if (!confirm("Удалить запись?")) return;
-                      await createClient().from("communications").delete().eq("id", c.id);
+                      const { error } = await apiDelete("/api/communications", { id: c.id });
+                      if (error) { alert("Не удалось удалить: " + error); return; }
                       setComms((prev) => prev.filter((x) => x.id !== c.id));
                     }} className="p-0.5 rounded hover:bg-red-50" title="Удалить">
                       <Trash2 size={11} style={{ color: "#c62828" }} />
@@ -184,7 +191,8 @@ export default function CommunicationsTimeline({ entityType, entityId, refreshKe
                       <div className="flex gap-1 justify-end">
                         <button onClick={() => setEditingId(null)} className="p-1 rounded hover:bg-gray-100"><X size={13} style={{ color: "#888" }} /></button>
                         <button onClick={async () => {
-                          await createClient().from("communications").update({ body: editText }).eq("id", c.id);
+                          const { error } = await apiPatch("/api/communications", { id: c.id, body: editText });
+                          if (error) { alert("Не удалось сохранить: " + error); return; }
                           setComms((prev) => prev.map((x) => x.id === c.id ? { ...x, body: editText } : x));
                           setEditingId(null);
                         }} className="p-1 rounded hover:bg-blue-50"><Check size={13} style={{ color: "#0067a5" }} /></button>
