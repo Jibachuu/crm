@@ -12,7 +12,7 @@ export default async function LeadsPage() {
       contacts(id, full_name, phone),
       companies(id, name),
       users!leads_assigned_to_fkey(id, full_name)
-    `, { order: { column: "created_at", ascending: false } }),
+    `, { order: { column: "created_at", ascending: false }, notDeleted: true }),
     fetchAll(admin, "users", "id, full_name", {
       eq: { is_active: true },
       order: { column: "full_name" },

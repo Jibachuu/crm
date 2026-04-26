@@ -8,9 +8,9 @@ export default async function ContactsPage() {
 
   const [contacts, companies, users] = await Promise.all([
     fetchAll(admin, "contacts", `*, companies(id, name), users!contacts_assigned_to_fkey(id, full_name)`, {
-      order: { column: "created_at", ascending: false },
+      order: { column: "created_at", ascending: false }, notDeleted: true,
     }),
-    fetchAll(admin, "companies", "id, name", { order: { column: "name" } }),
+    fetchAll(admin, "companies", "id, name", { order: { column: "name" }, notDeleted: true }),
     fetchAll(admin, "users", "id, full_name", {
       eq: { is_active: true },
       order: { column: "full_name" },

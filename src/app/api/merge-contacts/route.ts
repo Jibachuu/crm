@@ -63,8 +63,46 @@ export async function POST(req: NextRequest) {
       await admin.from("communications").update({ contact_id: primary.id }).in("contact_id", dupIds);
       await admin.from("tasks").update({ entity_id: primary.id }).in("entity_id", dupIds).eq("entity_type", "contact");
 
-      // Delete duplicates
-      await admin.from("contacts").delete().in("id", dupIds);
+      // Junction tables — strip duplicates first to avoid UNIQUE violation.
+      for (const tbl of [
+        { table: "deal_contacts" as const, parent: "deal_id" as const },
+        { table: "lead_contacts" as const, parent: "lead_id" as const },
+      ]) {
+        try {
+          const { data: keepLinks } = await admin.from(tbl.table).select(tbl.parent).eq("contact_id", primary.id);
+          const keepParents: string[] = (keepLinks ?? []).map((r: Record<string, string>) => r[tbl.parent]);
+          if (keepParents.length > 0) {
+            const { data: dupes } = await admin
+              .from(tbl.table)
+              .select(`id, ${tbl.parent}`)
+              .in("contact_id", dupIds)
+              .in(tbl.parent, keepParents);
+            const dupeRowIds: string[] = (dupes ?? []).map((d: { id: string }) => d.id);
+            if (dupeRowIds.length > 0) await admin.from(tbl.table).delete().in("id", dupeRowIds);
+          }
+          await admin.from(tbl.table).update({ contact_id: primary.id }).in("contact_id", dupIds);
+        } catch (e) {
+          // lead_contacts may not exist on prod yet (migration_v66) — ignore.
+          console.warn(`[merge-contacts] ${tbl.table} reassign skipped:`, e);
+        }
+      }
+
+      // Soft delete duplicates so we can audit/restore.
+      const now = new Date().toISOString();
+      await admin.from("contacts").update({ deleted_at: now }).in("id", dupIds);
+      try {
+        await admin.from("audit_log").insert(
+          dupIds.map((id) => ({
+            table_name: "contacts",
+            row_id: id,
+            action: "delete",
+            actor_id: user.id,
+            payload: { source: "api/merge-contacts", primaryId: primary.id, phone },
+          }))
+        );
+      } catch (e) {
+        console.warn("[audit_log merge-contacts]", e);
+      }
       merged += duplicates.length;
     } catch (e) {
       errors.push(`phone ${phone}: ${e}`);

@@ -2,6 +2,38 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// Reassign junction-table rows from a set of "from" contact ids onto a single
+// "keep" contact id, deleting duplicates that would violate the
+// (parent_id, contact_id) UNIQUE constraint.
+//
+// Without this step the bulk UPDATE below fails with 23505 (unique violation)
+// the moment the same parent (deal/lead) is linked to both a "from" contact
+// and the "keep" contact — and the silent catch in the original code masked
+// the failure, leaving link state half-merged.
+async function reassignJunction(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  admin: any,
+  table: "deal_contacts" | "lead_contacts",
+  parentCol: "deal_id" | "lead_id",
+  keepId: string,
+  fromIds: string[]
+) {
+  const { data: keepLinks } = await admin.from(table).select(parentCol).eq("contact_id", keepId);
+  const keepParents: string[] = (keepLinks ?? []).map((r: Record<string, string>) => r[parentCol]);
+
+  if (keepParents.length > 0) {
+    const { data: dupes } = await admin
+      .from(table)
+      .select(`id, ${parentCol}`)
+      .in("contact_id", fromIds)
+      .in(parentCol, keepParents);
+    const dupeIds: string[] = (dupes ?? []).map((d: { id: string }) => d.id);
+    if (dupeIds.length > 0) await admin.from(table).delete().in("id", dupeIds);
+  }
+
+  await admin.from(table).update({ contact_id: keepId }).in("contact_id", fromIds);
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -12,7 +44,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "keepId and mergeIds[] required" }, { status: 400 });
   }
 
-  // Ensure keepId is not in mergeIds
   const ids = mergeIds.filter((id: string) => id !== keepId);
   if (ids.length === 0) {
     return NextResponse.json({ error: "mergeIds must contain IDs different from keepId" }, { status: 400 });
@@ -20,7 +51,6 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient();
 
-  // 1. Load keep contact and merge contacts
   const { data: keepContact } = await admin.from("contacts").select("*").eq("id", keepId).single();
   if (!keepContact) return NextResponse.json({ error: "Keep contact not found" }, { status: 404 });
 
@@ -29,7 +59,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Merge contacts not found" }, { status: 404 });
   }
 
-  // 2. Copy non-null fields from merge contacts to keep contact (don't overwrite existing)
+  // Copy non-null fields from merge contacts to keep contact (don't overwrite existing)
   const fieldsToCopy = [
     "full_name", "first_name", "last_name", "middle_name", "position",
     "phone", "phone_mobile", "phone_other",
@@ -45,37 +75,48 @@ export async function POST(req: NextRequest) {
       const mergeVal = (mc as any)[field];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const keepVal = (keepContact as any)[field] ?? updates[field];
-      if (mergeVal && !keepVal) {
-        updates[field] = mergeVal;
-      }
+      if (mergeVal && !keepVal) updates[field] = mergeVal;
     }
   }
-
-  // Apply updates to keep contact
   if (Object.keys(updates).length > 0) {
     await admin.from("contacts").update(updates).eq("id", keepId);
   }
 
-  // 3. Reassign all related records from merge contacts to keep contact
+  // Reassign single-FK references — these have no UNIQUE constraint, so
+  // a straight bulk UPDATE is safe.
+  await admin.from("leads").update({ contact_id: keepId }).in("contact_id", ids);
+  await admin.from("deals").update({ contact_id: keepId }).in("contact_id", ids);
+  await admin.from("communications").update({ contact_id: keepId }).in("contact_id", ids);
+  await admin.from("communications").update({ entity_id: keepId }).in("entity_id", ids).eq("entity_type", "contact");
+  await admin.from("tasks").update({ entity_id: keepId }).in("entity_id", ids).eq("entity_type", "contact");
+
+  // Reassign junction tables — strip duplicates first to avoid UNIQUE
+  // violation (deal_id/lead_id, contact_id).
+  await reassignJunction(admin, "deal_contacts", "deal_id", keepId, ids);
+  // lead_contacts may not yet exist on prod (migration_v66); ignore failure.
   try {
-    await admin.from("leads").update({ contact_id: keepId }).in("contact_id", ids);
-    await admin.from("deals").update({ contact_id: keepId }).in("contact_id", ids);
-    await admin.from("deal_contacts").update({ contact_id: keepId }).in("contact_id", ids);
-    await admin.from("communications").update({ contact_id: keepId }).in("contact_id", ids);
-    // Also update entity_type/entity_id references
-    await admin.from("communications").update({ entity_id: keepId }).in("entity_id", ids).eq("entity_type", "contact");
-    await admin.from("tasks").update({ entity_id: keepId }).in("entity_id", ids).eq("entity_type", "contact");
+    await reassignJunction(admin, "lead_contacts", "lead_id", keepId, ids);
   } catch (e) {
-    // deal_contacts might not exist, continue
-    console.warn("[merge] reassign warning:", e);
+    console.warn("[merge] lead_contacts reassign skipped:", e);
   }
 
-  // 4. Delete merge contacts
-  await admin.from("contacts").delete().in("id", ids);
+  // Soft delete the merged-away contacts so we can audit/restore if the merge was wrong.
+  const now = new Date().toISOString();
+  await admin.from("contacts").update({ deleted_at: now }).in("id", ids);
 
-  return NextResponse.json({
-    ok: true,
-    merged: ids.length,
-    updates,
-  });
+  try {
+    await admin.from("audit_log").insert(
+      ids.map((id: string) => ({
+        table_name: "contacts",
+        row_id: id,
+        action: "delete",
+        actor_id: user.id,
+        payload: { source: "api/contacts/merge", keepId },
+      }))
+    );
+  } catch (e) {
+    console.warn("[audit_log merge]", e);
+  }
+
+  return NextResponse.json({ ok: true, merged: ids.length, updates });
 }

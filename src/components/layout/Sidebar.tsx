@@ -33,6 +33,7 @@ import {
   Menu,
   X,
   MoreHorizontal,
+  Trash2,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 
@@ -146,6 +147,7 @@ export default function Sidebar({ user, permissions = {} }: { user: User; permis
         {(user.role === "admin" || user.role === "supervisor") && (
           <>
             <div className="my-2" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }} />
+            <NavLink item={{ href: "/trash", label: "Корзина", icon: Trash2 }} isActive={pathname.startsWith("/trash")} onClick={() => setMobileOpen(false)} />
             <NavLink item={{ href: "/settings", label: "Настройки", icon: Settings }} isActive={pathname.startsWith("/settings")} onClick={() => setMobileOpen(false)} />
           </>
         )}

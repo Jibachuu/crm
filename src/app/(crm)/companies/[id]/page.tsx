@@ -11,14 +11,15 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
     .from("companies")
     .select("*")
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   if (!company) notFound();
 
   const [{ data: contacts }, { data: deals }, { data: leads }, { data: communications }, { data: tasks }] = await Promise.all([
-    admin.from("contacts").select("id, full_name, position, phone, email, telegram_id, telegram_username, maks_id").eq("company_id", id),
-    admin.from("deals").select("id, title, stage, amount, created_at").eq("company_id", id),
-    admin.from("leads").select("id, title, status, source, created_at").eq("company_id", id).order("created_at", { ascending: false }),
+    admin.from("contacts").select("id, full_name, position, phone, email, telegram_id, telegram_username, maks_id").eq("company_id", id).is("deleted_at", null),
+    admin.from("deals").select("id, title, stage, amount, created_at").eq("company_id", id).is("deleted_at", null),
+    admin.from("leads").select("id, title, status, source, created_at").eq("company_id", id).is("deleted_at", null).order("created_at", { ascending: false }),
     admin
       .from("communications")
       .select("*, users!communications_created_by_fkey(full_name)")
@@ -29,6 +30,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
       .select("*, users!tasks_assigned_to_fkey(full_name)")
       .eq("entity_type", "company")
       .eq("entity_id", id)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false }),
   ]);
 

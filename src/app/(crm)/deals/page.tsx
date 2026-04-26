@@ -12,7 +12,7 @@ export default async function DealsPage() {
       contacts(id, full_name),
       companies(id, name),
       users!deals_assigned_to_fkey(id, full_name)
-    `, { order: { column: "created_at", ascending: false } }),
+    `, { order: { column: "created_at", ascending: false }, notDeleted: true }),
     fetchAll(admin, "users", "id, full_name", {
       eq: { is_active: true },
       order: { column: "full_name" },

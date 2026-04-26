@@ -11,6 +11,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
     .from("contacts")
     .select(`*, companies(id, name, city, region, timezone, legal_address)`)
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   if (!contact) notFound();
@@ -26,9 +27,10 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
       .select("*, users!tasks_assigned_to_fkey(full_name)")
       .eq("entity_type", "contact")
       .eq("entity_id", id)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false }),
-    admin.from("leads").select("id, title, status").eq("contact_id", id),
-    admin.from("deals").select("id, title, stage, amount").eq("contact_id", id),
+    admin.from("leads").select("id, title, status").eq("contact_id", id).is("deleted_at", null),
+    admin.from("deals").select("id, title, stage, amount").eq("contact_id", id).is("deleted_at", null),
   ]);
 
   return (

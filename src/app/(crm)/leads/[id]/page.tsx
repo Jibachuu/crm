@@ -16,6 +16,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       users!leads_assigned_to_fkey(id, full_name)
     `)
     .eq("id", id)
+    .is("deleted_at", null)
     .single();
 
   if (!lead) notFound();
@@ -47,6 +48,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     .select("*, users!tasks_assigned_to_fkey(full_name)")
     .eq("entity_type", "lead")
     .eq("entity_id", id)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   const { data: leadProducts } = await admin

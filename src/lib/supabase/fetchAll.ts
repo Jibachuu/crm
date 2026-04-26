@@ -3,6 +3,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /**
  * Fetches all rows from a Supabase table, bypassing the server-side max_rows=1000 limit
  * by paginating in chunks of 1000.
+ *
+ * Pass `notDeleted: true` to filter out soft-deleted rows (`deleted_at IS NULL`).
+ * Use this for any list/detail loader that runs on the admin client — admin
+ * bypasses RLS, so without the explicit filter soft-deleted rows leak back
+ * into the UI.
  */
 export async function fetchAll<T = unknown>(
   supabase: SupabaseClient,
@@ -11,6 +16,7 @@ export async function fetchAll<T = unknown>(
   opts: {
     order?: { column: string; ascending?: boolean };
     eq?: Record<string, unknown>;
+    notDeleted?: boolean;
   } = {}
 ): Promise<T[]> {
   const PAGE = 1000;
@@ -25,6 +31,7 @@ export async function fetchAll<T = unknown>(
         q = q.eq(col, val);
       }
     }
+    if (opts.notDeleted) q = q.is("deleted_at", null);
     if (opts.order) q = q.order(opts.order.column, { ascending: opts.order.ascending ?? true });
     q = q.range(offset, offset + PAGE - 1);
 

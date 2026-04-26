@@ -7,6 +7,7 @@ export default async function TasksPage() {
   const { data: tasks } = await supabase
     .from("tasks")
     .select("*, users!tasks_assigned_to_fkey(full_name)")
+    .is("deleted_at", null)
     .order("due_date", { ascending: true, nullsFirst: false });
 
   return (
