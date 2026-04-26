@@ -779,6 +779,7 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
         onClose={() => setTaskOpen(false)}
         entityType="lead"
         entityId={lead.id}
+        defaultAssignedTo={lead.assigned_to}
         onCreated={(task) => setTasks((p: unknown[]) => [task, ...p])}
       />
     </div>

@@ -754,6 +754,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
         onClose={() => setTaskOpen(false)}
         entityType="deal"
         entityId={deal.id}
+        defaultAssignedTo={deal.assigned_to}
         onCreated={(task) => setTasks((p: unknown[]) => [task, ...p])}
       />
     </div>

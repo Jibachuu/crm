@@ -19,21 +19,37 @@ interface CreateTaskModalProps {
   onClose: () => void;
   entityType: "lead" | "deal" | "contact" | "company";
   entityId: string;
+  // Pre-select assignee. Pass entity.assigned_to so the new task lands
+  // on the right manager out of the box (was empty by default → tasks
+  // were created без ответственного when user forgot to pick).
+  defaultAssignedTo?: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onCreated: (task: any) => void;
 }
 
-export default function CreateTaskModal({ open, onClose, entityType, entityId, onCreated }: CreateTaskModalProps) {
+export default function CreateTaskModal({ open, onClose, entityType, entityId, defaultAssignedTo, onCreated }: CreateTaskModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // Render after users + current user are known so Select's defaultValue binds correctly.
+  const [dataReady, setDataReady] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
-    createClient().from("users").select("id, full_name").eq("is_active", true).then(({ data }) => {
-      setUsers(data ?? []);
-    });
+    if (!open) { setDataReady(false); return; }
+    const supabase = createClient();
+    Promise.all([
+      supabase.from("users").select("id, full_name").eq("is_active", true),
+      supabase.auth.getUser(),
+    ]).then(([u, auth]) => {
+      setUsers(u.data ?? []);
+      setCurrentUserId(auth.data.user?.id ?? null);
+      setDataReady(true);
+    }).catch(() => setDataReady(true));
   }, [open]);
+
+  // Default to entity's responsible, then to current user as a last resort.
+  const initialAssignee = defaultAssignedTo || currentUserId || "";
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -56,7 +72,7 @@ export default function CreateTaskModal({ open, onClose, entityType, entityId, o
         status: "pending",
         created_by: user?.id ?? null,
       })
-      .select("*, users!tasks_assigned_to_fkey(full_name)")
+      .select("*, users!tasks_assigned_to_fkey(full_name), creator:users!tasks_created_by_fkey(full_name)")
       .single();
 
     if (err) setError(err.message);
@@ -66,6 +82,9 @@ export default function CreateTaskModal({ open, onClose, entityType, entityId, o
 
   return (
     <Modal open={open} onClose={onClose} title="Новая задача" size="md">
+      {!dataReady ? (
+        <div className="p-6 text-center text-sm text-slate-400">Загрузка...</div>
+      ) : (
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>}
         <Input label="Название задачи" name="title" placeholder="Что нужно сделать?" required />
@@ -78,6 +97,7 @@ export default function CreateTaskModal({ open, onClose, entityType, entityId, o
           name="assigned_to"
           options={users.map((u) => ({ value: u.id, label: u.full_name }))}
           placeholder="Выберите исполнителя"
+          defaultValue={initialAssignee}
         />
         <Textarea label="Описание" name="description" placeholder="Дополнительные детали..." />
         <div className="flex justify-end gap-3 pt-2">
@@ -85,6 +105,7 @@ export default function CreateTaskModal({ open, onClose, entityType, entityId, o
           <Button type="submit" loading={loading}>Создать задачу</Button>
         </div>
       </form>
+      )}
     </Modal>
   );
 }

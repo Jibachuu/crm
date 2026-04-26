@@ -11,7 +11,9 @@ interface Task {
   status: string;
   priority: string;
   due_date?: string;
+  created_at?: string;
   users?: { full_name: string };
+  creator?: { full_name: string };
 }
 
 const PRIORITY_LABELS: Record<string, string> = { low: "Низкий", medium: "Средний", high: "Высокий" };
@@ -117,9 +119,11 @@ export default function TaskItem({ task, onUpdated, onDeleted }: { task: Task; o
           </button>
           <div className="flex-1">
             <p className="text-sm font-medium" style={{ color: task.status === "done" ? "#aaa" : "#333", textDecoration: task.status === "done" ? "line-through" : "none" }}>{task.title}</p>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               {task.due_date && <span className="text-xs" style={{ color: "#999" }}>до {formatDate(task.due_date)}</span>}
               {task.users && <span className="text-xs" style={{ color: "#999" }}>• {task.users.full_name}</span>}
+              {task.creator && <span className="text-xs" style={{ color: "#bbb" }}>• постановщик: {task.creator.full_name}</span>}
+              {task.created_at && <span className="text-xs" style={{ color: "#bbb" }}>• создана {formatDate(task.created_at)}</span>}
               <span className="text-xs" style={{ color: "#bbb" }}>{STATUS_LABELS[task.status] ?? task.status}</span>
             </div>
           </div>

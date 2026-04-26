@@ -40,13 +40,15 @@ interface Task {
   status: string;
   priority: string;
   due_date?: string;
+  created_at?: string;
   entity_type?: string;
   entity_id?: string;
   users?: { full_name: string };
+  creator?: { full_name: string };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
+export default function TasksBoard({ initialTasks, entityIndex = {} }: { initialTasks: any[]; entityIndex?: Record<string, Record<string, string>> }) {
   const { user: currentUser, isManager } = useCurrentUser();
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -191,21 +193,33 @@ export default function TasksBoard({ initialTasks }: { initialTasks: any[] }) {
                     {task.description && (
                       <p className="text-xs text-slate-500 mb-2 line-clamp-2">{task.description}</p>
                     )}
-                    {task.entity_type && task.entity_id && (
-                      <Link
-                        href={`${ENTITY_LINKS[task.entity_type]}/${task.entity_id}`}
-                        className="text-xs text-blue-600 hover:underline mb-2 block"
-                      >
-                        {ENTITY_LABELS[task.entity_type]}
-                      </Link>
-                    )}
-                    <div className="flex items-center gap-3 mb-3">
+                    {task.entity_type && task.entity_id && (() => {
+                      const title = entityIndex[task.entity_type]?.[task.entity_id];
+                      const label = `${ENTITY_LABELS[task.entity_type] ?? task.entity_type}${title ? `: ${title}` : ""}`;
+                      // Soft-deleted entity → no link, just a strikethrough label.
+                      if (!title) {
+                        return <span className="text-xs text-slate-400 mb-2 block line-through">{ENTITY_LABELS[task.entity_type] ?? task.entity_type} (удалена)</span>;
+                      }
+                      return (
+                        <Link
+                          href={`${ENTITY_LINKS[task.entity_type]}/${task.entity_id}`}
+                          className="text-xs text-blue-600 hover:underline mb-2 block"
+                        >
+                          {label}
+                        </Link>
+                      );
+                    })()}
+                    <div className="flex items-center gap-3 mb-1 flex-wrap">
                       {task.due_date && (
                         <span className={`text-xs ${new Date(task.due_date) < new Date() && task.status !== "done" ? "text-red-500 font-medium" : "text-slate-400"}`}>
                           до {formatDate(task.due_date)}
                         </span>
                       )}
                       {task.users && <span className="text-xs text-slate-400">• {task.users.full_name}</span>}
+                    </div>
+                    <div className="flex items-center gap-3 mb-3 flex-wrap text-xs text-slate-400">
+                      {task.created_at && <span>создана {formatDate(task.created_at)}</span>}
+                      {task.creator && <span>• поставил(а): {task.creator.full_name}</span>}
                     </div>
                     <div className="flex gap-2">
                       <button

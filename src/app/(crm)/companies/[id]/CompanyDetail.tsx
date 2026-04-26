@@ -594,6 +594,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
         onClose={() => setTaskOpen(false)}
         entityType="company"
         entityId={company.id}
+        defaultAssignedTo={company.assigned_to}
         onCreated={(task) => setTasks((p: unknown[]) => [task, ...p])}
       />
     </div>

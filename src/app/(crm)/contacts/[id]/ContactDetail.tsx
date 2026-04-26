@@ -421,6 +421,7 @@ export default function ContactDetail({ contact: initialContact, communications:
         onClose={() => setTaskOpen(false)}
         entityType="contact"
         entityId={contact.id}
+        defaultAssignedTo={contact.assigned_to}
         onCreated={(task) => setTasks((p: unknown[]) => [task, ...p])}
       />
 
