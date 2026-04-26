@@ -29,6 +29,7 @@ export const LEAD_STATUSES = [
   { key: "in_progress", label: "В работе" },
   { key: "samples", label: "Пробники" },
   { key: "samples_shipped", label: "Пробники отгружены" },
+  { key: "not_target", label: "Не ЦА" },
   { key: "rejected", label: "Отказ" },
 ];
 
@@ -36,6 +37,7 @@ export const LEAD_STATUS_LABELS: Record<string, string> = Object.fromEntries(
   LEAD_STATUSES.map((s) => [s.key, s.label])
 );
 LEAD_STATUS_LABELS["converted"] = "Конвертирован";
+LEAD_STATUS_LABELS["not_target"] = "Не ЦА";
 
 interface FunnelStage {
   id: string;

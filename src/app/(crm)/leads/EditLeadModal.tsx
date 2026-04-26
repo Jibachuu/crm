@@ -17,6 +17,7 @@ const STATUS_OPTIONS = [
   { value: "in_progress", label: "В работе" },
   { value: "samples", label: "Пробники" },
   { value: "samples_shipped", label: "Пробники отгружены" },
+  { value: "not_target", label: "Не ЦА" },
   { value: "rejected", label: "Отказ" },
 ];
 

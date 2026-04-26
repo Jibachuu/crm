@@ -12,13 +12,16 @@ export default async function SamplesPage() {
 
   const admin = createAdminClient();
 
-  const [{ data: samples }, companies, contacts, { data: users }] = await Promise.all([
+  const [{ data: samples }, companies, contacts, { data: users }, leads, deals] = await Promise.all([
     admin.from("samples")
       .select("*, companies(id, name), contacts(id, full_name), users!samples_assigned_to_fkey(id, full_name), logist:users!samples_logist_id_fkey(id, full_name)")
+      .is("deleted_at", null)
       .order("created_at", { ascending: false }),
-    fetchAll(admin, "companies", "id, name", { order: { column: "name" } }),
-    fetchAll(admin, "contacts", "id, full_name, phone", { order: { column: "full_name" } }),
+    fetchAll(admin, "companies", "id, name", { order: { column: "name" }, notDeleted: true }),
+    fetchAll(admin, "contacts", "id, full_name, phone", { order: { column: "full_name" }, notDeleted: true }),
     admin.from("users").select("id, full_name").eq("is_active", true).order("full_name"),
+    fetchAll(admin, "leads", "id, title, companies(name)", { order: { column: "created_at", ascending: false }, notDeleted: true }),
+    fetchAll(admin, "deals", "id, title, companies(name)", { order: { column: "created_at", ascending: false }, notDeleted: true }),
   ]);
 
   return (
@@ -30,6 +33,8 @@ export default async function SamplesPage() {
           companies={companies}
           contacts={contacts}
           users={users ?? []}
+          leads={leads}
+          deals={deals}
         />
       </main>
     </>

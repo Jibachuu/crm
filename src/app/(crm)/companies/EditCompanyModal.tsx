@@ -9,7 +9,7 @@ import Button from "@/components/ui/Button";
 import DirectorySelect from "@/components/ui/DirectorySelect";
 import { createClient } from "@/lib/supabase/client";
 import { apiPut } from "@/lib/api/client";
-import { getTimezoneFromRegion } from "@/components/ui/ClientTimeIndicator";
+import { getTimezoneFromRegion, TIMEZONE_OPTIONS } from "@/components/ui/ClientTimeIndicator";
 
 const RUSSIAN_CITIES = [
   "Москва","Санкт-Петербург","Новосибирск","Екатеринбург","Казань","Нижний Новгород","Челябинск",
@@ -115,7 +115,9 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
       network_count: fd.get("network_count") ? Number(fd.get("network_count")) : null,
       opened_recently: (fd.get("opened_recently") as string) || null,
       avg_check: fd.get("avg_check") ? Number(fd.get("avg_check")) : null,
-      timezone: getTimezoneFromRegion((fd.get("city") as string) || (fd.get("region") as string) || ""),
+      // If user picked a TZ manually, respect it; otherwise auto-derive
+      // from city/region (now also covers regions, not just cities).
+      timezone: (fd.get("timezone") as string) || getTimezoneFromRegion((fd.get("city") as string) || (fd.get("region") as string) || ""),
     });
 
     if (err || !data) { setError(err || "Не удалось сохранить"); setLoading(false); return; }
@@ -229,13 +231,22 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
         <Textarea label="Деятельность компании" name="activity" defaultValue={company?.activity ?? ""} />
         <Textarea label="Потребность" name="need" defaultValue={company?.need ?? ""} />
 
-        <Select
-          label="Ответственный"
-          name="assigned_to"
-          options={users.map((u) => ({ value: u.id, label: u.full_name }))}
-          placeholder="Выберите сотрудника"
-          defaultValue={company?.assigned_to ?? ""}
-        />
+        <div className="grid grid-cols-2 gap-3">
+          <Select
+            label="Ответственный"
+            name="assigned_to"
+            options={users.map((u) => ({ value: u.id, label: u.full_name }))}
+            placeholder="Выберите сотрудника"
+            defaultValue={company?.assigned_to ?? ""}
+          />
+          <Select
+            label="Часовой пояс (если автоопределение неверное)"
+            name="timezone"
+            options={TIMEZONE_OPTIONS}
+            placeholder="Авто по городу/региону"
+            defaultValue={company?.timezone ?? ""}
+          />
+        </div>
         <Textarea label="Описание" name="description" defaultValue={company?.description ?? ""} />
 
         <div className="flex justify-end gap-3 pt-2">

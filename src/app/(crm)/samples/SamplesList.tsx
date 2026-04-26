@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Search, FlaskConical, Trash2, Edit2, Truck, List, Columns } from "lucide-react";
+import { Plus, Search, FlaskConical, Trash2, Edit2, Truck, List, Columns, Link2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
@@ -19,8 +19,16 @@ const STATUS_VARIANTS: Record<string, "default" | "warning" | "success" | "dange
 };
 const DELIVERY_LABELS: Record<string, string> = { pvz: "ПВЗ", door: "До адреса" };
 
+function copyShareLink(id: string) {
+  const url = `${window.location.origin}/s/${id}`;
+  navigator.clipboard.writeText(url).then(
+    () => { window.alert(`Ссылка скопирована:\n${url}`); },
+    () => { window.prompt("Скопируйте ссылку:", url); }
+  );
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function SamplesList({ initialSamples, companies, contacts, users }: any) {
+export default function SamplesList({ initialSamples, companies, contacts, users, leads, deals }: any) {
   const [samples, setSamples] = useState(initialSamples);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -54,7 +62,7 @@ export default function SamplesList({ initialSamples, companies, contacts, users
     company_id: "", venue_name: "", contact_id: "", contact_phone: "",
     materials: "", delivery_type: "pvz", delivery_address: "", track_number: "",
     sent_date: "", arrival_date: "", status: "new", comment: "",
-    assigned_to: "", logist_id: "",
+    assigned_to: "", logist_id: "", lead_id: "", deal_id: "",
   });
 
   function resetForm() {
@@ -62,7 +70,7 @@ export default function SamplesList({ initialSamples, companies, contacts, users
       company_id: "", venue_name: "", contact_id: "", contact_phone: "",
       materials: "", delivery_type: "pvz", delivery_address: "", track_number: "",
       sent_date: "", arrival_date: "", status: "new", comment: "",
-      assigned_to: "", logist_id: "",
+      assigned_to: "", logist_id: "", lead_id: "", deal_id: "",
     });
   }
 
@@ -77,6 +85,7 @@ export default function SamplesList({ initialSamples, companies, contacts, users
       sent_date: s.sent_date ?? "", arrival_date: s.arrival_date ?? "",
       status: s.status ?? "new", comment: s.comment ?? "",
       assigned_to: s.assigned_to ?? "", logist_id: s.logist_id ?? "",
+      lead_id: s.lead_id ?? "", deal_id: s.deal_id ?? "",
     });
     setModalOpen(true);
   }
@@ -106,6 +115,8 @@ export default function SamplesList({ initialSamples, companies, contacts, users
       comment: form.comment || null,
       assigned_to: form.assigned_to || null,
       logist_id: form.logist_id || null,
+      lead_id: form.lead_id || null,
+      deal_id: form.deal_id || null,
     };
 
     if (editing) {
@@ -392,6 +403,7 @@ export default function SamplesList({ initialSamples, companies, contacts, users
                     <td className="px-3 py-2" style={{ color: "#666" }}>{s.logist?.full_name ?? "—"}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1">
+                        <button onClick={() => copyShareLink(s.id)} className="p-1 rounded hover:bg-blue-50" title="Скопировать публичную ссылку"><Link2 size={12} style={{ color: "#0067a5" }} /></button>
                         <button onClick={() => openEdit(s)} className="p-1 rounded hover:bg-blue-50"><Edit2 size={12} style={{ color: "#0067a5" }} /></button>
                         <button onClick={() => deleteSample(s.id)} className="p-1 rounded hover:bg-red-50"><Trash2 size={12} style={{ color: "#c62828" }} /></button>
                       </div>
@@ -462,6 +474,36 @@ export default function SamplesList({ initialSamples, companies, contacts, users
             <div className="col-span-2">
               <label style={lblStyle}>Адрес доставки</label>
               <input value={form.delivery_address} onChange={(e) => setForm({ ...form, delivery_address: e.target.value })} style={inputStyle} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label style={lblStyle}>Связать с лидом (необязательно)</label>
+              <SearchableSelect
+                options={(leads ?? []).map((l: { id: string; title: string; companies?: { name?: string } | null }) => ({
+                  id: l.id,
+                  label: l.title,
+                  sublabel: l.companies?.name ?? undefined,
+                }))}
+                value={form.lead_id}
+                onChange={(id) => setForm({ ...form, lead_id: id })}
+                placeholder="Поиск лида..."
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={lblStyle}>Связать со сделкой (необязательно)</label>
+              <SearchableSelect
+                options={(deals ?? []).map((d: { id: string; title: string; companies?: { name?: string } | null }) => ({
+                  id: d.id,
+                  label: d.title,
+                  sublabel: d.companies?.name ?? undefined,
+                }))}
+                value={form.deal_id}
+                onChange={(id) => setForm({ ...form, deal_id: id })}
+                placeholder="Поиск сделки..."
+                style={inputStyle}
+              />
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3">

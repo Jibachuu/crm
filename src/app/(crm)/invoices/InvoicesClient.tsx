@@ -7,6 +7,7 @@ import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import { amountToWords } from "@/lib/numToWords";
 
 const STATUS_LABELS: Record<string, string> = { issued: "Выставлен", paid: "Оплачен", overdue: "Просрочен" };
@@ -569,11 +570,18 @@ function doPrint(){
                 <div key={i} className="rounded p-2" style={{ border: "1px solid #f0f0f0" }}>
                   <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-4">
-                      <select value={item.product_id} onChange={(e) => updateItem(i, "product_id", e.target.value)} style={{ ...inputStyle, fontSize: 12 }}>
-                        <option value="">Товар из каталога...</option>
-                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                        {products.map((p: any) => <option key={p.id} value={p.id}>{[p.category, p.name, p.sku].filter(Boolean).join(" / ")}</option>)}
-                      </select>
+                      <SearchableSelect
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        options={products.map((p: any) => ({
+                          id: p.id,
+                          label: [p.category, p.name].filter(Boolean).join(" / "),
+                          sublabel: p.sku || undefined,
+                        }))}
+                        value={item.product_id}
+                        onChange={(id) => updateItem(i, "product_id", id)}
+                        placeholder="Поиск товара по названию или артикулу..."
+                        style={{ ...inputStyle, fontSize: 12 }}
+                      />
                       {!item.product_id && <input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Или введите название" style={{ ...inputStyle, fontSize: 11, marginTop: 2 }} />}
                     </div>
                     <div className="col-span-2"><input type="number" min="0.01" step="0.01" value={item.quantity} onChange={(e) => updateItem(i, "quantity", Number(e.target.value))} style={{ ...inputStyle, fontSize: 12 }} placeholder="Кол-во" /></div>

@@ -17,9 +17,14 @@ export default function SearchableSelect({ options, value, onChange, placeholder
   }, []);
 
   const q = query.toLowerCase();
+  // Wider limit + show clear "introduce search" hint when empty so the
+  // user understands the А-block isn't the entire list (was confusing
+  // managers who saw only contacts starting with "А" and assumed the
+  // dropdown was broken).
   const filtered = query
-    ? options.filter((o) => o.label.toLowerCase().includes(q) || o.sublabel?.toLowerCase().includes(q)).slice(0, 50)
-    : options.slice(0, 50);
+    ? options.filter((o) => o.label.toLowerCase().includes(q) || o.sublabel?.toLowerCase().includes(q)).slice(0, 200)
+    : options.slice(0, 200);
+  const truncated = !query && options.length > 200;
 
   const inputStyle: React.CSSProperties = style ?? { border: "1px solid #d0d0d0", borderRadius: 4, padding: "6px 10px", fontSize: 13, width: "100%", outline: "none" };
 
@@ -46,6 +51,11 @@ export default function SearchableSelect({ options, value, onChange, placeholder
               {o.sublabel && <span style={{ color: "#aaa", marginLeft: 6 }}>{o.sublabel}</span>}
             </button>
           ))}
+          {truncated && (
+            <p className="text-xs px-3 py-2 text-center" style={{ color: "#aaa", background: "#fafafa", borderTop: "1px solid #f0f0f0" }}>
+              Показаны первые 200 из {options.length}. Введите запрос для поиска.
+            </p>
+          )}
         </div>
       )}
     </div>

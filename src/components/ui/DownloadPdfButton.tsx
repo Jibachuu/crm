@@ -8,6 +8,7 @@ export default function DownloadPdfButton({ filename }: { filename: string }) {
   async function download() {
     setLoading(true);
     const btnBar = document.getElementById("pdf-buttons");
+    let imagesPatched: HTMLImageElement[] = [];
     try {
       const html2canvas = (await import("html2canvas")).default;
       const { jsPDF } = await import("jspdf");
@@ -18,15 +19,24 @@ export default function DownloadPdfButton({ filename }: { filename: string }) {
       // Hide button bar during capture
       if (btnBar) btnBar.style.display = "none";
 
+      // Force crossOrigin="anonymous" on images so CORS-friendly hosts
+      // (Supabase storage with proper headers) get rendered. Foreign
+      // images without the right headers will skip via allowTaint
+      // instead of aborting the whole PDF.
+      const imgs = Array.from(content.querySelectorAll("img")) as HTMLImageElement[];
+      imagesPatched = imgs.filter((img) => !img.crossOrigin);
+      for (const img of imagesPatched) img.crossOrigin = "anonymous";
+
       const canvas = await html2canvas(content, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: "#ffffff",
         logging: false,
+        imageTimeout: 15000,
       });
 
-      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const imgData = canvas.toDataURL("image/jpeg", 0.92);
       const pdf = new jsPDF("p", "mm", "a4");
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
@@ -48,9 +58,15 @@ export default function DownloadPdfButton({ filename }: { filename: string }) {
       pdf.save(`${filename}.pdf`);
     } catch (e) {
       console.error("PDF generation error:", e);
-      alert("Ошибка при создании PDF: " + (e instanceof Error ? e.message : "неизвестная"));
+      const msg = e instanceof Error ? e.message : String(e);
+      // Tainted-canvas error happens when an <img> didn't send CORS
+      // headers — surface a friendlier hint than the raw browser text.
+      const friendly = /tainted|cross-?origin|canvas/i.test(msg)
+        ? "Не удалось создать PDF из-за изображения с другого домена. Попробуйте удалить картинку или открыть КП в режиме печати браузера (Ctrl+P)."
+        : `Ошибка при создании PDF: ${msg}`;
+      alert(friendly);
     } finally {
-      // Always restore button bar
+      for (const img of imagesPatched) img.removeAttribute("crossorigin");
       if (btnBar) btnBar.style.display = "";
       setLoading(false);
     }

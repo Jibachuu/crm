@@ -117,7 +117,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
         <DownloadPdfButton filename={`КП_${quote.quote_number}_${quote.companies?.name ?? ""}`} />
       </div>
 
-      <div id="quote-content" style={{ maxWidth: 900, margin: "0 auto", background: "#fff" }}>
+      <div id="quote-content" style={{ maxWidth: 900, margin: "0 auto", background: "#fff", userSelect: "text", WebkitUserSelect: "text" }}>
 
         {/* Header with logo */}
         <div style={{ padding: "32px 40px 20px", borderBottom: "2px solid #e8e0d4" }}>
