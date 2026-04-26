@@ -81,8 +81,22 @@ export default function LinkedEntitiesPanel({ phone, telegramId, telegramUsernam
 
     let foundContacts: Contact[] = [];
     if (contactFilters.length > 0) {
-      const { data } = await supabase.from("contacts").select("*").or(contactFilters.join(","));
-      foundContacts = data ?? [];
+      // Filter out soft-deleted contacts. Admins see deleted rows by RLS,
+      // so without this an old contact merged via /api/contacts/merge keeps
+      // showing up here next to the kept one (Жиба's "объединила, а их два"
+      // 27.04). Dedup by id afterwards in case multiple identifier filters
+      // hit the same row.
+      const { data } = await supabase
+        .from("contacts")
+        .select("*")
+        .or(contactFilters.join(","))
+        .is("deleted_at", null);
+      const seen = new Set<string>();
+      foundContacts = (data ?? []).filter((c) => {
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+      });
       setContacts(foundContacts);
     }
 
@@ -91,14 +105,18 @@ export default function LinkedEntitiesPanel({ phone, telegramId, telegramUsernam
 
     // Companies
     if (companyIds.length > 0) {
-      const { data } = await supabase.from("companies").select("*").in("id", companyIds);
+      const { data } = await supabase.from("companies").select("*").in("id", companyIds).is("deleted_at", null);
       setCompanies(data ?? []);
+    } else {
+      setCompanies([]);
     }
 
     // Leads — by contact_id
     if (contactIds.length > 0) {
-      const { data } = await supabase.from("leads").select("id, title, status, created_at").in("contact_id", contactIds).order("created_at", { ascending: false });
+      const { data } = await supabase.from("leads").select("id, title, status, created_at").in("contact_id", contactIds).is("deleted_at", null).order("created_at", { ascending: false });
       setLeads(data ?? []);
+    } else {
+      setLeads([]);
     }
 
     // Deals — by contact_id or company_id
@@ -106,8 +124,10 @@ export default function LinkedEntitiesPanel({ phone, telegramId, telegramUsernam
     if (contactIds.length > 0) dealFilters.push(`contact_id.in.(${contactIds.join(",")})`);
     if (companyIds.length > 0) dealFilters.push(`company_id.in.(${companyIds.join(",")})`);
     if (dealFilters.length > 0) {
-      const { data } = await supabase.from("deals").select("id, title, stage, amount, created_at").or(dealFilters.join(",")).order("created_at", { ascending: false });
+      const { data } = await supabase.from("deals").select("id, title, stage, amount, created_at").or(dealFilters.join(",")).is("deleted_at", null).order("created_at", { ascending: false });
       setDeals(data ?? []);
+    } else {
+      setDeals([]);
     }
 
     setLoading(false);
