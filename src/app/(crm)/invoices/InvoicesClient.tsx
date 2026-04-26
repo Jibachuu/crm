@@ -9,6 +9,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { amountToWords } from "@/lib/numToWords";
+import { formatLiters } from "@/lib/utils";
 
 const STATUS_LABELS: Record<string, string> = { issued: "Выставлен", paid: "Оплачен", overdue: "Просрочен" };
 const STATUS_VARIANTS: Record<string, "default" | "warning" | "success" | "danger"> = { issued: "warning", paid: "success", overdue: "danger" };
@@ -135,21 +136,26 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
 
   function addItem() { setItems([...items, { product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]); }
   function removeItem(i: number) { setItems(items.filter((_, idx) => idx !== i)); }
-  function buildProductName(p: { name: string; sku?: string; category?: string; subcategory?: string; description?: string }) {
-    const parts: string[] = [];
-    if (p.category) parts.push(p.category);
-    if (p.subcategory) parts.push(p.subcategory);
-    parts.push(p.name);
-    // Add only non-category characteristics from description
-    if (p.description) {
-      const skip = ["категория", "подкатегория"];
-      const chars = p.description.split("\n")
-        .filter((l: string) => l.includes(":") && !skip.some((s) => l.toLowerCase().startsWith(s)))
-        .map((l: string) => l.split(":").pop()?.trim())
-        .filter(Boolean);
-      if (chars.length) parts.push(chars.join(", "));
-    }
-    return parts.join(" ") + (p.sku ? ` / арт. ${p.sku}` : "");
+  // Same field order as КП builder so invoice item names stay consistent
+  // with what the client saw in the КП. Косметика обычно имеет
+  // category/subcategory + объём (liters) + тара (container) + аромат
+  // (kind или flavor) — все три части критичны для покупателя.
+  function buildProductName(p: {
+    name: string; sku?: string; category?: string; subcategory?: string;
+    liters?: string; container?: string; kind?: string; flavor?: string;
+    volume_ml?: number; description?: string;
+  }) {
+    const litersPart = p.liters ? formatLiters(p.liters) : (p.volume_ml ? `${p.volume_ml}мл` : "");
+    const aroma = p.kind || p.flavor || "";
+    const parts: (string | undefined)[] = [
+      p.category,
+      p.subcategory,
+      litersPart,
+      p.container,
+      aroma,
+      p.name,
+    ];
+    return parts.filter(Boolean).join(" / ") + (p.sku ? ` / арт. ${p.sku}` : "");
   }
 
   function updateItem(i: number, field: string, val: string | number) {
@@ -574,12 +580,15 @@ function doPrint(){
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         options={products.map((p: any) => ({
                           id: p.id,
-                          label: [p.category, p.name].filter(Boolean).join(" / "),
-                          sublabel: p.sku || undefined,
+                          // Same naming convention as the invoice line itself,
+                          // so the user sees the full breakdown
+                          // (объём + тара + аромат) before picking.
+                          label: buildProductName(p),
+                          sublabel: p.sku ? `арт. ${p.sku}` : undefined,
                         }))}
                         value={item.product_id}
                         onChange={(id) => updateItem(i, "product_id", id)}
-                        placeholder="Поиск товара по названию или артикулу..."
+                        placeholder="Поиск товара по названию, объёму, аромату или артикулу..."
                         style={{ ...inputStyle, fontSize: 12 }}
                       />
                       {!item.product_id && <input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Или введите название" style={{ ...inputStyle, fontSize: 11, marginTop: 2 }} />}
