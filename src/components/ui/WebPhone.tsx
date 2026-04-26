@@ -40,6 +40,12 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
   const uaRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sessionRef = useRef<any>(null);
+  // Second incoming call while first is busy. Held in a parallel slot
+  // with its own UI so the user can decide to take it (which ends the
+  // current one) or reject it without disturbing the active call.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const secondSessionRef = useRef<any>(null);
+  const [secondCaller, setSecondCaller] = useState<string>("");
   const audioRef = useRef<HTMLAudioElement>(null);
   const ringtoneRef = useRef<HTMLAudioElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval>>(null);
@@ -151,14 +157,37 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
         console.log("[WebPhone] newRTCSession direction:", session.direction, "from:", session.remote_identity?.uri?.toString());
         if (session.direction !== "incoming") return;
 
-        // Drop second incoming while one is already ringing/connected — the
-        // SIP session needs to be terminated explicitly so Novofon doesn't
-        // hold a half-open leg. UI shows nothing, user keeps the first call.
-        // (TODO: real call-waiting needs session.hold + per-session UI; out
-        // of scope for the data-loss fix wave.)
+        // Second incoming while first is active: park it in
+        // secondSessionRef and let the user decide. We don't auto-reject
+        // — they get the chance to take an important caller.
         if (sessionRef.current && (stateRef.current === "incoming" || stateRef.current === "connected" || stateRef.current === "calling")) {
-          console.warn("[WebPhone] busy — rejecting incoming session from", session.remote_identity?.uri?.user);
-          try { session.terminate({ status_code: 486, reason_phrase: "Busy Here" }); } catch {}
+          // Already a queued second call — refuse the third with Busy.
+          if (secondSessionRef.current) {
+            try { session.terminate({ status_code: 486, reason_phrase: "Busy Here" }); } catch {}
+            return;
+          }
+          const fromUser2 = session.remote_identity?.uri?.user || "Unknown";
+          const display2 = session.remote_identity?.display_name || fromUser2;
+          secondSessionRef.current = session;
+          setSecondCaller(display2);
+          // Bind cleanup so a hangup from the other side clears UI.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          session.on("ended", () => { secondSessionRef.current = null; setSecondCaller(""); });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          session.on("failed", () => { secondSessionRef.current = null; setSecondCaller(""); });
+          // Lookup contact name for the second caller.
+          if (fromUser2) {
+            fetch(`/api/contacts/lookup-by-phone?phone=${encodeURIComponent(fromUser2)}`)
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.contact?.full_name && secondSessionRef.current === session) {
+                  const co = d.contact.company_name ? ` · ${d.contact.company_name}` : "";
+                  setSecondCaller(`${d.contact.full_name}${co}`);
+                }
+              })
+              .catch(() => {});
+          }
+          // Don't ring the user's speakers a second time — visual cue only.
           return;
         }
 
@@ -329,6 +358,33 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     }
   }
 
+  // Take the second waiting call. Ends the current one first because we
+  // don't yet do real SIP hold. Once the current session is terminated
+  // the new session becomes the primary.
+  function acceptSecond() {
+    const next = secondSessionRef.current;
+    if (!next) return;
+    if (sessionRef.current) {
+      try { sessionRef.current.terminate(); } catch {}
+      sessionRef.current = null;
+    }
+    cleanup();
+    sessionRef.current = next;
+    secondSessionRef.current = null;
+    setCallerInfo(secondCaller);
+    setSecondCaller("");
+    setStateAndRef("incoming");
+    setMinimized(false);
+    try { next.answer({ mediaConstraints: { audio: true, video: false }, pcConfig: { iceServers: ICE_SERVERS } }); } catch {}
+  }
+
+  function rejectSecond() {
+    if (!secondSessionRef.current) return;
+    try { secondSessionRef.current.terminate(); } catch {}
+    secondSessionRef.current = null;
+    setSecondCaller("");
+  }
+
   function normalizePhone(raw: string): string {
     const digits = raw.replace(/\D/g, "");
     if (digits.length === 11 && digits.startsWith("8")) return "7" + digits.slice(1);
@@ -455,6 +511,23 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
           onHangup={hangup}
           onDtmf={sendDtmf}
         />
+      )}
+
+      {/* Second-call notification (sits below the active panel) */}
+      {secondCaller && isActive && (
+        <div className="fixed top-44 right-4 z-[100] bg-white rounded-xl shadow-2xl p-3" style={{ border: "2px solid #e65c00", minWidth: 260 }}>
+          <p className="text-xs mb-1" style={{ color: "#e65c00", fontWeight: 600 }}>📞 Второй входящий</p>
+          <p className="text-sm font-bold mb-2" style={{ color: "#333" }}>{secondCaller}</p>
+          <div className="flex gap-1.5">
+            <button onClick={acceptSecond} className="flex-1 py-1.5 rounded text-white text-xs font-medium" style={{ background: "#2e7d32" }} title="Завершит текущий звонок">
+              <Phone size={12} className="inline" /> Принять
+            </button>
+            <button onClick={rejectSecond} className="flex-1 py-1.5 rounded text-white text-xs font-medium" style={{ background: "#c62828" }}>
+              <PhoneOff size={12} className="inline" /> Сбросить
+            </button>
+          </div>
+          <p className="text-[10px] mt-1" style={{ color: "#888" }}>Принять = завершить текущий</p>
+        </div>
       )}
 
       {/* Calling / Ringing (outbound) */}
