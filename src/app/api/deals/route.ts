@@ -18,6 +18,13 @@ export async function PUT(req: NextRequest) {
   const updates: Record<string, unknown> = {};
   if (body.title !== undefined) updates.title = body.title;
   if (body.stage !== undefined) updates.stage = body.stage;
+  // Funnel-stage fields. Were missing from the whitelist so every
+  // updateFunnelStage / kanban drag was silently dropping stage_id and
+  // stage_changed_at — the UI rendered by deal.stage_id reverted on F5.
+  if (body.stage_id !== undefined) updates.stage_id = body.stage_id || null;
+  if (body.funnel_id !== undefined) updates.funnel_id = body.funnel_id || null;
+  if (body.stage_changed_at !== undefined) updates.stage_changed_at = body.stage_changed_at || null;
+  if (body.closed_at !== undefined) updates.closed_at = body.closed_at || null;
   if (body.source !== undefined) updates.source = body.source || null;
   if (body.amount !== undefined) updates.amount = body.amount != null ? Number(body.amount) : null;
   if (body.contact_id !== undefined) updates.contact_id = body.contact_id || null;
@@ -25,6 +32,7 @@ export async function PUT(req: NextRequest) {
   if (body.assigned_to !== undefined) updates.assigned_to = body.assigned_to || null;
   if (body.description !== undefined) updates.description = body.description || null;
   if (body.objections !== undefined) updates.objections = body.objections || null;
+  if (body.addresses !== undefined) updates.addresses = body.addresses;
 
   const { data, error } = await admin
     .from("deals")
