@@ -8,6 +8,7 @@ import Textarea from "@/components/ui/Textarea";
 import Button from "@/components/ui/Button";
 import SelectOrCreate from "@/components/ui/SelectOrCreate";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAll } from "@/lib/supabase/fetchAll";
 
 const STAGE_OPTIONS = [
   { value: "lead", label: "Лид" },
@@ -34,19 +35,28 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
   const [contacts, setContacts] = useState<{ id: string; full_name: string }[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
+  // Track when reference data is loaded — Select uses defaultValue which only
+  // applies on mount. If we render before users[] arrives, the "Ответственный"
+  // dropdown shows "Выберите сотрудника" even though deal.assigned_to is set.
+  const [dataReady, setDataReady] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setDataReady(false); return; }
     const supabase = createClient();
+    // fetchAll for contacts/companies — production has >1000 rows, default
+    // Supabase select() truncates and freshly created entities don't appear.
     Promise.all([
-      supabase.from("contacts").select("id, full_name, companies(name)").order("full_name"),
-      supabase.from("companies").select("id, name").order("name"),
+      fetchAll<{ id: string; full_name: string; companies?: { name: string } | { name: string }[] | null }>(
+        supabase, "contacts", "id, full_name, companies(name)", { order: { column: "full_name" } }
+      ),
+      fetchAll<{ id: string; name: string }>(supabase, "companies", "id, name", { order: { column: "name" } }),
       supabase.from("users").select("id, full_name").eq("is_active", true),
     ]).then(([c, co, u]) => {
-      setContacts(c.data ?? []);
-      setCompanies(co.data ?? []);
+      setContacts(c);
+      setCompanies(co);
       setUsers(u.data ?? []);
-    });
+      setDataReady(true);
+    }).catch(() => setDataReady(true));
   }, [open]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -92,6 +102,9 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
 
   return (
     <Modal open={open} onClose={onClose} title="Редактировать сделку" size="md">
+      {!dataReady ? (
+        <div className="p-6 text-center text-sm text-slate-400">Загрузка...</div>
+      ) : (
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>}
         <Input label="Название сделки" name="title" defaultValue={deal?.title} required />
@@ -137,6 +150,7 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
           <Button type="submit" loading={loading}>Сохранить</Button>
         </div>
       </form>
+      )}
     </Modal>
   );
 }

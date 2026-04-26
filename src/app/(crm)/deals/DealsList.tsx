@@ -11,6 +11,7 @@ import { formatDate, formatCurrency, getInitials } from "@/lib/utils";
 import PurgeButton from "@/components/ui/PurgeButton";
 import CreateDealModal from "./CreateDealModal";
 import { createClient } from "@/lib/supabase/client";
+import { apiPut } from "@/lib/api/client";
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -98,14 +99,20 @@ export default function DealsList({ initialDeals, users, funnelStages = [] }: { 
       price_calc: "order_assembly", invoice: "order_assembly", won: "won", lost: "lost",
     };
     const newOldStage = slugMap[stage.slug] ?? deal.stage;
+    const oldStageId = deal.stage_id;
+    const oldStage = deal.stage;
     setDeals((prev) => prev.map((d) => d.id === dealId ? { ...d, stage_id: newStageId, stage: newOldStage } : d));
-    const supabase = createClient();
-    await supabase.from("deals").update({
+    const { error } = await apiPut("/api/deals", {
+      id: dealId,
       stage_id: newStageId,
       stage: newOldStage,
       stage_changed_at: new Date().toISOString(),
       ...(stage.slug === "won" ? { closed_at: new Date().toISOString() } : {}),
-    }).eq("id", dealId);
+    });
+    if (error) {
+      setDeals((prev) => prev.map((d) => d.id === dealId ? { ...d, stage_id: oldStageId, stage: oldStage } : d));
+      alert("Не удалось перенести сделку: " + error);
+    }
   }
 
   function getStageName(deal: { stage_id?: string; stage?: string }) {

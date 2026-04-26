@@ -22,6 +22,7 @@ import EditDealModal from "../EditDealModal";
 import AddressList from "@/components/ui/AddressList";
 import { formatDate, formatDateTime, formatCurrency, getInitials } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { apiPost, apiPut, apiDelete } from "@/lib/api/client";
 
 const STAGES = [
   { key: "lead", label: "Лид" },
@@ -77,14 +78,15 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [contactResults, setContactResults] = useState<any[]>([]);
 
-  // Load additional contacts from junction table
+  // Load additional contacts from junction table.
+  // SELECT can stay on RLS — managers are allowed to read, only writes were
+  // blocked. Writes now go through /api/deals/contacts.
   useEffect(() => {
     createClient().from("deal_contacts")
       .select("id, contact_id, is_primary, contacts(id, full_name, phone, email, telegram_id, maks_id)")
       .eq("deal_id", deal.id)
       .order("is_primary", { ascending: false })
       .then(({ data }) => {
-        // Filter out the primary contact (already shown)
         const extra = (data ?? []).filter((dc: { contact_id: string }) => dc.contact_id !== deal.contact_id);
         setExtraContacts(extra);
       });
@@ -101,27 +103,27 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   async function addNote() {
     if (!noteText.trim()) return;
     setNoteLoading(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data } = await supabase
-      .from("communications")
-      .insert({ entity_type: "deal", entity_id: deal.id, channel: "note", direction: "outbound", body: noteText.trim(), created_by: user?.id ?? null })
-      .select("*, users!communications_created_by_fkey(full_name)")
-      .single();
-    if (data) { setCommunications((p: unknown[]) => [data, ...p]); setNoteText(""); setCommsRefreshKey((k) => k + 1); }
+    const { data, error } = await apiPost<typeof communications[number]>("/api/communications", {
+      entity_type: "deal", entity_id: deal.id, channel: "note", direction: "outbound", body: noteText.trim(),
+    });
+    if (error || !data) { alert("Не удалось сохранить заметку: " + (error ?? "")); setNoteLoading(false); return; }
+    setCommunications((p: unknown[]) => [data, ...p]);
+    setNoteText("");
+    setCommsRefreshKey((k) => k + 1);
     setNoteLoading(false);
   }
 
-  async function updateStage(newStage: string) {
+  // Stock adjustments still use the supabase client because product_variants
+  // is admin-managed; menus only update on stage transitions which managers
+  // perform on their own deals (RLS allows update for own/assigned deals on
+  // product_variants — see schema). If that ever breaks we'll move it under
+  // /api/deals as well.
+  async function adjustStockForStage(targetIsWon: boolean, prevWasWon: boolean) {
     const supabase = createClient();
-    const oldStage = deal.stage;
-    await supabase.from("deals").update({ stage: newStage, ...(newStage === "won" ? { closed_at: new Date().toISOString() } : {}) }).eq("id", deal.id);
-
-    // Stock management: deduct on "won", restore if moving back from "won"
-    const orderProducts = dealProducts.filter((p: { product_block: string }) => p.product_block === "order");
-    if (newStage === "won" && oldStage !== "won" && orderProducts.length > 0) {
+    const orderProds = dealProducts.filter((p: { product_block: string }) => p.product_block === "order");
+    if (targetIsWon && !prevWasWon && orderProds.length > 0) {
       const warnings: string[] = [];
-      for (const dp of orderProducts) {
+      for (const dp of orderProds) {
         if (!dp.product_id) continue;
         const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
         if (variants?.[0]) {
@@ -132,8 +134,8 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
       }
       if (warnings.length) alert("⚠️ Недостаточно остатков:\n" + warnings.join("\n"));
     }
-    if (oldStage === "won" && newStage !== "won" && orderProducts.length > 0) {
-      for (const dp of orderProducts) {
+    if (!targetIsWon && prevWasWon && orderProds.length > 0) {
+      for (const dp of orderProds) {
         if (!dp.product_id) continue;
         const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
         if (variants?.[0]) {
@@ -141,55 +143,49 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
         }
       }
     }
+  }
 
+  async function updateStage(newStage: string) {
+    const oldStage = deal.stage;
     setDeal((p: typeof deal) => ({ ...p, stage: newStage }));
+    const { error } = await apiPut("/api/deals", {
+      id: deal.id,
+      stage: newStage,
+      ...(newStage === "won" ? { closed_at: new Date().toISOString() } : {}),
+    });
+    if (error) {
+      setDeal((p: typeof deal) => ({ ...p, stage: oldStage }));
+      alert("Не удалось изменить стадию: " + error);
+      return;
+    }
+    await adjustStockForStage(newStage === "won", oldStage === "won");
   }
 
   async function updateFunnelStage(stage: FunnelStage) {
     if (deal.stage_id === stage.id) return;
-    const supabase = createClient();
     const oldStageId = deal.stage_id;
+    const oldStage = deal.stage;
     const oldStageSlug = currentFunnelStage?.slug;
-    // Map funnel slug to old stage for backwards compat
     const slugMap: Record<string, string> = {
       qualified: "lead", kp_sent: "proposal", objections: "negotiation",
       price_calc: "order_assembly", invoice: "order_assembly", won: "won", lost: "lost",
     };
     const newOldStage = slugMap[stage.slug] ?? deal.stage;
 
-    // Stock management same as before
-    const orderProds = dealProducts.filter((p: { product_block: string }) => p.product_block === "order");
-    if (stage.slug === "won" && oldStageSlug !== "won" && orderProds.length > 0) {
-      const warnings: string[] = [];
-      for (const dp of orderProds) {
-        if (!dp.product_id) continue;
-        const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
-        if (variants?.[0]) {
-          const newStock = variants[0].stock - (dp.quantity ?? 0);
-          if (newStock < 0) warnings.push(`${dp.products?.name}: не хватает ${Math.abs(newStock)} шт.`);
-          await supabase.from("product_variants").update({ stock: Math.max(0, newStock) }).eq("id", variants[0].id);
-        }
-      }
-      if (warnings.length) alert("Недостаточно остатков:\n" + warnings.join("\n"));
-    }
-    if (oldStageSlug === "won" && stage.slug !== "won" && orderProds.length > 0) {
-      for (const dp of orderProds) {
-        if (!dp.product_id) continue;
-        const { data: variants } = await supabase.from("product_variants").select("id, stock").eq("product_id", dp.product_id).limit(1);
-        if (variants?.[0]) {
-          await supabase.from("product_variants").update({ stock: variants[0].stock + (dp.quantity ?? 0) }).eq("id", variants[0].id);
-        }
-      }
-    }
-
-    await supabase.from("deals").update({
+    setDeal((p: typeof deal) => ({ ...p, stage: newOldStage, stage_id: stage.id }));
+    const { error } = await apiPut("/api/deals", {
+      id: deal.id,
       stage: newOldStage,
       stage_id: stage.id,
       stage_changed_at: new Date().toISOString(),
       ...(stage.slug === "won" ? { closed_at: new Date().toISOString() } : {}),
-    }).eq("id", deal.id);
-
-    setDeal((p: typeof deal) => ({ ...p, stage: newOldStage, stage_id: stage.id }));
+    });
+    if (error) {
+      setDeal((p: typeof deal) => ({ ...p, stage: oldStage, stage_id: oldStageId }));
+      alert("Не удалось изменить стадию: " + error);
+      return;
+    }
+    await adjustStockForStage(stage.slug === "won", oldStageSlug === "won");
   }
 
   async function deleteDeal() {
@@ -371,8 +367,13 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   <AddressList
                     addresses={deal.addresses ?? []}
                     onChange={async (addresses) => {
-                      await createClient().from("deals").update({ addresses }).eq("id", deal.id);
-                      setDeal((prev: Record<string, unknown>) => ({ ...prev, addresses }));
+                      const prev = deal.addresses ?? [];
+                      setDeal((p: Record<string, unknown>) => ({ ...p, addresses }));
+                      const { error } = await apiPut("/api/deals", { id: deal.id, addresses });
+                      if (error) {
+                        setDeal((p: Record<string, unknown>) => ({ ...p, addresses: prev }));
+                        alert("Не удалось сохранить адреса: " + error);
+                      }
                     }}
                   />
                 </div>
@@ -591,9 +592,12 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
               }}
               onClick={async () => {
                 const newVal = !deal.contacts.survey_discount;
-                const supabase = (await import("@/lib/supabase/client")).createClient();
-                await supabase.from("contacts").update({ survey_discount: newVal }).eq("id", deal.contacts.id);
                 setDeal({ ...deal, contacts: { ...deal.contacts, survey_discount: newVal } });
+                const { error } = await apiPut("/api/contacts", { id: deal.contacts.id, survey_discount: newVal });
+                if (error) {
+                  setDeal({ ...deal, contacts: { ...deal.contacts, survey_discount: !newVal } });
+                  alert("Не удалось сохранить отметку: " + error);
+                }
               }}
             >
               <input
@@ -640,7 +644,8 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                     </div>
                   </Link>
                   <button onClick={async () => {
-                    await createClient().from("deal_contacts").delete().eq("id", dc.id);
+                    const { error } = await apiDelete("/api/deals/contacts", { id: dc.id });
+                    if (error) { alert("Не удалось удалить контакт: " + error); return; }
                     setExtraContacts((prev) => prev.filter((x: { id: string }) => x.id !== dc.id));
                   }} className="p-1 rounded hover:bg-red-50 flex-shrink-0"><Trash2 size={11} className="text-red-400" /></button>
                 </div>
@@ -650,15 +655,25 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   <input value={contactSearch} onChange={async (e) => {
                     setContactSearch(e.target.value);
                     if (e.target.value.length >= 2) {
-                      const { data } = await createClient().from("contacts").select("id, full_name, phone").ilike("full_name", `%${e.target.value}%`).limit(10);
+                      // Search by name OR phone — needed for splitting/merging duplicates
+                      const term = e.target.value;
+                      const { data } = await createClient()
+                        .from("contacts")
+                        .select("id, full_name, phone")
+                        .or(`full_name.ilike.%${term}%,phone.ilike.%${term}%`)
+                        .limit(10);
                       setContactResults(data ?? []);
                     } else setContactResults([]);
-                  }} placeholder="Поиск контакта..." className="w-full text-xs px-2 py-1.5 rounded mb-1 focus:outline-none" style={{ border: "1px solid #d0d0d0" }} />
+                  }} placeholder="Поиск по имени или телефону..." className="w-full text-xs px-2 py-1.5 rounded mb-1 focus:outline-none" style={{ border: "1px solid #d0d0d0" }} />
                   {contactResults.map((c: { id: string; full_name: string; phone?: string }) => (
                     <button key={c.id} onClick={async () => {
-                      await createClient().from("deal_contacts").insert({ deal_id: deal.id, contact_id: c.id, is_primary: false });
-                      const { data } = await createClient().from("deal_contacts").select("id, contact_id, is_primary, contacts(id, full_name, phone, email)").eq("deal_id", deal.id).eq("contact_id", c.id).single();
-                      if (data) setExtraContacts((prev) => [...prev, data]);
+                      const { data, error } = await apiPost<{ id: string; contact_id: string; is_primary: boolean; contacts: { id: string; full_name: string; phone?: string; email?: string } }>(
+                        "/api/deals/contacts",
+                        { deal_id: deal.id, contact_id: c.id, is_primary: false }
+                      );
+                      if (error || !data) { alert("Не удалось привязать контакт: " + (error ?? "")); return; }
+                      // Avoid duplicate row if backend returned an existing record
+                      setExtraContacts((prev) => prev.some((x: { id: string }) => x.id === data.id) ? prev : [...prev, data]);
                       setAddContactOpen(false); setContactSearch(""); setContactResults([]);
                     }} className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-blue-50">
                       {c.full_name} {c.phone ? `· ${c.phone}` : ""}
@@ -931,8 +946,8 @@ function DealAssignee({ dealId, currentUser, onChanged }: { dealId: string; curr
   }
 
   async function change(userId: string) {
-    const supabase = createClient();
-    await supabase.from("deals").update({ assigned_to: userId || null }).eq("id", dealId);
+    const { error } = await apiPut("/api/deals", { id: dealId, assigned_to: userId || null });
+    if (error) { alert("Не удалось сменить ответственного: " + error); setEditing(false); return; }
     const user = users.find((u) => u.id === userId) ?? null;
     onChanged(user);
     setEditing(false);

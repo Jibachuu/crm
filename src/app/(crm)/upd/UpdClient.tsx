@@ -136,14 +136,19 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
         buyer_kpp: r.buyer_kpp || prev.buyer_kpp,
         buyer_address: r.buyer_address || prev.buyer_address,
       }));
-      // Save back to company if linked
+      // Save back to company via admin API (RLS blocks direct updates for managers).
       if (form.buyer_company_id) {
-        const supabase = createClient();
         const updates: Record<string, string> = {};
         if (r.buyer_kpp) updates.kpp = r.buyer_kpp;
         if (r.buyer_address) updates.legal_address = r.buyer_address;
         if (r.buyer_inn) updates.inn = r.buyer_inn;
-        if (Object.keys(updates).length) await supabase.from("companies").update(updates).eq("id", form.buyer_company_id);
+        if (Object.keys(updates).length) {
+          await fetch("/api/companies", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: form.buyer_company_id, ...updates }),
+          }).catch(() => {});
+        }
       }
     }
     setUploading(false);

@@ -103,7 +103,12 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
           if (r.buyer_address) updates.legal_address = r.buyer_address;
           if (r.buyer_director_name) updates.director = r.buyer_director_name;
           if (Object.keys(updates).length > 0) {
-            await createClient().from("companies").update(updates).eq("id", form.buyer_company_id);
+            // Go through admin API — RLS blocks managers from updating companies directly.
+            await fetch("/api/companies", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: form.buyer_company_id, ...updates }),
+            }).catch(() => {});
           }
         }
         alert("Реквизиты извлечены!");

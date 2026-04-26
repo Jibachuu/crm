@@ -18,6 +18,7 @@ import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import EditContactModal from "../EditContactModal";
 import { formatDate, formatDateTime, getInitials } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { apiPost } from "@/lib/api/client";
 
 const CHANNEL_ICONS: Record<string, string> = { email: "✉️", telegram: "💬", phone: "📞", maks: "🔵", note: "📝" };
 const CHANNEL_LABELS: Record<string, string> = { email: "Email", telegram: "Telegram", phone: "Звонок", maks: "МАКС", note: "Заметка" };
@@ -66,14 +67,13 @@ export default function ContactDetail({ contact: initialContact, communications:
   async function addNote() {
     if (!noteText.trim()) return;
     setNoteLoading(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data } = await supabase
-      .from("communications")
-      .insert({ entity_type: "contact", entity_id: contact.id, channel: "note", direction: "outbound", body: noteText.trim(), created_by: user?.id ?? null })
-      .select("*, users!communications_created_by_fkey(full_name)")
-      .single();
-    if (data) { setCommunications((p: unknown[]) => [data, ...p]); setNoteText(""); setCommsRefreshKey((k) => k + 1); }
+    const { data, error } = await apiPost<typeof communications[number]>("/api/communications", {
+      entity_type: "contact", entity_id: contact.id, channel: "note", direction: "outbound", body: noteText.trim(),
+    });
+    if (error || !data) { alert("Не удалось сохранить заметку: " + (error ?? "")); setNoteLoading(false); return; }
+    setCommunications((p: unknown[]) => [data, ...p]);
+    setNoteText("");
+    setCommsRefreshKey((k) => k + 1);
     setNoteLoading(false);
   }
 

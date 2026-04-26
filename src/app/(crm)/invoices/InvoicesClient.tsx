@@ -197,13 +197,18 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
 
     if (error || !invoice) { alert(error?.message ?? "Ошибка"); setSaving(false); return; }
 
-    // Save buyer requisites back to company
+    // Save buyer requisites back to company via API (RLS blocks managers
+    // from updating companies directly; admin endpoint is the only path).
     if (form.buyer_company_id && (form.buyer_kpp || form.buyer_address)) {
       const updates: Record<string, string> = {};
       if (form.buyer_kpp) updates.kpp = form.buyer_kpp;
       if (form.buyer_address) updates.legal_address = form.buyer_address;
       if (form.buyer_inn) updates.inn = form.buyer_inn;
-      await supabase.from("companies").update(updates).eq("id", form.buyer_company_id);
+      await fetch("/api/companies", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: form.buyer_company_id, ...updates }),
+      }).catch(() => {});
     }
 
     // Insert items

@@ -22,6 +22,7 @@ import EditCompanyModal from "../EditCompanyModal";
 import AddressList from "@/components/ui/AddressList";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { apiPost, apiPut } from "@/lib/api/client";
 
 const CHANNEL_ICONS: Record<string, string> = { email: "✉️", telegram: "💬", phone: "📞", maks: "🔵", note: "📝" };
 const CHANNEL_LABELS: Record<string, string> = { email: "Email", telegram: "Telegram", phone: "Звонок", maks: "МАКС", note: "Заметка" };
@@ -89,14 +90,13 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
   async function addNote() {
     if (!noteText.trim()) return;
     setNoteLoading(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data } = await supabase
-      .from("communications")
-      .insert({ entity_type: "company", entity_id: company.id, channel: "note", direction: "outbound", body: noteText.trim(), created_by: user?.id ?? null })
-      .select("*, users!communications_created_by_fkey(full_name)")
-      .single();
-    if (data) { setCommunications((p: unknown[]) => [data, ...p]); setNoteText(""); setCommsRefreshKey((k) => k + 1); }
+    const { data, error } = await apiPost<typeof communications[number]>("/api/communications", {
+      entity_type: "company", entity_id: company.id, channel: "note", direction: "outbound", body: noteText.trim(),
+    });
+    if (error || !data) { alert("Не удалось сохранить заметку: " + (error ?? "")); setNoteLoading(false); return; }
+    setCommunications((p: unknown[]) => [data, ...p]);
+    setNoteText("");
+    setCommsRefreshKey((k) => k + 1);
     setNoteLoading(false);
   }
 
@@ -119,12 +119,13 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
 
   async function saveContract() {
     setContractSaving(true);
-    const supabase = createClient();
-    await supabase.from("companies").update({
+    const { error } = await apiPut("/api/companies", {
+      id: company.id,
       contract_status: contractStatus,
       contract_signed_at: contractStatus === "signed" && contractSignedAt ? contractSignedAt : null,
       contract_comment: contractComment || null,
-    }).eq("id", company.id);
+    });
+    if (error) alert("Не удалось сохранить договор: " + error);
     setContractSaving(false);
   }
 
@@ -215,8 +216,13 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                   <AddressList
                     addresses={company.addresses ?? []}
                     onChange={async (addresses) => {
-                      await createClient().from("companies").update({ addresses }).eq("id", company.id);
-                      setCompany((prev: Record<string, unknown>) => ({ ...prev, addresses }));
+                      const prev = company.addresses ?? [];
+                      setCompany((p: Record<string, unknown>) => ({ ...p, addresses }));
+                      const { error } = await apiPut("/api/companies", { id: company.id, addresses });
+                      if (error) {
+                        setCompany((p: Record<string, unknown>) => ({ ...p, addresses: prev }));
+                        alert("Не удалось сохранить адреса: " + error);
+                      }
                     }}
                   />
                 </div>
@@ -247,7 +253,8 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                   }} placeholder="Поиск контакта без компании..." className="w-full text-xs px-3 py-1.5 rounded mb-2 focus:outline-none" style={{ border: "1px solid #d0d0d0" }} />
                   {contactResults.length > 0 && contactResults.map((c: { id: string; full_name: string; phone?: string }) => (
                     <button key={c.id} onClick={async () => {
-                      await createClient().from("contacts").update({ company_id: company.id }).eq("id", c.id);
+                      const { error } = await apiPut("/api/contacts", { id: c.id, company_id: company.id });
+                      if (error) { alert("Не удалось привязать контакт: " + error); return; }
                       setCompanyContacts((prev: { id: string }[]) => [...prev, c]);
                       setAddContactOpen(false); setContactSearch(""); setContactResults([]);
                     }} className="w-full text-left text-xs px-3 py-2 rounded hover:bg-blue-50">

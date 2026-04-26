@@ -11,6 +11,7 @@ import { formatDate, getInitials, formatCurrency } from "@/lib/utils";
 import PurgeButton from "@/components/ui/PurgeButton";
 import CreateLeadModal from "./CreateLeadModal";
 import { createClient } from "@/lib/supabase/client";
+import { apiPut } from "@/lib/api/client";
 
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import ShowMore from "@/components/ui/ShowMore";
@@ -138,13 +139,17 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
     if (!draggingId) return;
     const lead = leads.find((l) => l.id === draggingId);
     if (!lead || lead.status === newStatus) { setDraggingId(null); return; }
-    setLeads((prev) => prev.map((l) => l.id === draggingId ? { ...l, status: newStatus } : l));
+    const oldStatus = lead.status;
+    const id = draggingId;
+    setLeads((prev) => prev.map((l) => l.id === id ? { ...l, status: newStatus } : l));
     setDraggingId(null);
-    const supabase = createClient();
-    await supabase.from("leads").update({ status: newStatus }).eq("id", draggingId);
+    const { error } = await apiPut("/api/leads", { id, status: newStatus });
+    if (error) {
+      setLeads((prev) => prev.map((l) => l.id === id ? { ...l, status: oldStatus } : l));
+      alert("Не удалось перенести лид: " + error);
+    }
   }
 
-  // Funnel-based kanban drag-and-drop
   async function handleFunnelDrop(e: React.DragEvent, stageId: string) {
     e.preventDefault();
     setDragOverStatus(null);
@@ -159,10 +164,20 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
     };
     const newStatus = statusMap[stage.slug] ?? lead.status;
     const oldStageId = lead.stage_id;
-    setLeads((prev) => prev.map((l) => l.id === draggingId ? { ...l, stage_id: stageId, status: newStatus } : l));
+    const oldStatus = lead.status;
+    const id = draggingId;
+    setLeads((prev) => prev.map((l) => l.id === id ? { ...l, stage_id: stageId, status: newStatus } : l));
     setDraggingId(null);
-    const supabase = createClient();
-    await supabase.from("leads").update({ stage_id: stageId, status: newStatus, stage_changed_at: new Date().toISOString() }).eq("id", draggingId);
+    const { error } = await apiPut("/api/leads", {
+      id,
+      stage_id: stageId,
+      status: newStatus,
+      stage_changed_at: new Date().toISOString(),
+    });
+    if (error) {
+      setLeads((prev) => prev.map((l) => l.id === id ? { ...l, stage_id: oldStageId, status: oldStatus } : l));
+      alert("Не удалось перенести лид: " + error);
+    }
   }
 
   // Determine which funnel stages to show in kanban

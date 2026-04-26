@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Edit2, Trash2, MessageSquare, CheckSquare, Phone, Mail, Building2, Plus, Package, ArrowRightCircle, Paperclip } from "lucide-react";
@@ -21,6 +21,7 @@ import EditProductModal from "@/components/ui/EditProductModal";
 import EditLeadModal from "../EditLeadModal";
 import { formatDate, formatDateTime, getInitials } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { apiPost, apiPut, apiDelete } from "@/lib/api/client";
 
 export const LEAD_STATUSES = [
   { key: "new", label: "Новая" },
@@ -91,48 +92,74 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   const [funnelStages, setFunnelStages] = useState<FunnelStage[]>(initialStages ?? []);
   const [funnelSwitching, setFunnelSwitching] = useState(false);
 
+  // Multiple contacts (lead_contacts junction). Mirrors DealDetail.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [extraContacts, setExtraContacts] = useState<any[]>([]);
+  const [addContactOpen, setAddContactOpen] = useState(false);
+  const [contactSearch, setContactSearch] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [contactResults, setContactResults] = useState<any[]>([]);
+
+  useEffect(() => {
+    createClient().from("lead_contacts")
+      .select("id, contact_id, is_primary, contacts(id, full_name, phone, email, telegram_id, maks_id)")
+      .eq("lead_id", lead.id)
+      .order("is_primary", { ascending: false })
+      .then(({ data }) => {
+        const extra = (data ?? []).filter((lc: { contact_id: string }) => lc.contact_id !== lead.contact_id);
+        setExtraContacts(extra);
+      });
+  }, [lead.id, lead.contact_id]);
+
   const requestProducts = leadProducts.filter((p: { product_block: string }) => p.product_block !== "order");
   const orderProducts = leadProducts.filter((p: { product_block: string }) => p.product_block === "order");
 
   async function addNote() {
     if (!noteText.trim()) return;
     setNoteLoading(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data } = await supabase
-      .from("communications")
-      .insert({ entity_type: "lead", entity_id: lead.id, channel: "note", direction: "outbound", body: noteText.trim(), created_by: user?.id ?? null })
-      .select("*, users!communications_created_by_fkey(full_name)")
-      .single();
-    if (data) { setCommunications((prev: unknown[]) => [data, ...prev]); setNoteText(""); setCommsRefreshKey((k) => k + 1); }
+    const { data, error } = await apiPost<typeof communications[number]>("/api/communications", {
+      entity_type: "lead", entity_id: lead.id, channel: "note", direction: "outbound", body: noteText.trim(),
+    });
+    if (error || !data) { alert("Не удалось сохранить заметку: " + (error ?? "")); setNoteLoading(false); return; }
+    setCommunications((prev: unknown[]) => [data, ...prev]);
+    setNoteText("");
+    setCommsRefreshKey((k) => k + 1);
     setNoteLoading(false);
   }
 
   async function updateStatus(status: string) {
     if (lead.status === status || statusSaving) return;
     setStatusSaving(true);
-    setLead((prev: typeof lead) => ({ ...prev, status }));
-    const supabase = createClient();
-    await supabase.from("leads").update({ status }).eq("id", lead.id);
+    const prev = lead.status;
+    setLead((p: typeof lead) => ({ ...p, status }));
+    const { error } = await apiPut("/api/leads", { id: lead.id, status });
+    if (error) {
+      setLead((p: typeof lead) => ({ ...p, status: prev }));
+      alert("Не удалось изменить статус: " + error);
+    }
     setStatusSaving(false);
   }
 
   async function updateStage(stage: FunnelStage) {
     if (lead.stage_id === stage.id || statusSaving) return;
     setStatusSaving(true);
-    const oldStageId = lead.stage_id;
+    const prev = { stage_id: lead.stage_id, status: lead.status };
     const statusMap: Record<string, string> = {
       new_contact: "new", qualification: "in_progress", probniki: "samples",
       sleeping: "rejected", rejected: "rejected", converted: "converted",
     };
     const newStatus = statusMap[stage.slug] ?? lead.status;
-    setLead((prev: typeof lead) => ({ ...prev, stage_id: stage.id, status: newStatus }));
-    const supabase = createClient();
-    await supabase.from("leads").update({
+    setLead((p: typeof lead) => ({ ...p, stage_id: stage.id, status: newStatus }));
+    const { error } = await apiPut("/api/leads", {
+      id: lead.id,
       stage_id: stage.id,
       status: newStatus,
       stage_changed_at: new Date().toISOString(),
-    }).eq("id", lead.id);
+    });
+    if (error) {
+      setLead((p: typeof lead) => ({ ...p, ...prev }));
+      alert("Не удалось изменить стадию: " + error);
+    }
     setStatusSaving(false);
   }
 
@@ -141,7 +168,6 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
     if (!confirm("Текущая стадия будет сброшена. Продолжить?")) return;
     setFunnelSwitching(true);
     const supabase = createClient();
-    // Load stages for new funnel
     const { data: newStages } = await supabase
       .from("funnel_stages")
       .select("*")
@@ -149,14 +175,20 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
       .order("sort_order");
     if (newStages && newStages.length > 0) {
       const firstStage = newStages[0];
+      const prev = { funnel_id: lead.funnel_id, stage_id: lead.stage_id, status: lead.status };
       setFunnelStages(newStages);
-      setLead((prev: typeof lead) => ({ ...prev, funnel_id: funnelId, stage_id: firstStage.id, status: "new" }));
-      await supabase.from("leads").update({
+      setLead((p: typeof lead) => ({ ...p, funnel_id: funnelId, stage_id: firstStage.id, status: "new" }));
+      const { error } = await apiPut("/api/leads", {
+        id: lead.id,
         funnel_id: funnelId,
         stage_id: firstStage.id,
         status: "new",
         stage_changed_at: new Date().toISOString(),
-      }).eq("id", lead.id);
+      });
+      if (error) {
+        setLead((p: typeof lead) => ({ ...p, ...prev }));
+        alert("Не удалось сменить воронку: " + error);
+      }
     }
     setFunnelSwitching(false);
   }
@@ -582,9 +614,12 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
               }}
               onClick={async () => {
                 const newVal = !lead.contacts.survey_discount;
-                const supabase = (await import("@/lib/supabase/client")).createClient();
-                await supabase.from("contacts").update({ survey_discount: newVal }).eq("id", lead.contacts.id);
                 setLead({ ...lead, contacts: { ...lead.contacts, survey_discount: newVal } });
+                const { error } = await apiPut("/api/contacts", { id: lead.contacts.id, survey_discount: newVal });
+                if (error) {
+                  setLead({ ...lead, contacts: { ...lead.contacts, survey_discount: !newVal } });
+                  alert("Не удалось сохранить отметку: " + error);
+                }
               }}
             >
               <input type="checkbox" checked={lead.contacts?.survey_discount ?? false} readOnly style={{ accentColor: "#2e7d32", width: 16, height: 16 }} />
@@ -594,11 +629,16 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
             </div>
           )}
 
-          {lead.contacts && (
-            <Card>
-              <CardBody>
-                <h3 className="text-xs font-semibold uppercase mb-3" style={{ color: "#888", letterSpacing: "0.05em" }}>Контакт</h3>
-                <Link href={`/contacts/${lead.contacts.id}`} className="flex items-center gap-3 hover:opacity-80">
+          <Card>
+            <CardBody>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold uppercase" style={{ color: "#888", letterSpacing: "0.05em" }}>Контакты</h3>
+                <button onClick={() => setAddContactOpen(!addContactOpen)} className="text-xs flex items-center gap-0.5" style={{ color: "#0067a5" }}>
+                  <Plus size={12} /> Добавить
+                </button>
+              </div>
+              {lead.contacts && (
+                <Link href={`/contacts/${lead.contacts.id}`} className="flex items-center gap-3 hover:opacity-80 mb-2">
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: "#e8f4fd", color: "#0067a5" }}>
                     {getInitials(lead.contacts.full_name)}
                   </div>
@@ -608,9 +648,68 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
                     {lead.contacts.email && <p className="text-xs flex items-center gap-1" style={{ color: "#888" }}><Mail size={10} /> {lead.contacts.email}</p>}
                   </div>
                 </Link>
-              </CardBody>
-            </Card>
-          )}
+              )}
+              {extraContacts.map((lc: { id: string; contacts: { id: string; full_name: string; phone?: string; email?: string } }) => (
+                <div key={lc.id} className="flex items-center gap-3 mb-2">
+                  <Link href={`/contacts/${lc.contacts.id}`} className="flex items-center gap-3 hover:opacity-80 flex-1">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: "#f0f0f0", color: "#666" }}>
+                      {getInitials(lc.contacts.full_name)}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: "#333" }}>{lc.contacts.full_name}</p>
+                      {lc.contacts.phone && <p className="text-xs" style={{ color: "#888" }}>{lc.contacts.phone}</p>}
+                    </div>
+                  </Link>
+                  <button onClick={async () => {
+                    const { error } = await apiDelete("/api/leads/contacts", { id: lc.id });
+                    if (error) { alert("Не удалось удалить контакт: " + error); return; }
+                    setExtraContacts((prev) => prev.filter((x: { id: string }) => x.id !== lc.id));
+                  }} className="p-1 rounded hover:bg-red-50 flex-shrink-0"><Trash2 size={11} className="text-red-400" /></button>
+                </div>
+              ))}
+              {addContactOpen && (
+                <div className="mt-2 p-2 rounded" style={{ background: "#f8f9fa", border: "1px solid #e0e0e0" }}>
+                  <input value={contactSearch} onChange={async (e) => {
+                    setContactSearch(e.target.value);
+                    if (e.target.value.length >= 2) {
+                      // Search by name OR phone — prior bug had no phone search.
+                      const term = e.target.value;
+                      const { data } = await createClient()
+                        .from("contacts")
+                        .select("id, full_name, phone")
+                        .or(`full_name.ilike.%${term}%,phone.ilike.%${term}%`)
+                        .limit(10);
+                      setContactResults(data ?? []);
+                    } else setContactResults([]);
+                  }} placeholder="Поиск по имени или телефону..." className="w-full text-xs px-2 py-1.5 rounded mb-1 focus:outline-none" style={{ border: "1px solid #d0d0d0" }} />
+                  {contactResults.map((c: { id: string; full_name: string; phone?: string }) => (
+                    <button key={c.id} onClick={async () => {
+                      const isFirst = !lead.contacts;
+                      const { data, error } = await apiPost<{ id: string; contact_id: string; is_primary: boolean; contacts: { id: string; full_name: string; phone?: string; email?: string } }>(
+                        "/api/leads/contacts",
+                        { lead_id: lead.id, contact_id: c.id, is_primary: isFirst }
+                      );
+                      if (error || !data) { alert("Не удалось привязать контакт: " + (error ?? "")); return; }
+                      // If this is the first contact, also set leads.contact_id so
+                      // existing single-contact UI (KP, conversion, search) keeps working.
+                      if (isFirst) {
+                        const { data: leadData } = await apiPut<typeof lead>("/api/leads", { id: lead.id, contact_id: c.id });
+                        if (leadData) setLead(leadData);
+                      } else {
+                        setExtraContacts((prev) => prev.some((x: { id: string }) => x.id === data.id) ? prev : [...prev, data]);
+                      }
+                      setAddContactOpen(false); setContactSearch(""); setContactResults([]);
+                    }} className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-blue-50">
+                      {c.full_name} {c.phone ? `· ${c.phone}` : ""}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!lead.contacts && extraContacts.length === 0 && !addContactOpen && (
+                <p className="text-xs" style={{ color: "#aaa" }}>Нет контактов</p>
+              )}
+            </CardBody>
+          </Card>
 
           {lead.companies && (
             <Card>

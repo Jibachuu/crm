@@ -8,6 +8,8 @@ import Textarea from "@/components/ui/Textarea";
 import Button from "@/components/ui/Button";
 import SelectOrCreate from "@/components/ui/SelectOrCreate";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAll } from "@/lib/supabase/fetchAll";
+import { apiPut } from "@/lib/api/client";
 
 const STATUS_OPTIONS = [
   { value: "new", label: "Новая" },
@@ -27,27 +29,34 @@ const SOURCE_OPTIONS = [
   { value: "other", label: "Другое" },
 ];
 
+type ContactRow = { id: string; full_name: string; companies?: { name: string } | { name: string }[] | null };
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: boolean; onClose: () => void; lead: any; onSaved: (lead: any) => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [contacts, setContacts] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
+  // See EditDealModal: defaultValue is bound at mount, render after data arrives.
+  const [dataReady, setDataReady] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setDataReady(false); return; }
     const supabase = createClient();
+    // fetchAll for contacts/companies — there are >1000 rows in production
+    // and the default Supabase select() caps at 1000, so freshly created
+    // contacts (e.g. "Игорь") never appear in the dropdown otherwise.
     Promise.all([
-      supabase.from("contacts").select("id, full_name, companies(name)").order("full_name"),
-      supabase.from("companies").select("id, name").order("name"),
+      fetchAll<ContactRow>(supabase, "contacts", "id, full_name, companies(name)", { order: { column: "full_name" } }),
+      fetchAll<{ id: string; name: string }>(supabase, "companies", "id, name", { order: { column: "name" } }),
       supabase.from("users").select("id, full_name").eq("is_active", true),
     ]).then(([c, co, u]) => {
-      setContacts(c.data ?? []);
-      setCompanies(co.data ?? []);
+      setContacts(c);
+      setCompanies(co);
       setUsers(u.data ?? []);
-    });
+      setDataReady(true);
+    }).catch(() => setDataReady(true));
   }, [open]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -55,31 +64,29 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
     setLoading(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const supabase = createClient();
 
-    const { data, error: err } = await supabase
-      .from("leads")
-      .update({
-        title: fd.get("title") as string,
-        status: fd.get("status") as string,
-        source: (fd.get("source") as string) || null,
-        contact_id: (fd.get("contact_id") as string) || null,
-        company_id: (fd.get("company_id") as string) || null,
-        assigned_to: (fd.get("assigned_to") as string) || null,
-        telegram_username: (fd.get("telegram_username") as string) || null,
-        description: (fd.get("description") as string) || null,
-      })
-      .eq("id", lead.id)
-      .select(`*, contacts(id, full_name, phone, email), companies(id, name), users!leads_assigned_to_fkey(id, full_name)`)
-      .single();
+    const { data, error: err } = await apiPut<typeof lead>("/api/leads", {
+      id: lead.id,
+      title: fd.get("title") as string,
+      status: fd.get("status") as string,
+      source: (fd.get("source") as string) || null,
+      contact_id: (fd.get("contact_id") as string) || null,
+      company_id: (fd.get("company_id") as string) || null,
+      assigned_to: (fd.get("assigned_to") as string) || null,
+      telegram_username: (fd.get("telegram_username") as string) || null,
+      description: (fd.get("description") as string) || null,
+    });
 
-    if (err) setError(err.message);
-    else { onSaved(data); onClose(); }
+    if (err || !data) { setError(err || "Не удалось сохранить"); setLoading(false); return; }
+    onSaved(data); onClose();
     setLoading(false);
   }
 
   return (
     <Modal open={open} onClose={onClose} title="Редактировать лид" size="md">
+      {!dataReady ? (
+        <div className="p-6 text-center text-sm text-slate-400">Загрузка...</div>
+      ) : (
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {error && <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>}
         <Input label="Название лида" name="title" defaultValue={lead?.title} required />
@@ -92,7 +99,7 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
             label="Контакт"
             name="contact_id"
             entityType="contact"
-            options={contacts.map((c: { id: string; full_name: string; companies?: { name: string } | { name: string }[] | null }) => {
+            options={contacts.map((c) => {
               const coName = Array.isArray(c.companies) ? c.companies[0]?.name : c.companies?.name;
               return { value: c.id, label: c.full_name + (coName ? ` · ${coName}` : "") };
             })}
@@ -124,6 +131,7 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
           <Button type="submit" loading={loading}>Сохранить</Button>
         </div>
       </form>
+      )}
     </Modal>
   );
 }
