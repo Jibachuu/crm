@@ -60,6 +60,17 @@ function getConversationPartner(email: Email, myEmail: string) {
   return email.fromEmail;
 }
 
+type Folder = "ALL" | "INBOX" | "SENT" | "DRAFTS" | "TRASH" | "SPAM";
+
+const FOLDER_LABELS: Record<Folder, string> = {
+  ALL: "Все",
+  INBOX: "Входящие",
+  SENT: "Отправленные",
+  DRAFTS: "Черновики",
+  TRASH: "Удалённые",
+  SPAM: "Спам",
+};
+
 export default function EmailInbox() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,14 +82,16 @@ export default function EmailInbox() {
   const [showReply, setShowReply] = useState(false);
   const [linkedOpen, setLinkedOpen] = useState(false);
   const [markingRead, setMarkingRead] = useState(false);
+  const [folder, setFolder] = useState<Folder>("ALL");
 
   const myEmail = (process.env.NEXT_PUBLIC_SMTP_USER ?? "").toLowerCase();
 
-  async function loadEmails() {
+  async function loadEmails(f: Folder = folder) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/email/inbox?limit=50&sent=1");
+      const sentParam = f === "ALL" || f === "SENT" ? "&sent=1" : "";
+      const res = await fetch(`/api/email/inbox?limit=50&folder=${f}${sentParam}`);
       const data = await res.json();
       if (!res.ok) { setError(data.error); return; }
       setEmails(data.emails ?? []);
@@ -94,7 +107,7 @@ export default function EmailInbox() {
     setRefreshing(false);
   }
 
-  useEffect(() => { loadEmails(); }, []);
+  useEffect(() => { loadEmails(folder); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [folder]);
 
   // Group emails into conversation threads by normalized subject
   function getThreads(): { key: string; subject: string; emails: Email[]; latest: Email; partner: string }[] {
@@ -210,13 +223,32 @@ export default function EmailInbox() {
             <RefreshCw size={13} style={{ color: "#888" }} className={refreshing ? "animate-spin" : ""} />
           </button>
         </div>
+        {/* IMAP folder tabs. Hosting.reg.ru exposes only INBOX so SENT is
+            filled from sent_emails table; other folders simply return
+            empty if the server doesn't have them. */}
+        <div className="flex overflow-x-auto" style={{ borderBottom: "1px solid #f0f0f0" }}>
+          {(Object.keys(FOLDER_LABELS) as Folder[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFolder(f)}
+              className="px-3 py-1.5 text-xs whitespace-nowrap"
+              style={{
+                color: folder === f ? "#0067a5" : "#888",
+                borderBottom: folder === f ? "2px solid #0067a5" : "2px solid transparent",
+                fontWeight: folder === f ? 600 : 400,
+              }}
+            >
+              {FOLDER_LABELS[f]}
+            </button>
+          ))}
+        </div>
 
         <div className="flex-1 overflow-y-auto">
           {loading && <p className="text-xs text-center py-12" style={{ color: "#aaa" }}>Загрузка почты...</p>}
           {error && (
             <div className="p-4 text-center">
               <p className="text-xs" style={{ color: "#d32f2f" }}>{error}</p>
-              <button onClick={loadEmails} className="text-xs underline mt-2" style={{ color: "#0067a5" }}>Повторить</button>
+              <button onClick={() => loadEmails()} className="text-xs underline mt-2" style={{ color: "#0067a5" }}>Повторить</button>
             </div>
           )}
           {!loading && !error && threads.length === 0 && (

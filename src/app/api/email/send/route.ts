@@ -52,21 +52,36 @@ export async function POST(req: NextRequest) {
         encoding: "base64" as const,
       }));
 
-    // Convert URLs to clickable links and preserve line breaks. Manager
-    // wanted hyperlinks; doing it server-side keeps the textarea simple.
-    const escaped = body
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-    const linkified = escaped.replace(
-      /(https?:\/\/[^\s<>"')\]]+)/g,
-      '<a href="$1" target="_blank" rel="noopener">$1</a>'
-    );
-    const html = linkified.replace(/\n/g, "<br>");
+    // Body comes from the rich-text editor as HTML (with <b>/<i>/<a>),
+    // OR from API callers as plain text. Detect: contains < tag.
+    const isHtml = /<\w+[^>]*>/.test(body);
+    let html: string;
+    if (isHtml) {
+      // Already HTML from contenteditable. Auto-link any bare URLs that
+      // the user typed without using the link button.
+      html = body.replace(
+        /(?<!href=["'])(https?:\/\/[^\s<>"')\]]+)/g,
+        '<a href="$1" target="_blank" rel="noopener">$1</a>'
+      );
+    } else {
+      const escaped = body
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      const linkified = escaped.replace(
+        /(https?:\/\/[^\s<>"')\]]+)/g,
+        '<a href="$1" target="_blank" rel="noopener">$1</a>'
+      );
+      html = linkified.replace(/\n/g, "<br>");
+    }
+    // Plain text fallback for email clients that don't render HTML.
+    const text = isHtml
+      ? body.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      : body;
 
     await transporter.sendMail({
       from, to, subject,
-      text: body,
+      text,
       html,
       attachments,
     });
@@ -85,14 +100,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Log to communications
+    // Log to communications — store the plain-text version so the
+    // timeline doesn't display raw HTML tags.
     if (entityType && entityId) {
       await supabase.from("communications").insert({
         entity_type: entityType,
         entity_id: entityId,
         channel: "email",
         direction: "outbound",
-        subject, body,
+        subject, body: text,
         from_address: from,
         to_address: to,
       });

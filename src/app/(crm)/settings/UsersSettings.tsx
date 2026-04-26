@@ -42,6 +42,7 @@ export default function UsersSettings({ users: initialUsers, permissions: initia
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<typeof initialUsers[0] | null>(null);
   const [permUser, setPermUser] = useState<typeof initialUsers[0] | null>(null);
+  const [deactivateUser, setDeactivateUser] = useState<typeof initialUsers[0] | null>(null);
 
   // ── Create user ──────────────────────────────────────────────────────────────
   async function handleCreate(form: { full_name: string; email: string; password: string; role: string }) {
@@ -77,6 +78,20 @@ export default function UsersSettings({ users: initialUsers, permissions: initia
       body: JSON.stringify({ is_active }),
     });
     setUsers((prev) => prev.map((u) => u.id === id ? { ...u, is_active } : u));
+  }
+
+  // Block + (optionally) reassign all entities/tasks. Avoids the
+  // "Дилина уволилась — всё повисло на Рустеме" trail of orphan rows.
+  async function deactivateAndTransfer(fromId: string, toId: string | null) {
+    if (toId) {
+      await fetch("/api/responsible", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "bulk_transfer", from_user_id: fromId, to_user_id: toId }),
+      });
+    }
+    await toggleActive(fromId, false);
+    setDeactivateUser(null);
   }
 
   // ── Save permissions ──────────────────────────────────────────────────────────
@@ -173,13 +188,13 @@ export default function UsersSettings({ users: initialUsers, permissions: initia
                           <Shield size={11} /> Права
                         </button>
                         <button
-                          onClick={() => toggleActive(user.id, !user.is_active)}
+                          onClick={() => user.is_active ? setDeactivateUser(user) : toggleActive(user.id, true)}
                           className="text-xs px-2.5 py-1.5 rounded transition-colors"
                           style={{
                             border: `1px solid ${user.is_active ? "#ffcdd2" : "#c8e6c9"}`,
                             color: user.is_active ? "#c62828" : "#2e7d32",
                           }}
-                          title={user.is_active ? "Заблокировать вход в систему" : "Разрешить вход в систему"}
+                          title={user.is_active ? "Заблокировать и опционально передать его задачи/сделки" : "Разрешить вход в систему"}
                         >
                           {user.is_active ? "Заблокировать" : "Разблокировать"}
                         </button>
@@ -207,6 +222,17 @@ export default function UsersSettings({ users: initialUsers, permissions: initia
           user={editUser}
           onClose={() => setEditUser(null)}
           onSave={async (form) => { const ok = await handleEdit(editUser.id, form); if (ok) setEditUser(null); }}
+        />
+      )}
+
+      {/* Deactivate + transfer modal */}
+      {deactivateUser && (
+        <DeactivateModal
+          open
+          user={deactivateUser}
+          others={users.filter((u) => u.id !== deactivateUser.id && u.is_active && !u.is_placeholder)}
+          onClose={() => setDeactivateUser(null)}
+          onConfirm={(toId) => deactivateAndTransfer(deactivateUser.id, toId)}
         />
       )}
 
@@ -345,6 +371,60 @@ function EditUserModal({ open, user, onClose, onSave }: {
           <Button size="sm" type="submit" loading={loading}>Сохранить</Button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+// ── Deactivate + transfer modal ──────────────────────────────────────────────────
+function DeactivateModal({ open, user, others, onClose, onConfirm }: {
+  open: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  user: any;
+  others: { id: string; full_name: string }[];
+  onClose: () => void;
+  onConfirm: (toId: string | null) => Promise<void>;
+}) {
+  const [mode, setMode] = useState<"transfer" | "keep">("transfer");
+  const [toId, setToId] = useState<string>(others[0]?.id ?? "");
+  const [busy, setBusy] = useState(false);
+
+  async function go() {
+    setBusy(true);
+    await onConfirm(mode === "transfer" && toId ? toId : null);
+    setBusy(false);
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Заблокировать: ${user.full_name}`} size="sm">
+      <div className="p-5 space-y-4">
+        <p className="text-sm" style={{ color: "#444" }}>
+          Сотрудник перестанет видеть CRM. Что сделать с его текущими сделками, лидами, контактами и задачами?
+        </p>
+        <label className="flex items-start gap-2 cursor-pointer p-3 rounded" style={{ border: `1px solid ${mode === "transfer" ? "#0067a5" : "#ddd"}`, background: mode === "transfer" ? "#e8f4fd" : "#fff" }}>
+          <input type="radio" checked={mode === "transfer"} onChange={() => setMode("transfer")} style={{ marginTop: 2, accentColor: "#0067a5" }} />
+          <div className="flex-1">
+            <p className="text-sm font-semibold" style={{ color: "#333" }}>Передать другому сотруднику</p>
+            <p className="text-xs mt-1" style={{ color: "#888" }}>Все его сделки/лиды/контакты/задачи получат нового ответственного.</p>
+            {mode === "transfer" && (
+              <select value={toId} onChange={(e) => setToId(e.target.value)} className="mt-2 w-full text-sm px-2 py-1.5 rounded" style={{ border: "1px solid #d0d0d0" }}>
+                {others.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                {others.length === 0 && <option value="">Нет активных сотрудников</option>}
+              </select>
+            )}
+          </div>
+        </label>
+        <label className="flex items-start gap-2 cursor-pointer p-3 rounded" style={{ border: `1px solid ${mode === "keep" ? "#0067a5" : "#ddd"}`, background: mode === "keep" ? "#e8f4fd" : "#fff" }}>
+          <input type="radio" checked={mode === "keep"} onChange={() => setMode("keep")} style={{ marginTop: 2, accentColor: "#0067a5" }} />
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "#333" }}>Оставить как есть</p>
+            <p className="text-xs mt-1" style={{ color: "#888" }}>Записи останутся за уволенным. Админ/руководитель сможет потом раздать вручную.</p>
+          </div>
+        </label>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button size="sm" variant="secondary" onClick={onClose}>Отмена</Button>
+          <Button size="sm" variant="danger" onClick={go} loading={busy} disabled={mode === "transfer" && !toId}>Заблокировать</Button>
+        </div>
+      </div>
     </Modal>
   );
 }
