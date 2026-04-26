@@ -31,28 +31,35 @@ export async function POST(req: NextRequest) {
     // Log
     await admin.from("production_log").insert({ production_id: prod.id, user_id: user.id, action: "created", to_stage: "new" });
 
-    // Notify worker — guarded against duplicate creation if the action
-    // is replayed (the production page used to spam these tasks).
+    // Notify worker — guarded against duplicate creation, and gated
+    // by task_automation_settings so admin can disable via /settings.
     if (worker_id) {
-      const { data: dealData } = await admin.from("deals").select("title, companies(name)").eq("id", deal_id).single();
-      const companyName = (dealData?.companies as unknown as { name: string })?.name ?? "";
-      const taskTitle = `Новый заказ в работу: ${companyName} — ${dealData?.title ?? ""}`;
-      const { data: dup } = await admin
-        .from("tasks")
-        .select("id")
-        .eq("entity_type", "deal").eq("entity_id", deal_id)
-        .eq("title", taskTitle)
-        .neq("status", "done")
-        .is("deleted_at", null)
-        .limit(1)
+      const { data: rule } = await admin
+        .from("task_automation_settings")
+        .select("enabled, priority")
+        .eq("id", "production.assigned")
         .maybeSingle();
-      if (!dup) {
-        await admin.from("tasks").insert({
-          title: taskTitle,
-          entity_type: "deal", entity_id: deal_id,
-          assigned_to: worker_id, created_by: user.id,
-          status: "pending", priority: "high",
-        });
+      if (!rule || rule.enabled !== false) {
+        const { data: dealData } = await admin.from("deals").select("title, companies(name)").eq("id", deal_id).single();
+        const companyName = (dealData?.companies as unknown as { name: string })?.name ?? "";
+        const taskTitle = `Новый заказ в работу: ${companyName} — ${dealData?.title ?? ""}`;
+        const { data: dup } = await admin
+          .from("tasks")
+          .select("id")
+          .eq("entity_type", "deal").eq("entity_id", deal_id)
+          .eq("title", taskTitle)
+          .neq("status", "done")
+          .is("deleted_at", null)
+          .limit(1)
+          .maybeSingle();
+        if (!dup) {
+          await admin.from("tasks").insert({
+            title: taskTitle,
+            entity_type: "deal", entity_id: deal_id,
+            assigned_to: worker_id, created_by: user.id,
+            status: "pending", priority: rule?.priority || "high",
+          });
+        }
       }
     }
 
@@ -98,28 +105,33 @@ export async function POST(req: NextRequest) {
     }
 
     if (stage === "shipped" && tracking_number && current.manager_id) {
-      const { data: company } = await admin.from("companies").select("name").eq("id", current.company_id).single();
-      await ensureTask({
-        title: `Передать трек-номер клиенту — ${company?.name ?? ""}: ${tracking_number}`,
-        assigned_to: current.manager_id,
-        priority: "high",
-      });
+      const { data: rule } = await admin.from("task_automation_settings").select("enabled, priority").eq("id", "production.shipped").maybeSingle();
+      if (!rule || rule.enabled !== false) {
+        const { data: company } = await admin.from("companies").select("name").eq("id", current.company_id).single();
+        await ensureTask({
+          title: `Передать трек-номер клиенту — ${company?.name ?? ""}: ${tracking_number}`,
+          assigned_to: current.manager_id,
+          priority: rule?.priority || "high",
+        });
+      }
     }
 
     if (stage === "delivered" && estimated_arrival && current.manager_id) {
       // Review request only makes sense when the deal actually closed as won.
-      // Previously the task was created for every delivery, including
-      // those tied to refused/refunded deals.
       const { data: deal } = await admin.from("deals").select("stage").eq("id", current.deal_id).single();
       if (deal?.stage === "won") {
-        const { data: company } = await admin.from("companies").select("name").eq("id", current.company_id).single();
-        const reviewDate = new Date(new Date(estimated_arrival).getTime() + 3 * 86400000).toISOString();
-        await ensureTask({
-          title: `Запросить отзыв у ${company?.name ?? ""} — заказ доставлен`,
-          assigned_to: current.manager_id,
-          priority: "medium",
-          due_date: reviewDate,
-        });
+        const { data: rule } = await admin.from("task_automation_settings").select("enabled, days_offset, priority").eq("id", "production.delivered_review").maybeSingle();
+        if (!rule || rule.enabled !== false) {
+          const offsetDays = rule?.days_offset ?? 3;
+          const { data: company } = await admin.from("companies").select("name").eq("id", current.company_id).single();
+          const reviewDate = new Date(new Date(estimated_arrival).getTime() + offsetDays * 86400000).toISOString();
+          await ensureTask({
+            title: `Запросить отзыв у ${company?.name ?? ""} — заказ доставлен`,
+            assigned_to: current.manager_id,
+            priority: rule?.priority || "medium",
+            due_date: reviewDate,
+          });
+        }
       }
     }
 

@@ -15,6 +15,7 @@ import BackfillMaxHistory from "./BackfillMaxHistory";
 import AutoLeadAssignmentSettings from "./AutoLeadAssignmentSettings";
 import FileTemplatesSettings from "./FileTemplatesSettings";
 import ImportCommunications from "./ImportCommunications";
+import TaskAutomationSettings from "./TaskAutomationSettings";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -38,6 +39,7 @@ export default async function SettingsPage() {
       <main className="p-6 max-w-5xl">
         <div className="space-y-8">
           <UsersSettings users={users ?? []} permissions={permissions ?? []} />
+          <TaskAutomationSettings />
           <AutoLeadAssignmentSettings users={users ?? []} />
           <BulkTransferSettings users={users ?? []} />
           <MergeContactsSettings />
