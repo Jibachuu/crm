@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Phone, Mail, MessageSquare, CheckSquare, FileText, Plus, ChevronLeft } from "lucide-react";
 import Badge from "@/components/ui/Badge";
 import ClientTimeIndicator from "@/components/ui/ClientTimeIndicator";
+import PhoneLink from "@/components/ui/PhoneLink";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 
 const STAGE_LABELS: Record<string, string> = { lead: "Лид", proposal: "КП", negotiation: "Переговоры", order_assembly: "Сборка", won: "Выиграна", lost: "Проиграна" };
@@ -166,7 +167,7 @@ export default function CompanyTimeline({ company, contacts, deals, leads, sampl
                   <div key={c.id} className="text-xs">
                     <Link href={`/contacts/${c.id}`} className="font-medium hover:underline" style={{ color: "#0067a5" }}>{c.full_name}</Link>
                     <div className="flex gap-2 mt-0.5">
-                      {c.phone && <a href={`tel:${c.phone}`} className="flex items-center gap-0.5" style={{ color: "#666" }}><Phone size={10} /> {c.phone}</a>}
+                      {c.phone && <PhoneLink phone={c.phone} iconSize={10} className="flex items-center gap-0.5" >{c.phone}</PhoneLink>}
                       {c.telegram_id && <span className="flex items-center gap-0.5" style={{ color: "#0088cc" }}><MessageSquare size={10} /> TG</span>}
                     </div>
                   </div>

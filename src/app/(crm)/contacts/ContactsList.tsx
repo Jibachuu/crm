@@ -12,6 +12,7 @@ import PurgeButton from "@/components/ui/PurgeButton";
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import PhoneLink from "@/components/ui/PhoneLink";
 import CreateContactModal from "./CreateContactModal";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -154,9 +155,9 @@ export default function ContactsList({ initialContacts, companies, users }: any)
                       </td>
                       <td className="px-4 py-2.5">
                         {contact.phone ? (
-                          <a href={`tel:${contact.phone}`} className="text-xs flex items-center gap-1 hover:underline" style={{ color: "#555" }}>
-                            <Phone size={11} style={{ color: "#aaa" }} />{contact.phone}
-                          </a>
+                          <PhoneLink phone={contact.phone} iconSize={11} className="text-xs flex items-center gap-1 hover:underline" showIcon={true}>
+                            {contact.phone}
+                          </PhoneLink>
                         ) : <span style={{ color: "#ccc" }}>—</span>}
                       </td>
                       <td className="px-4 py-2.5">

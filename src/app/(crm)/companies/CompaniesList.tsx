@@ -11,6 +11,7 @@ import PurgeButton from "@/components/ui/PurgeButton";
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import PhoneLink from "@/components/ui/PhoneLink";
 import CreateCompanyModal from "./CreateCompanyModal";
 
 const COMPANY_TYPE_LABELS: Record<string, string> = {
@@ -185,9 +186,9 @@ export default function CompaniesList({ initialCompanies, users }: any) {
                       <td className="px-4 py-2.5">
                         <div className="flex gap-3">
                           {company.phone && (
-                            <a href={`tel:${company.phone}`} style={{ color: "#aaa" }} className="hover:text-blue-600">
-                              <Phone size={13} />
-                            </a>
+                            <PhoneLink phone={company.phone} iconSize={13} showIcon={false} className="hover:text-blue-600" >
+                              <Phone size={13} style={{ color: "#aaa" }} />
+                            </PhoneLink>
                           )}
                           {company.email && (
                             <a href={`mailto:${company.email}`} style={{ color: "#aaa" }} className="hover:text-blue-600">

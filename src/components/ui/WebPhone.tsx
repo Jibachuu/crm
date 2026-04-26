@@ -151,8 +151,20 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
         console.log("[WebPhone] newRTCSession direction:", session.direction, "from:", session.remote_identity?.uri?.toString());
         if (session.direction !== "incoming") return;
 
+        // Drop second incoming while one is already ringing/connected — the
+        // SIP session needs to be terminated explicitly so Novofon doesn't
+        // hold a half-open leg. UI shows nothing, user keeps the first call.
+        // (TODO: real call-waiting needs session.hold + per-session UI; out
+        // of scope for the data-loss fix wave.)
+        if (sessionRef.current && (stateRef.current === "incoming" || stateRef.current === "connected" || stateRef.current === "calling")) {
+          console.warn("[WebPhone] busy — rejecting incoming session from", session.remote_identity?.uri?.user);
+          try { session.terminate({ status_code: 486, reason_phrase: "Busy Here" }); } catch {}
+          return;
+        }
+
         sessionRef.current = session;
-        const from = session.remote_identity?.display_name || session.remote_identity?.uri?.user || "Unknown";
+        const fromUser = session.remote_identity?.uri?.user || "";
+        const from = session.remote_identity?.display_name || fromUser || "Unknown";
         console.log("[WebPhone] incoming session from:", from, "current state:", stateRef.current);
 
         const answerOptions = {
@@ -216,13 +228,28 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
           return;
         }
 
-        // Regular incoming call — show UI
+        // Regular incoming call — show UI immediately with raw number,
+        // then upgrade to saved contact name via lookup. SIP display_name
+        // from Novofon is usually empty, so the number is all we'd show.
         if (mounted) {
           setCallerInfo(from);
           setStateAndRef("incoming");
           setMinimized(false);
         }
         try { ringtoneRef.current?.play().catch(() => {}); } catch {}
+
+        if (fromUser) {
+          fetch(`/api/contacts/lookup-by-phone?phone=${encodeURIComponent(fromUser)}`)
+            .then((r) => r.json())
+            .then((d) => {
+              if (!mounted) return;
+              if (d.contact?.full_name && stateRef.current === "incoming") {
+                const co = d.contact.company_name ? ` · ${d.contact.company_name}` : "";
+                setCallerInfo(`${d.contact.full_name}${co}`);
+              }
+            })
+            .catch(() => {});
+        }
       });
 
       ua.start();
@@ -308,8 +335,31 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     return digits;
   }
 
+  // Listen for "crm:make-call" window events so PhoneLink (and any other
+  // UI bit) can trigger a CRM call without poking WebPhone state directly.
+  useEffect(() => {
+    function onCrmCall(e: Event) {
+      const detail = (e as CustomEvent<{ phone: string; ext?: string }>).detail;
+      if (!detail?.phone) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__webphone_call_handled = true;
+      makeCall(detail.phone, detail.ext);
+    }
+    window.addEventListener("crm:make-call", onCrmCall);
+    return () => window.removeEventListener("crm:make-call", onCrmCall);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function makeCall(number: string, ext?: string) {
-    if (!uaRef.current || !number) return;
+    if (!uaRef.current || !number) {
+      console.warn("[WebPhone] makeCall ignored — UA not ready");
+      return;
+    }
+    if (stateRef.current !== "registered" && stateRef.current !== "idle") {
+      console.warn("[WebPhone] makeCall ignored — already in a call");
+      alert("У вас уже есть активный звонок. Завершите его перед новым вызовом.");
+      return;
+    }
 
     const normalized = normalizePhone(number);
     console.log("[WebPhone] calling via callback API:", normalized, "(raw:", number, ")", "ua registered:", uaRef.current?.isRegistered(), "ua connected:", uaRef.current?.isConnected());

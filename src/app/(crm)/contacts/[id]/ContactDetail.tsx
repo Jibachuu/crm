@@ -19,6 +19,7 @@ import EditContactModal from "../EditContactModal";
 import { formatDate, formatDateTime, getInitials } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { apiPost } from "@/lib/api/client";
+import PhoneLink from "@/components/ui/PhoneLink";
 
 const CHANNEL_ICONS: Record<string, string> = { email: "✉️", telegram: "💬", phone: "📞", maks: "🔵", note: "📝" };
 const CHANNEL_LABELS: Record<string, string> = { email: "Email", telegram: "Telegram", phone: "Звонок", maks: "МАКС", note: "Заметка" };
@@ -196,25 +197,15 @@ export default function ContactDetail({ contact: initialContact, communications:
               </div>
               <div className="flex flex-wrap gap-3">
                 {contact.phone && (
-                  <div className="flex items-center gap-1.5">
-                    <a href={`tel:${contact.phone}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline">
-                      <Phone size={13} /> {contact.phone}
-                    </a>
-                    <button onClick={() => callPhone(contact.phone)} disabled={calling}
-                      className="text-xs bg-green-100 text-green-700 hover:bg-green-200 px-1.5 py-0.5 rounded-full disabled:opacity-50">
-                      {calling ? "..." : "📞"}
-                    </button>
-                  </div>
+                  <PhoneLink phone={contact.phone} iconSize={13}>{contact.phone}</PhoneLink>
                 )}
                 {contact.phone_mobile && (
-                  <a href={`tel:${contact.phone_mobile}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline">
-                    <Phone size={13} /> {contact.phone_mobile} <span className="text-xs text-slate-400">моб.</span>
-                  </a>
+                  <PhoneLink phone={contact.phone_mobile} iconSize={13}>
+                    {contact.phone_mobile} <span className="text-xs text-slate-400">моб.</span>
+                  </PhoneLink>
                 )}
                 {contact.phone_other && (
-                  <a href={`tel:${contact.phone_other}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline">
-                    <Phone size={13} /> {contact.phone_other}
-                  </a>
+                  <PhoneLink phone={contact.phone_other} iconSize={13}>{contact.phone_other}</PhoneLink>
                 )}
                 {contact.email && (
                   <a href={`mailto:${contact.email}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline">

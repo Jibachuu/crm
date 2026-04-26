@@ -23,6 +23,7 @@ import AddressList from "@/components/ui/AddressList";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { apiPost, apiPut } from "@/lib/api/client";
+import PhoneLink from "@/components/ui/PhoneLink";
 
 const CHANNEL_ICONS: Record<string, string> = { email: "✉️", telegram: "💬", phone: "📞", maks: "🔵", note: "📝" };
 const CHANNEL_LABELS: Record<string, string> = { email: "Email", telegram: "Telegram", phone: "Звонок", maks: "МАКС", note: "Заметка" };
@@ -191,9 +192,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
               </div>
               <div className="flex flex-wrap gap-4">
                 {company.phone && (
-                  <a href={`tel:${company.phone}`} className="flex items-center gap-2 text-sm text-blue-600 hover:underline">
-                    <Phone size={14} /> {company.phone}
-                  </a>
+                  <PhoneLink phone={company.phone} iconSize={14}>{company.phone}</PhoneLink>
                 )}
                 {company.email && (
                   <a href={`mailto:${company.email}`} className="flex items-center gap-2 text-sm text-blue-600 hover:underline">

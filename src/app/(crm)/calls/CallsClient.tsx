@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Phone, PhoneIncoming, PhoneOutgoing, Search, Play } from "lucide-react";
+import { Phone, PhoneIncoming, PhoneOutgoing, Search, Download } from "lucide-react";
+import PhoneLink from "@/components/ui/PhoneLink";
 import { formatDateTime } from "@/lib/utils";
 
 const DISPOSITION_LABELS: Record<string, { label: string; color: string }> = {
@@ -13,14 +14,34 @@ const DISPOSITION_LABELS: Record<string, { label: string; color: string }> = {
   failed: { label: "Ошибка", color: "#c62828" },
 };
 
+function formatDuration(seconds?: number): string {
+  if (!seconds) return "—";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function csvEscape(v: unknown): string {
+  if (v == null) return "";
+  const s = String(v);
+  if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function CallsClient({ calls }: { calls: any[] }) {
+export default function CallsClient({ calls, users }: { calls: any[]; users: { id: string; full_name: string }[] }) {
   const [search, setSearch] = useState("");
   const [dirFilter, setDirFilter] = useState<"all" | "inbound" | "outbound">("all");
+  const [userFilter, setUserFilter] = useState<string>("all");
   const [showCount, setShowCount] = useState(100);
 
-  const filtered = calls.filter((c) => {
+  const filtered = useMemo(() => calls.filter((c) => {
     if (dirFilter !== "all" && c.direction !== dirFilter) return false;
+    if (userFilter !== "all" && c.created_by !== userFilter) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (c.from_address?.includes(q)) ||
@@ -28,14 +49,60 @@ export default function CallsClient({ calls }: { calls: any[] }) {
       (c.sender_name?.toLowerCase().includes(q)) ||
       (c.contacts?.full_name?.toLowerCase().includes(q)) ||
       (c.contacts?.companies?.name?.toLowerCase().includes(q));
-  });
+  }), [calls, search, dirFilter, userFilter]);
 
   const visible = filtered.slice(0, showCount);
+
+  // Dialled / answered counters — Рустем asked for "сколько дозвонов" in
+  // analytics: split outbound attempts vs successful answers.
+  const stats = useMemo(() => {
+    let outAttempts = 0, outAnswered = 0, inAttempts = 0, inAnswered = 0;
+    for (const c of filtered) {
+      const disp = c.body?.match(/\(([^)]+)\)/)?.[1] || "";
+      const answered = disp === "answered" || (c.duration_seconds ?? 0) > 0;
+      if (c.direction === "outbound") {
+        outAttempts++;
+        if (answered) outAnswered++;
+      } else if (c.direction === "inbound") {
+        inAttempts++;
+        if (answered) inAnswered++;
+      }
+    }
+    return { outAttempts, outAnswered, inAttempts, inAnswered };
+  }, [filtered]);
+
+  function exportCsv() {
+    const header = ["Направление", "Номер", "Контакт", "Компания", "Сотрудник", "Статус", "Длительность (с)", "Дата"];
+    const rows = filtered.map((c) => {
+      const isInbound = c.direction === "inbound";
+      const phone = isInbound ? c.from_address : c.to_address;
+      const disp = c.body?.match(/\(([^)]+)\)/)?.[1] || "";
+      return [
+        isInbound ? "входящий" : "исходящий",
+        phone || "",
+        c.contacts?.full_name || c.sender_name || "",
+        c.contacts?.companies?.name || "",
+        c.users?.full_name || "",
+        DISPOSITION_LABELS[disp]?.label || disp,
+        c.duration_seconds ?? "",
+        c.created_at,
+      ];
+    });
+    const csv = [header, ...rows].map((r) => r.map(csvEscape).join(",")).join("\r\n");
+    // BOM so Excel detects UTF-8 cyrillic correctly.
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `calls-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div>
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-4 items-center">
+      <div className="flex flex-wrap gap-2 mb-3 items-center">
         <div className="relative flex-1 min-w-48">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "#aaa" }} />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск по номеру, имени..."
@@ -58,7 +125,33 @@ export default function CallsClient({ calls }: { calls: any[] }) {
             </button>
           ))}
         </div>
-        <span className="text-xs" style={{ color: "#aaa" }}>{filtered.length} звонков</span>
+        <select value={userFilter} onChange={(e) => setUserFilter(e.target.value)}
+          className="text-xs px-3 py-1.5 rounded-full focus:outline-none"
+          style={{ border: "1px solid #e0e0e0", background: "#f5f5f5", color: "#555" }}>
+          <option value="all">Все сотрудники</option>
+          {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+        </select>
+        <button onClick={exportCsv} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1"
+          style={{ border: "1px solid #d0e8f5", color: "#0067a5", background: "#fff" }}>
+          <Download size={11} /> Excel
+        </button>
+        <span className="text-xs ml-auto" style={{ color: "#aaa" }}>{filtered.length} звонков</span>
+      </div>
+
+      {/* Stats: dialed/answered ratio */}
+      <div className="flex flex-wrap gap-3 mb-3 text-xs">
+        <span style={{ color: "#666" }}>
+          Исходящих: <b>{stats.outAttempts}</b>
+          <span style={{ color: "#888" }}> · дозвонились: </span>
+          <b style={{ color: "#2e7d32" }}>{stats.outAnswered}</b>
+          {stats.outAttempts > 0 && <span style={{ color: "#888" }}> ({Math.round(stats.outAnswered / stats.outAttempts * 100)}%)</span>}
+        </span>
+        <span style={{ color: "#666" }}>
+          Входящих: <b>{stats.inAttempts}</b>
+          <span style={{ color: "#888" }}> · ответили: </span>
+          <b style={{ color: "#2e7d32" }}>{stats.inAnswered}</b>
+          {stats.inAttempts > 0 && <span style={{ color: "#888" }}> ({Math.round(stats.inAnswered / stats.inAttempts * 100)}%)</span>}
+        </span>
       </div>
 
       {/* Table */}
@@ -69,10 +162,10 @@ export default function CallsClient({ calls }: { calls: any[] }) {
             <p className="text-sm" style={{ color: "#aaa" }}>Нет звонков</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" style={{ tableLayout: "auto" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #e4e4e4", background: "#fafafa" }}>
-                {["", "Номер", "Контакт", "Компания", "Статус", "Длительность", "Запись", "Дата"].map((h) => (
+                {["", "Номер", "Контакт", "Компания", "Сотрудник", "Статус", "Длит.", "Запись", "Дата"].map((h) => (
                   <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold uppercase" style={{ color: "#888" }}>{h}</th>
                 ))}
               </tr>
@@ -83,6 +176,7 @@ export default function CallsClient({ calls }: { calls: any[] }) {
                 const phone = isInbound ? call.from_address : call.to_address;
                 const contactName = call.contacts?.full_name;
                 const companyName = call.contacts?.companies?.name;
+                const userName = call.users?.full_name;
                 const disposition = call.body?.match(/\(([^)]+)\)/)?.[1] || "";
                 const dispInfo = DISPOSITION_LABELS[disposition] || { label: disposition || "—", color: "#888" };
                 const duration = call.duration_seconds;
@@ -91,13 +185,11 @@ export default function CallsClient({ calls }: { calls: any[] }) {
                 return (
                   <tr key={call.id} style={{ borderBottom: "1px solid #f0f0f0" }} className="hover:bg-gray-50">
                     <td className="px-4 py-2.5">
-                      {isInbound ? (
-                        <PhoneIncoming size={14} style={{ color: "#2e7d32" }} />
-                      ) : (
-                        <PhoneOutgoing size={14} style={{ color: "#0067a5" }} />
-                      )}
+                      {isInbound ? <PhoneIncoming size={14} style={{ color: "#2e7d32" }} /> : <PhoneOutgoing size={14} style={{ color: "#0067a5" }} />}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: "#333" }}>{phone || "—"}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs whitespace-nowrap" style={{ color: "#333" }}>
+                      {phone ? <PhoneLink phone={phone} showIcon={false}>{phone}</PhoneLink> : "—"}
+                    </td>
                     <td className="px-4 py-2.5">
                       {contactName ? (
                         <Link href={`/contacts/${call.contact_id}`} className="text-sm hover:underline" style={{ color: "#0067a5" }}>{contactName}</Link>
@@ -106,16 +198,17 @@ export default function CallsClient({ calls }: { calls: any[] }) {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{companyName || "—"}</td>
+                    <td className="px-4 py-2.5 text-xs whitespace-nowrap" style={{ color: "#666" }}>{userName || "—"}</td>
                     <td className="px-4 py-2.5">
                       <span className="text-xs font-medium" style={{ color: dispInfo.color }}>{dispInfo.label}</span>
                     </td>
-                    <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>
-                      {duration ? `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}` : "—"}
+                    <td className="px-4 py-2.5 text-xs font-mono whitespace-nowrap" style={{ color: "#666" }}>
+                      {formatDuration(duration)}
                     </td>
                     <td className="px-4 py-2.5">
                       {recording ? (
                         <div className="flex items-center gap-2">
-                          <audio controls preload="none" className="h-7" style={{ maxWidth: 180 }}>
+                          <audio controls preload="none" className="h-8" style={{ minWidth: 280 }}>
                             <source src={call.recording_url} />
                           </audio>
                           <button
@@ -150,7 +243,7 @@ export default function CallsClient({ calls }: { calls: any[] }) {
                         <span className="text-xs" style={{ color: "#ccc" }}>—</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-xs" style={{ color: "#aaa" }}>{formatDateTime(call.created_at)}</td>
+                    <td className="px-4 py-2.5 text-xs whitespace-nowrap" style={{ color: "#aaa" }}>{formatDateTime(call.created_at)}</td>
                   </tr>
                 );
               })}
