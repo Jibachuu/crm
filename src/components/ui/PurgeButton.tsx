@@ -11,13 +11,25 @@ const TABLE_LABELS: Record<string, string> = {
   products: "все товары",
 };
 
+// Two-stage confirm + typed phrase. Single-click button next to
+// "Создать контакт" was too easy to hit — Жиба confirmed unsafe 23.04.
+// We now require the operator to type "УДАЛИТЬ" exactly, so a stray
+// click can't wipe the table.
+const CONFIRM_WORD = "УДАЛИТЬ";
+
 export default function PurgeButton({ table, onPurged }: { table: string; onPurged: () => void }) {
   const [loading, setLoading] = useState(false);
 
   async function handlePurge() {
     const label = TABLE_LABELS[table] ?? table;
-    if (!confirm(`Вы уверены что хотите удалить ${label}?\n\nЭто действие НЕЛЬЗЯ отменить!`)) return;
-    if (!confirm(`Точно удалить ${label}? Это последнее предупреждение.`)) return;
+    if (!confirm(`Удалить ${label}?\n\nДЕЙСТВИЕ НЕОБРАТИМО.`)) return;
+    const typed = window.prompt(
+      `Чтобы удалить ${label} безвозвратно — введите слово ${CONFIRM_WORD} (заглавными буквами).`
+    );
+    if (typed?.trim() !== CONFIRM_WORD) {
+      alert("Подтверждение не введено — операция отменена.");
+      return;
+    }
 
     setLoading(true);
     const res = await fetch("/api/purge", {

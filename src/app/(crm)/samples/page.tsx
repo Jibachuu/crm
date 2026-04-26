@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAll } from "@/lib/supabase/fetchAll";
 import { redirect } from "next/navigation";
 import Header from "@/components/layout/Header";
 import SamplesList from "./SamplesList";
+
+export const metadata: Metadata = { title: "Пробники" };
 
 export default async function SamplesPage() {
   const supabase = await createClient();

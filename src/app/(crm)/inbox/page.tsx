@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import Header from "@/components/layout/Header";
 import InboxTabsClient from "./InboxTabsClient";
+
+export const metadata: Metadata = { title: "Inbox" };
 
 export default function InboxPage() {
   return (

@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/supabase/fetchAll";
 import Header from "@/components/layout/Header";
 import ProductsList from "./ProductsList";
+
+export const metadata: Metadata = { title: "Товары" };
 
 export default async function ProductsPage() {
   const supabase = await createClient();

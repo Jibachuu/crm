@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAll } from "@/lib/supabase/fetchAll";
 import { redirect } from "next/navigation";
 import Header from "@/components/layout/Header";
 import QuotesList from "./QuotesList";
+
+export const metadata: Metadata = { title: "КП" };
 
 export default async function QuotesPage() {
   const supabase = await createClient();

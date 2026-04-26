@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAll } from "@/lib/supabase/fetchAll";
 import Header from "@/components/layout/Header";
 import DashboardClient from "./DashboardClient";
+
+export const metadata: Metadata = { title: "Дашборд" };
 
 export default async function DashboardPage() {
   const supabase = await createClient();

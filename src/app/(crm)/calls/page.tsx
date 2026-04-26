@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Header from "@/components/layout/Header";
 import CallsClient from "./CallsClient";
+
+export const metadata: Metadata = { title: "Звонки" };
 
 export default async function CallsPage() {
   const supabase = await createClient();

@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAll } from "@/lib/supabase/fetchAll";
 import Header from "@/components/layout/Header";
 import DealsList from "./DealsList";
+
+export const metadata: Metadata = { title: "Сделки" };
 
 export default async function DealsPage() {
   const admin = createAdminClient();

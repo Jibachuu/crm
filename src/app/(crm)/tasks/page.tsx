@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Header from "@/components/layout/Header";
 import TasksBoard from "./TasksBoard";
+
+export const metadata: Metadata = { title: "Задачи" };
 
 // Build a per-entity-type → id → title map so TasksBoard can label and
 // link tasks correctly. Tasks pointing at a soft-deleted entity get
