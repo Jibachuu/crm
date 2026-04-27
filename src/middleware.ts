@@ -4,8 +4,17 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Skip auth entirely for webhooks and external-access APIs (saves ~100ms per request)
-  if (pathname.startsWith("/api/webhooks") || pathname.startsWith("/api/auto-leads") || pathname.startsWith("/api/novofon/webhook")) {
+  // Skip auth entirely for webhooks and external-access APIs (saves ~100ms per request).
+  // /api/transcribe/auto и /api/notifications/morning-digest вызываются
+  // VPS-кронами без supabase-сессии — они защищают себя через
+  // x-cron-token check, поэтому middleware их пропускает.
+  if (
+    pathname.startsWith("/api/webhooks") ||
+    pathname.startsWith("/api/auto-leads") ||
+    pathname.startsWith("/api/novofon/webhook") ||
+    pathname.startsWith("/api/transcribe/auto") ||
+    pathname.startsWith("/api/notifications/morning-digest")
+  ) {
     return NextResponse.next({ request });
   }
 
