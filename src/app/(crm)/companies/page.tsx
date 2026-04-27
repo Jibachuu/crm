@@ -6,7 +6,7 @@ import CompaniesList from "./CompaniesList";
 
 export const metadata: Metadata = { title: "Компании" };
 
-const PAGE_LIMIT = 1000;
+const PAGE_LIMIT = 5000;
 
 export default async function CompaniesPage() {
   const admin = createAdminClient();

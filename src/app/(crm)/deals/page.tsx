@@ -6,7 +6,7 @@ import DealsList from "./DealsList";
 
 export const metadata: Metadata = { title: "Сделки" };
 
-const PAGE_LIMIT = 1000;
+const PAGE_LIMIT = 5000;
 
 export default async function DealsPage() {
   const admin = createAdminClient();

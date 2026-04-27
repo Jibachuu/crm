@@ -6,7 +6,10 @@ import LeadsList from "./LeadsList";
 
 export const metadata: Metadata = { title: "Лиды" };
 
-const PAGE_LIMIT = 1000;
+// Cap on initial server-side load. 5k rows is ~6 MB JSON which a
+// modern Chrome handles in ~1s. For accounts that grow past this we'd
+// need a real server-side pagination/search endpoint.
+const PAGE_LIMIT = 5000;
 
 export default async function LeadsPage() {
   const admin = createAdminClient();

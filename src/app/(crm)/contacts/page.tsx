@@ -6,7 +6,7 @@ import ContactsList from "./ContactsList";
 
 export const metadata: Metadata = { title: "Контакты" };
 
-const PAGE_LIMIT = 1000;
+const PAGE_LIMIT = 5000;
 
 export default async function ContactsPage() {
   const admin = createAdminClient();
