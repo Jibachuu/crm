@@ -15,11 +15,24 @@ export default async function SamplesPage() {
 
   const admin = createAdminClient();
 
-  const [{ data: samples }, companies, contacts, { data: users }, leads, deals] = await Promise.all([
-    admin.from("samples")
-      .select("*, companies(id, name), contacts(id, full_name), users!samples_assigned_to_fkey(id, full_name), logist:users!samples_logist_id_fkey(id, full_name)")
+  // Try to filter soft-deleted; fall back without the filter if the
+  // column doesn't exist yet (migration_v71 not applied — without the
+  // fallback the page just shows "Пробников не найдено").
+  async function loadSamples() {
+    const sel = "*, companies(id, name), contacts(id, full_name), users!samples_assigned_to_fkey(id, full_name), logist:users!samples_logist_id_fkey(id, full_name)";
+    const res = await admin.from("samples")
+      .select(sel)
       .is("deleted_at", null)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false });
+    if (res.error && /deleted_at/i.test(res.error.message)) {
+      const fallback = await admin.from("samples").select(sel).order("created_at", { ascending: false });
+      return fallback;
+    }
+    return res;
+  }
+
+  const [{ data: samples }, companies, contacts, { data: users }, leads, deals] = await Promise.all([
+    loadSamples(),
     fetchAll(admin, "companies", "id, name", { order: { column: "name" }, notDeleted: true }),
     fetchAll(admin, "contacts", "id, full_name, phone", { order: { column: "full_name" }, notDeleted: true }),
     admin.from("users").select("id, full_name").eq("is_active", true).order("full_name"),
