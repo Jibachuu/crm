@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, RefreshCw, Paperclip, Mic, MicOff } from "lucide-react";
+import { Send, RefreshCw, Paperclip, Mic, MicOff, Edit2, Trash2, Check, X } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import ImageLightbox from "./ImageLightbox";
 
@@ -30,6 +30,38 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   const [recordingTime, setRecordingTime] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Inline edit/delete on own MAX messages. Verified opcodes 67/66
+  // through /opt/max-proxy /probe; backed by /api/max edit_message /
+  // delete_message actions.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  async function deleteMessage(id: string, forMe: boolean) {
+    if (!confirm(forMe ? "Удалить только у себя?" : "Удалить у всех? (24-часовое окно MAX)")) return;
+    const res = await fetch("/api/max", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete_message", chat_id: chatId, message_id: id, for_me: forMe }),
+    });
+    const data = await res.json();
+    if (data.error) { alert("Не удалось удалить: " + data.error); return; }
+    setMessages((p) => p.filter((m) => m.id !== id));
+  }
+
+  async function saveEdit(id: string) {
+    if (!editText.trim()) { alert("Текст не должен быть пустым"); return; }
+    const res = await fetch("/api/max", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "edit_message", chat_id: chatId, message_id: id, text: editText }),
+    });
+    const data = await res.json();
+    if (data.error) { alert("Не удалось отредактировать: " + data.error); return; }
+    setMessages((p) => p.map((m) => m.id === id ? { ...m, text: editText } : m));
+    setEditingId(null);
+    setEditText("");
+  }
   const [hasMore, setHasMore] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -268,7 +300,34 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
           </div>
         )}
         {messages.map((msg) => (
-          <div key={msg.id} className="flex" style={{ justifyContent: msg.isMe ? "flex-end" : "flex-start" }}>
+          <div
+            key={msg.id}
+            className="flex"
+            style={{ justifyContent: msg.isMe ? "flex-end" : "flex-start" }}
+            onMouseEnter={() => setHoveredId(msg.id)}
+            onMouseLeave={() => setHoveredId((p) => p === msg.id ? null : p)}
+          >
+            {/* Hover actions for own messages: edit (text only) / delete */}
+            {msg.isMe && hoveredId === msg.id && editingId !== msg.id && (
+              <div className="flex items-center gap-1 mr-2 self-center">
+                {msg.text && (
+                  <button
+                    onClick={() => { setEditingId(msg.id); setEditText(msg.text); }}
+                    className="p-1 rounded bg-white shadow hover:bg-blue-50"
+                    title="Редактировать"
+                  >
+                    <Edit2 size={11} style={{ color: "#0067a5" }} />
+                  </button>
+                )}
+                <button
+                  onClick={() => deleteMessage(msg.id, false)}
+                  className="p-1 rounded bg-white shadow hover:bg-red-50"
+                  title="Удалить у всех"
+                >
+                  <Trash2 size={11} style={{ color: "#c62828" }} />
+                </button>
+              </div>
+            )}
             <div style={{
               maxWidth: "75%", padding: "8px 12px",
               borderRadius: msg.isMe ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
@@ -341,8 +400,29 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
                 </div>
                 );
               })}
-              {/* Text */}
-              {msg.text && <p className="whitespace-pre-wrap">{linkifyText(msg.text)}</p>}
+              {/* Text — inline edit textarea when active, else linkified text */}
+              {editingId === msg.id ? (
+                <div className="flex flex-col gap-1">
+                  <textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    rows={2}
+                    className="w-full text-sm px-2 py-1 rounded focus:outline-none"
+                    style={{ background: "rgba(255,255,255,0.9)", color: "#333", border: "1px solid rgba(255,255,255,0.4)", minWidth: 200 }}
+                    autoFocus
+                  />
+                  <div className="flex gap-1 justify-end">
+                    <button onClick={() => { setEditingId(null); setEditText(""); }} className="p-1 rounded hover:bg-white/10" title="Отмена">
+                      <X size={12} />
+                    </button>
+                    <button onClick={() => saveEdit(msg.id)} className="p-1 rounded hover:bg-white/10" title="Сохранить">
+                      <Check size={12} />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                msg.text && <p className="whitespace-pre-wrap">{linkifyText(msg.text)}</p>
+              )}
               {/* Empty message without attaches */}
               {!msg.text && (!msg.attaches || msg.attaches.length === 0) && !msg.forwardedFrom && !msg.replyTo && (
                 <p className="text-xs italic" style={{ color: msg.isMe ? "rgba(255,255,255,0.7)" : "#888" }}>📎 Вложение</p>

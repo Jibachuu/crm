@@ -138,6 +138,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(data);
     }
 
+    // Edit a message you sent. MAX proxy opcode 67 (verified via probe).
+    if (action === "edit_message") {
+      const { chat_id, message_id, text } = body;
+      if (!chat_id || !message_id || !text) {
+        return NextResponse.json({ error: "chat_id, message_id, text required" }, { status: 400 });
+      }
+      const data = await maxProxy("/edit", {
+        method: "POST",
+        body: JSON.stringify({ chatId: chat_id, messageId: message_id, text }),
+      });
+      return NextResponse.json(data);
+    }
+
+    // Delete a message. forMe=true deletes only on caller's side; false
+    // deletes for everyone (within MAX's 24-hour window).
+    if (action === "delete_message") {
+      const { chat_id, message_id, for_me } = body;
+      if (!chat_id || !message_id) {
+        return NextResponse.json({ error: "chat_id, message_id required" }, { status: 400 });
+      }
+      const data = await maxProxy("/delete", {
+        method: "POST",
+        body: JSON.stringify({ chatId: chat_id, messageId: message_id, forMe: !!for_me }),
+      });
+      return NextResponse.json(data);
+    }
+
     if (action === "upload") {
       const { chat_id, fileName, fileType, fileBase64 } = body;
       if (!chat_id || !fileBase64) return NextResponse.json({ error: "chat_id and fileBase64 required" }, { status: 400 });
