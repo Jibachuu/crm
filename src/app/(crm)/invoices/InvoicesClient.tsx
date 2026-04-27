@@ -309,9 +309,44 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     setEditItems(editItems.map((item, idx) => {
       if (idx !== i) return item;
       const updated = { ...item, [field]: val };
+      // Same auto-fill behaviour as the create form: picking a product
+      // populates the full name (category / volume / aroma / SKU) and
+      // the base price, so the manager doesn't retype either.
+      if (field === "product_id") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const p = products.find((pr: any) => pr.id === val);
+        if (p) { updated.name = buildProductName(p); updated.price = p.base_price; }
+      }
       updated.total = updated.quantity * updated.price;
       return updated;
     }));
+  }
+
+  // Same bottle-variant ladder as the create form, but operating on
+  // editItems so existing invoices can be expanded without re-creating.
+  function expandEditBottleVariants(idx: number) {
+    const src = editItems[idx];
+    if (!src.name) return;
+    const bp = src.price || 0;
+    const variants: { suffix: string; price: number }[] = [
+      { suffix: "Без УФ печати",                  price: bp },
+      { suffix: "С УФ печатью",                   price: bp + 500 },
+      { suffix: "С УФ печатью и нашим лого",      price: Math.round((bp + 500) * 0.6) },
+      { suffix: "С наклейкой",                    price: bp + 100 },
+      { suffix: "С наклейкой и нашим лого",       price: Math.round((bp + 100) * 0.6) },
+    ];
+    const baseName = src.name
+      .replace(/\s*\/\s*(Без УФ печати|С УФ печатью( и нашим лого)?|С наклейкой( и нашим лого)?)\s*$/i, "")
+      .trim();
+    const newRows: InvoiceItem[] = variants.map((v) => ({
+      product_id: src.product_id,
+      name: `${baseName} / ${v.suffix}`,
+      quantity: src.quantity || 1,
+      unit: src.unit || "шт",
+      price: v.price,
+      total: (src.quantity || 1) * v.price,
+    }));
+    setEditItems([...editItems.slice(0, idx), ...newRows, ...editItems.slice(idx + 1)]);
   }
 
   async function saveEditInvoice() {
@@ -739,16 +774,57 @@ function doPrint(){
                     </tr>
                   </thead>
                   <tbody>
-                    {editItems.map((item, i) => (
+                    {editItems.map((item, i) => {
+                      const isBottle = /флакон/i.test(item.name);
+                      return (
                       <tr key={i} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                        <td className="px-2 py-1.5">{i + 1}</td>
-                        <td className="px-2 py-1.5"><input value={item.name} onChange={(e) => updateEditItem(i, "name", e.target.value)} className="w-full text-xs px-1 py-0.5 rounded focus:outline-none" style={{ border: "1px solid #d0d0d0" }} /></td>
-                        <td className="px-2 py-1.5"><input type="number" value={item.quantity} onChange={(e) => updateEditItem(i, "quantity", Number(e.target.value))} className="w-16 text-xs px-1 py-0.5 rounded text-right focus:outline-none" style={{ border: "1px solid #d0d0d0" }} /></td>
-                        <td className="px-2 py-1.5"><input type="number" value={item.price} onChange={(e) => updateEditItem(i, "price", Number(e.target.value))} className="w-20 text-xs px-1 py-0.5 rounded text-right focus:outline-none" style={{ border: "1px solid #d0d0d0" }} /></td>
-                        <td className="px-2 py-1.5 text-right font-medium">{formatCurrency(item.total)}</td>
-                        <td><button onClick={() => setEditItems(editItems.filter((_, idx) => idx !== i))} className="p-0.5 hover:bg-red-50 rounded"><Trash2 size={11} className="text-red-400" /></button></td>
+                        <td className="px-2 py-1.5 align-top">{i + 1}</td>
+                        <td className="px-2 py-1.5">
+                          {/* Searchable product picker (same as create form),
+                              fed by the same products list. Free-text input
+                              kept below for one-off / non-catalog lines. */}
+                          <SearchableSelect
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            options={products.map((p: any) => ({
+                              id: p.id,
+                              label: buildProductName(p),
+                              sublabel: p.sku ? `арт. ${p.sku}` : undefined,
+                            }))}
+                            value={item.product_id}
+                            onChange={(id) => updateEditItem(i, "product_id", id)}
+                            placeholder="Сменить из каталога…"
+                            style={{ border: "1px solid #d0d0d0", borderRadius: 4, padding: "3px 6px", fontSize: 11, width: "100%", outline: "none" }}
+                          />
+                          <input
+                            value={item.name}
+                            onChange={(e) => updateEditItem(i, "name", e.target.value)}
+                            className="w-full text-xs px-1 py-0.5 rounded focus:outline-none mt-1"
+                            style={{ border: "1px solid #e4e4e4" }}
+                            placeholder="Или введите название вручную"
+                          />
+                        </td>
+                        <td className="px-2 py-1.5 align-top"><input type="number" value={item.quantity} onChange={(e) => updateEditItem(i, "quantity", Number(e.target.value))} className="w-16 text-xs px-1 py-0.5 rounded text-right focus:outline-none" style={{ border: "1px solid #d0d0d0" }} /></td>
+                        <td className="px-2 py-1.5 align-top"><input type="number" value={item.price} onChange={(e) => updateEditItem(i, "price", Number(e.target.value))} className="w-20 text-xs px-1 py-0.5 rounded text-right focus:outline-none" style={{ border: "1px solid #d0d0d0" }} /></td>
+                        <td className="px-2 py-1.5 text-right font-medium align-top">{formatCurrency(item.total)}</td>
+                        <td className="align-top">
+                          <div className="flex items-center gap-1 justify-end">
+                            {isBottle && (
+                              <button
+                                type="button"
+                                onClick={() => expandEditBottleVariants(i)}
+                                className="text-xs px-1.5 py-0.5 rounded hover:bg-blue-50 whitespace-nowrap"
+                                style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}
+                                title="Развернуть в 5 вариантов как в КП"
+                              >
+                                Вариации
+                              </button>
+                            )}
+                            <button onClick={() => setEditItems(editItems.filter((_, idx) => idx !== i))} className="p-0.5 hover:bg-red-50 rounded"><Trash2 size={11} className="text-red-400" /></button>
+                          </div>
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
                 <button onClick={() => setEditItems([...editItems, { product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }])} className="text-xs mb-3" style={{ color: "#0067a5" }}>+ Добавить строку</button>
