@@ -165,8 +165,14 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       { suffix: "С наклейкой и нашим лого",       price: Math.round((bp + 100) * 0.6) },
     ];
     // Strip an existing variant suffix if user already chose one.
+    // Strip any trailing OR mid-string variant suffix so re-clicking
+    // doesn't pile labels on top of each other (e.g. catalog name still
+    // says "Без УФ печати"). \b doesn't work on Cyrillic in JS so we
+    // anchor on whitespace/slash explicitly.
     const baseName = src.name
-      .replace(/\s*\/\s*(Без УФ печати|С УФ печатью( и нашим лого)?|С наклейкой( и нашим лого)?)\s*$/i, "")
+      .replace(/\s*[\/\-]\s*(Без\s*УФ\s*печати|С\s*УФ\s*печатью( и нашим лого)?|С\s*наклейкой( и нашим лого)?)/gi, "")
+      .replace(/\s*[\/\-]\s*$/, "")
+      .replace(/\s+/g, " ")
       .trim();
     const newRows: InvoiceItem[] = variants.map((v) => ({
       product_id: src.product_id,
@@ -335,8 +341,14 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       { suffix: "С наклейкой",                    price: bp + 100 },
       { suffix: "С наклейкой и нашим лого",       price: Math.round((bp + 100) * 0.6) },
     ];
+    // Strip any trailing OR mid-string variant suffix so re-clicking
+    // doesn't pile labels on top of each other (e.g. catalog name still
+    // says "Без УФ печати"). \b doesn't work on Cyrillic in JS so we
+    // anchor on whitespace/slash explicitly.
     const baseName = src.name
-      .replace(/\s*\/\s*(Без УФ печати|С УФ печатью( и нашим лого)?|С наклейкой( и нашим лого)?)\s*$/i, "")
+      .replace(/\s*[\/\-]\s*(Без\s*УФ\s*печати|С\s*УФ\s*печатью( и нашим лого)?|С\s*наклейкой( и нашим лого)?)/gi, "")
+      .replace(/\s*[\/\-]\s*$/, "")
+      .replace(/\s+/g, " ")
       .trim();
     const newRows: InvoiceItem[] = variants.map((v) => ({
       product_id: src.product_id,
