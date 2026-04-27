@@ -27,7 +27,12 @@ export async function POST(req: NextRequest) {
     formData.append("model", "whisper-1");
     formData.append("language", "ru");
 
-    const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    // Allow swapping the upstream — RU IPs are blocked by OpenAI
+    // directly, so OPENAI_BASE_URL pointed at a reseller (bothub.chat
+    // / proxyapi.ru / vsegpt.ru / WG-tunneled gateway) lets the same
+    // Whisper code path work without touching every endpoint.
+    const baseUrl = (process.env.OPENAI_BASE_URL || "https://api.openai.com").replace(/\/+$/, "");
+    const whisperRes = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}` },
       body: formData,
