@@ -68,9 +68,33 @@ export default function InboxClient() {
     if (!silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const res = await fetch("/api/telegram/dialogs");
+      // Wide timeout (40s) — RU ISP throttles Telegram and proxy may
+      // need to reconnect before serving from cache. Fail with a
+      // friendlier message than the browser's "operation was aborted".
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 40000);
+      let res: Response;
+      try {
+        res = await fetch("/api/telegram/dialogs", { signal: ctrl.signal });
+      } catch (e) {
+        const msg = e instanceof Error && e.name === "AbortError"
+          ? "Telegram не отвечает (RU ISP блокирует канал). Попробуйте через минуту — прокси кеширует диалоги после следующего реконнекта."
+          : "Не удалось загрузить диалоги";
+        setError(msg);
+        return;
+      } finally {
+        clearTimeout(t);
+      }
       const data = await res.json();
-      if (data.error) { setError(data.error); return; }
+      if (data.error) {
+        setError(data.error);
+        return;
+      }
+      if (data.cached) {
+        // Background refresh going on; surface it so the manager knows
+        // numbers might be a minute or two stale.
+        setError(null);
+      }
       // Enrich with CRM contact names + company (by telegram_id, username, or phone)
       try {
         const supabase = createClient();

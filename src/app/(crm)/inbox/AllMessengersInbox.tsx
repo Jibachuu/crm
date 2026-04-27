@@ -179,8 +179,10 @@ export default function AllMessengersInbox() {
     const all: UnifiedDialog[] = [];
 
     // Per-channel timeout — TG/MAX proxy hangs sometimes; without this the
-    // whole inbox spins forever and the page looks broken.
-    const TIMEOUT_MS = 15000;
+    // whole inbox spins forever and the page looks broken. 35s gives the
+    // tg-proxy room to serve from its in-memory cache after a reconnect
+    // (RU ISP often throttles Telegram for tens of seconds at a stretch).
+    const TIMEOUT_MS = 35000;
     function withTimeout<T>(p: Promise<T>, ms = TIMEOUT_MS): Promise<T> {
       return Promise.race([
         p,
