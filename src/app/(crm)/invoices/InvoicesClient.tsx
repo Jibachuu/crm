@@ -136,6 +136,48 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
 
   function addItem() { setItems([...items, { product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]); }
   function removeItem(i: number) { setItems(items.filter((_, idx) => idx !== i)); }
+
+  // Бутылочный товар → даёт раскладку 5 стандартных вариантов как в КП.
+  // Replaces the source row with 5 typed rows so the printed invoice
+  // shows the full ladder (Без УФ / С УФ / С УФ + лого / С наклейкой /
+  // С наклейкой + лого) — managers were entering only the "default"
+  // variant by hand.
+  function isBottleItem(item: InvoiceItem): boolean {
+    if (!item.product_id) return /флакон/i.test(item.name);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const p = products.find((pr: any) => pr.id === item.product_id);
+    if (!p) return /флакон/i.test(item.name);
+    return /флакон/i.test(`${p.category ?? ""} ${p.subcategory ?? ""} ${p.name ?? ""}`);
+  }
+
+  function expandBottleVariants(idx: number) {
+    const src = items[idx];
+    if (!src.name) return;
+    const bp = src.price || 0;
+    // Same 5-variant pricing model used by /quotes (commit-line 322 in
+    // QuotesList.tsx). Pricing logic kept in sync intentionally so the
+    // КП and the invoice match without a manager re-typing.
+    const variants: { suffix: string; price: number }[] = [
+      { suffix: "Без УФ печати",                  price: bp },
+      { suffix: "С УФ печатью",                   price: bp + 500 },
+      { suffix: "С УФ печатью и нашим лого",      price: Math.round((bp + 500) * 0.6) },
+      { suffix: "С наклейкой",                    price: bp + 100 },
+      { suffix: "С наклейкой и нашим лого",       price: Math.round((bp + 100) * 0.6) },
+    ];
+    // Strip an existing variant suffix if user already chose one.
+    const baseName = src.name
+      .replace(/\s*\/\s*(Без УФ печати|С УФ печатью( и нашим лого)?|С наклейкой( и нашим лого)?)\s*$/i, "")
+      .trim();
+    const newRows: InvoiceItem[] = variants.map((v) => ({
+      product_id: src.product_id,
+      name: `${baseName} / ${v.suffix}`,
+      quantity: src.quantity || 1,
+      unit: src.unit || "шт",
+      price: v.price,
+      total: (src.quantity || 1) * v.price,
+    }));
+    setItems([...items.slice(0, idx), ...newRows, ...items.slice(idx + 1)]);
+  }
   // Same field order as КП builder so invoice item names stay consistent
   // with what the client saw in the КП. Косметика обычно имеет
   // category/subcategory + объём (liters) + тара (container) + аромат
@@ -597,7 +639,18 @@ function doPrint(){
                     <div className="col-span-1"><input value={item.unit} onChange={(e) => updateItem(i, "unit", e.target.value)} style={{ ...inputStyle, fontSize: 12 }} /></div>
                     <div className="col-span-2"><input type="number" min="0" step="0.01" value={item.price} onChange={(e) => updateItem(i, "price", Number(e.target.value))} style={{ ...inputStyle, fontSize: 12 }} placeholder="Цена" /></div>
                     <div className="col-span-2 text-sm font-medium" style={{ color: "#2e7d32", paddingTop: 6 }}>{formatCurrency(item.total)}</div>
-                    <div className="col-span-1">
+                    <div className="col-span-1 flex items-center gap-1">
+                      {isBottleItem(item) && (
+                        <button
+                          type="button"
+                          onClick={() => expandBottleVariants(i)}
+                          className="text-xs px-1.5 py-0.5 rounded hover:bg-blue-50 whitespace-nowrap"
+                          style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}
+                          title="Развернуть в 5 вариантов: Без УФ / С УФ / С УФ+лого / С наклейкой / С наклейкой+лого (как в КП)"
+                        >
+                          Вариации
+                        </button>
+                      )}
                       {items.length > 1 && <button onClick={() => removeItem(i)} className="text-xs text-red-500 hover:underline">✕</button>}
                     </div>
                   </div>
