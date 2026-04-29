@@ -98,7 +98,8 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupMembers, setNewGroupMembers] = useState<Set<string>>(new Set());
   const [showMembers, setShowMembers] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastMsgIdRef = useRef<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -149,7 +150,16 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
     }
   }, [target]);
 
-  useEffect(() => { if (target?.type === "user") fetchMessages(); else if (target?.type === "group") fetchGroupMessages(); }, [target, fetchMessages, fetchGroupMessages]);
+  // Switch chat: reset scroll tracking, drop old messages so they don't render in the new chat header
+  useEffect(() => {
+    lastMsgIdRef.current = null;
+    setMessages([]);
+    setGroupMessages([]);
+    if (target?.type === "user") fetchMessages();
+    else if (target?.type === "group") fetchGroupMessages();
+  }, [target, fetchMessages, fetchGroupMessages]);
+
+  // Poll for new messages every 5s
   useEffect(() => {
     if (!target) return;
     const fn = target.type === "user" ? fetchMessages : fetchGroupMessages;
@@ -157,7 +167,31 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
     return () => clearInterval(interval);
   }, [target, fetchMessages, fetchGroupMessages]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, groupMessages]);
+  // Scroll to bottom only when a NEW message arrives AND user is already near the bottom
+  // (or this is the first batch after opening the chat). Prevents the 5s polling refresh
+  // from yanking the user back down while they read history.
+  useEffect(() => {
+    const list = target?.type === "user" ? messages : target?.type === "group" ? groupMessages : [];
+    const lastId = list.length > 0 ? list[list.length - 1].id : null;
+    if (lastId === lastMsgIdRef.current) return;
+
+    const isFirstBatch = lastMsgIdRef.current === null;
+    lastMsgIdRef.current = lastId;
+    if (!lastId) return;
+
+    const c = messagesContainerRef.current;
+    if (!c) return;
+
+    if (isFirstBatch) {
+      c.scrollTop = c.scrollHeight;
+      return;
+    }
+    const distFromBottom = c.scrollHeight - c.scrollTop - c.clientHeight;
+    if (distFromBottom < 120) {
+      c.scrollTo({ top: c.scrollHeight, behavior: "smooth" });
+    }
+  }, [messages, groupMessages, target]);
+
 
   // Send personal message
   async function sendPersonalMessage() {
@@ -326,7 +360,7 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
   }
 
   return (
-    <div className="flex w-full" style={{ height: "calc(100vh - 48px)" }}>
+    <div className="flex w-full flex-1 min-h-0">
       {/* Left panel */}
       <div className="flex flex-col" style={{ width: 300, borderRight: "1px solid #e4e4e4", background: "#fff" }}>
         <div className="px-3 py-3" style={{ borderBottom: "1px solid #f0f0f0" }}>
@@ -484,13 +518,12 @@ export default function TeamClient({ currentUserId, users }: { currentUserId: st
             )}
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2" style={{ overflowAnchor: "none" }}>
               {target.type === "user" && chatMessages.length === 0 && <p className="text-xs text-center py-8" style={{ color: "#aaa" }}>Начните переписку</p>}
               {target.type === "group" && chatGroupMessages.length === 0 && <p className="text-xs text-center py-8" style={{ color: "#aaa" }}>Начните общение в группе</p>}
 
               {target.type === "user" && chatMessages.map((msg) => renderMessageBubble(msg, msg.from_user === currentUserId))}
               {target.type === "group" && chatGroupMessages.map((msg) => renderMessageBubble(msg, msg.sender_id === currentUserId, msg.users?.full_name))}
-              <div ref={bottomRef} />
             </div>
 
             {/* Recording */}
