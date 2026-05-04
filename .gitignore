@@ -41,3 +41,7 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# Claude Code agent state — internal scheduling/cache, not source
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
