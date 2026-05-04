@@ -113,28 +113,52 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Always create lead for incoming calls
+    // Skip duplicate auto-lead creation if there's already an active lead for
+    // this contact (created in the last 30 days, not converted/rejected).
+    // Backlog v5 §1.3.4: two calls from one client created two duplicate leads.
+    let assignee: string | null = null;
     if (contactId) {
-      const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
-      const { data: firstStage } = funnel
-        ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
-        : { data: null };
-      const assignee = await pickAutoLeadAssignee(admin);
-      const leadTitle = `Звонок: ${dbContactName || contactName || callerPhone}`;
+      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: existingLead } = await admin.from("leads")
+        .select("id, assigned_to")
+        .eq("contact_id", contactId)
+        .gt("created_at", since)
+        .not("status", "in", "(converted,rejected)")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      const { data: newLead, error: leadErr } = await admin.from("leads").insert({
-        title: leadTitle,
-        source: "phone",
-        status: "new",
-        contact_id: contactId,
-        company_id: companyId,
-        funnel_id: funnel?.id ?? null,
-        stage_id: firstStage?.id ?? null,
-        assigned_to: assignee ?? null,
-        created_by: adminId,
-      }).select("id").single();
-      if (leadErr) console.error("[novofon] lead insert error:", leadErr.message);
-      else console.log("[novofon] created lead:", newLead?.id, "for contact:", contactId);
+      if (existingLead) {
+        assignee = existingLead.assigned_to ?? null;
+        console.log("[novofon] reusing lead", existingLead.id, "for contact", contactId);
+      } else {
+        const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
+        const { data: firstStage } = funnel
+          ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
+          : { data: null };
+        assignee = await pickAutoLeadAssignee(admin);
+        const leadTitle = `Звонок: ${dbContactName || contactName || callerPhone}`;
+
+        const { data: newLead, error: leadErr } = await admin.from("leads").insert({
+          title: leadTitle,
+          source: "phone",
+          status: "new",
+          contact_id: contactId,
+          company_id: companyId,
+          funnel_id: funnel?.id ?? null,
+          stage_id: firstStage?.id ?? null,
+          assigned_to: assignee ?? null,
+          created_by: adminId,
+        }).select("id").single();
+        if (leadErr) console.error("[novofon] lead insert error:", leadErr.message);
+        else console.log("[novofon] created lead:", newLead?.id, "for contact:", contactId);
+      }
+    }
+
+    // Attribute the call to the responsible user so /calls filter works.
+    if (assignee) {
+      await admin.from("communications").update({ created_by: assignee }).eq("external_id", `novofon_${callSessionId}`);
     }
 
     return NextResponse.json({ caller_name: dbContactName || undefined });
@@ -159,6 +183,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Best-effort: identify which user initiated the outbound call by matching
+    // the operator's CallerID (calledNumber field) against sip_number/sip_login.
+    // Novofon sends the operator's virtual number in the outgoing webhook.
+    let outCreatedBy: string | null = null;
+    if (calledNumber) {
+      const sipKey = String(calledNumber).replace(/\D/g, "").slice(-10);
+      if (sipKey.length >= 4) {
+        const { data: opUser } = await admin.from("users")
+          .select("id")
+          .or(`sip_number.eq.${sipKey},sip_login.eq.${sipKey},sip_number.eq.${calledNumber},sip_login.eq.${calledNumber}`)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
+        outCreatedBy = opUser?.id ?? null;
+      }
+    }
+
     await admin.from("communications").insert({
       channel: "phone",
       direction: "outbound",
@@ -172,6 +213,7 @@ export async function POST(req: NextRequest) {
       contact_id: contactId,
       company_id: companyId,
       sender_name: dbContactName || contactName || callerPhone,
+      created_by: outCreatedBy,
     });
 
     return NextResponse.json({});

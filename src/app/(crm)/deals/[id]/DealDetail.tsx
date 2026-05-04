@@ -209,18 +209,20 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   const totalOrder = orderProducts.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
   const stageIndex = STAGES.findIndex((s) => s.key === deal.stage);
 
-  // Recalculate deal.amount from products
+  // Recalculate deal.amount from products. Only "order" rows count — "request"
+  // rows are what the client originally asked for, not what's being sold.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function recalcDealAmount(products: any[]) {
-    const total = products.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
-    if (total > 0) {
-      setDeal((prev: typeof deal) => ({ ...prev, amount: total }));
-      fetch("/api/deals", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: deal.id, title: deal.title, stage: deal.stage, amount: total }),
-      }).catch(() => {});
-    }
+    const total = products
+      .filter((p: { product_block?: string }) => p.product_block === "order")
+      .reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
+    if (total === deal.amount) return;
+    setDeal((prev: typeof deal) => ({ ...prev, amount: total }));
+    fetch("/api/deals", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: deal.id, title: deal.title, stage: deal.stage, amount: total }),
+    }).catch(() => {});
   }
 
   return (

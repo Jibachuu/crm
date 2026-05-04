@@ -51,11 +51,19 @@ async function buildEntityIndex(
 export default async function TasksPage() {
   const supabase = await createClient();
   const admin = createAdminClient();
-  const { data: tasks } = await supabase
-    .from("tasks")
-    .select("*, users!tasks_assigned_to_fkey(full_name), creator:users!tasks_created_by_fkey(full_name)")
-    .is("deleted_at", null)
-    .order("due_date", { ascending: true, nullsFirst: false });
+  const { data: { user: authUser } } = await supabase.auth.getUser();
+
+  const [{ data: tasks }, { data: currentProfile }, { data: users }] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("*, users!tasks_assigned_to_fkey(full_name), creator:users!tasks_created_by_fkey(full_name)")
+      .is("deleted_at", null)
+      .order("due_date", { ascending: true, nullsFirst: false }),
+    authUser
+      ? admin.from("users").select("id, role, full_name").eq("id", authUser.id).single()
+      : Promise.resolve({ data: null }),
+    admin.from("users").select("id, full_name, role").eq("is_active", true).order("full_name"),
+  ]);
 
   const entityIndex = await buildEntityIndex(admin, tasks ?? []);
 
@@ -63,7 +71,12 @@ export default async function TasksPage() {
     <>
       <Header title="Задачи" />
       <main className="p-6">
-        <TasksBoard initialTasks={tasks ?? []} entityIndex={entityIndex} />
+        <TasksBoard
+          initialTasks={tasks ?? []}
+          entityIndex={entityIndex}
+          users={users ?? []}
+          currentUser={currentProfile ?? null}
+        />
       </main>
     </>
   );

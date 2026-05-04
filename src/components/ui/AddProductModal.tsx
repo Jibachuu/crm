@@ -71,9 +71,9 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
     setVariants([
       { label: "Без УФ печати", price: bp, quantity: 1, sum: bp },
       { label: "С УФ печатью", price: bp + 500, quantity: 1, sum: bp + 500 },
-      { label: "С УФ печатью и нашим лого", price: Math.round((bp + 500) * 0.6), quantity: 1, sum: Math.round((bp + 500) * 0.6) },
+      { label: "С УФ печатью и логотипом Havenberg", price: Math.round((bp + 500) * 0.6), quantity: 1, sum: Math.round((bp + 500) * 0.6) },
       { label: "С наклейкой", price: bp + 100, quantity: 1, sum: bp + 100 },
-      { label: "С наклейкой и нашим лого", price: Math.round((bp + 100) * 0.6), quantity: 1, sum: Math.round((bp + 100) * 0.6) },
+      { label: "С наклейкой и логотипом Havenberg", price: Math.round((bp + 100) * 0.6), quantity: 1, sum: Math.round((bp + 100) * 0.6) },
     ]);
   }
 

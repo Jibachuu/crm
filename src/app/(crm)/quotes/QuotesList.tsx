@@ -17,9 +17,9 @@ type BottleVariant = "none" | "uv" | "uv_logo" | "sticker" | "sticker_logo";
 const BOTTLE_VARIANTS: { value: BottleVariant; label: string }[] = [
   { value: "none", label: "Без УФ печати" },
   { value: "uv", label: "С УФ печатью (+500₽)" },
-  { value: "uv_logo", label: "С УФ печатью и нашим лого" },
+  { value: "uv_logo", label: "С УФ печатью и логотипом Havenberg" },
   { value: "sticker", label: "С наклейкой (+100₽)" },
-  { value: "sticker_logo", label: "С наклейкой и нашим лого" },
+  { value: "sticker_logo", label: "С наклейкой и логотипом Havenberg" },
 ];
 function calcBottlePrice(basePrice: number, variant: BottleVariant): number {
   switch (variant) {
@@ -325,9 +325,9 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     const variants: ItemVariant[] = [
       { label: "Без УФ печати", price: bp, quantity: 1, sum: bp, image_url: item.image_url || "" },
       { label: "С УФ печатью", price: bp + 500, quantity: 1, sum: bp + 500, image_url: "" },
-      { label: "С УФ печатью и нашим лого", price: Math.round((bp + 500) * 0.6), quantity: 1, sum: Math.round((bp + 500) * 0.6), image_url: "" },
+      { label: "С УФ печатью и логотипом Havenberg", price: Math.round((bp + 500) * 0.6), quantity: 1, sum: Math.round((bp + 500) * 0.6), image_url: "" },
       { label: "С наклейкой", price: bp + 100, quantity: 1, sum: bp + 100, image_url: "" },
-      { label: "С наклейкой и нашим лого", price: Math.round((bp + 100) * 0.6), quantity: 1, sum: Math.round((bp + 100) * 0.6), image_url: "" },
+      { label: "С наклейкой и логотипом Havenberg", price: Math.round((bp + 100) * 0.6), quantity: 1, sum: Math.round((bp + 100) * 0.6), image_url: "" },
     ];
     setItems(items.map((it, i) => i === idx ? { ...it, variants } : it));
   }

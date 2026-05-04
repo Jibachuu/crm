@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+// pdftotext sometimes drops the hyphen before an uppercase letter in compound
+// Russian city names — "Ростов-на-Дону" came out as "Ростов-наДону" (backlog
+// v5 §2.1.5). Restore the missing hyphen for the well-known compounds.
+function normalizeRussianCompoundCities(s: string): string {
+  if (!s) return s;
+  return s
+    .replace(/(Ростов\s*-\s*на)\s*-?\s*([А-ЯЁ])/gu, "$1-$2")
+    .replace(/(Комсомольск\s*-\s*на)\s*-?\s*([А-ЯЁ])/gu, "$1-$2")
+    .replace(/Ростов\s+на\s+Дону/giu, "Ростов-на-Дону")
+    .replace(/Комсомольск\s+на\s+Амуре/giu, "Комсомольск-на-Амуре");
+}
+
 function parseRequisites(text: string) {
   const r: Record<string, string> = {};
 
@@ -160,6 +172,9 @@ function parseRequisites(text: string) {
   for (const [k, v] of Object.entries(r)) {
     r[k] = v.replace(/\s{2,}/g, " ").trim();
   }
+
+  // Repair compound city names that pdftotext mangled (Ростов-на-Дону etc.)
+  if (r.buyer_address) r.buyer_address = normalizeRussianCompoundCities(r.buyer_address);
 
   return r;
 }

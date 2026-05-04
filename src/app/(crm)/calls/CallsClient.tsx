@@ -37,11 +37,23 @@ export default function CallsClient({ calls, users }: { calls: any[]; users: { i
   const [search, setSearch] = useState("");
   const [dirFilter, setDirFilter] = useState<"all" | "inbound" | "outbound">("all");
   const [userFilter, setUserFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [showCount, setShowCount] = useState(100);
 
   const filtered = useMemo(() => calls.filter((c) => {
     if (dirFilter !== "all" && c.direction !== dirFilter) return false;
-    if (userFilter !== "all" && c.created_by !== userFilter) return false;
+    if (userFilter !== "all") {
+      if (c.created_by !== userFilter) return false;
+    }
+    if (dateFrom) {
+      if (!c.created_at || c.created_at < dateFrom) return false;
+    }
+    if (dateTo) {
+      // dateTo is inclusive — compare against end-of-day
+      const endOfDay = dateTo + "T23:59:59.999Z";
+      if (!c.created_at || c.created_at > endOfDay) return false;
+    }
     if (!search) return true;
     const q = search.toLowerCase();
     return (c.from_address?.includes(q)) ||
@@ -49,7 +61,7 @@ export default function CallsClient({ calls, users }: { calls: any[]; users: { i
       (c.sender_name?.toLowerCase().includes(q)) ||
       (c.contacts?.full_name?.toLowerCase().includes(q)) ||
       (c.contacts?.companies?.name?.toLowerCase().includes(q));
-  }), [calls, search, dirFilter, userFilter]);
+  }), [calls, search, dirFilter, userFilter, dateFrom, dateTo]);
 
   const visible = filtered.slice(0, showCount);
 
@@ -131,6 +143,16 @@ export default function CallsClient({ calls, users }: { calls: any[]; users: { i
           <option value="all">Все сотрудники</option>
           {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
         </select>
+        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} title="С"
+          className="text-xs px-2 py-1.5 rounded-full focus:outline-none"
+          style={{ border: "1px solid #e0e0e0", background: "#f5f5f5", color: "#555" }} />
+        <span className="text-xs" style={{ color: "#aaa" }}>—</span>
+        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} title="По"
+          className="text-xs px-2 py-1.5 rounded-full focus:outline-none"
+          style={{ border: "1px solid #e0e0e0", background: "#f5f5f5", color: "#555" }} />
+        {(dateFrom || dateTo) && (
+          <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs" style={{ color: "#888" }}>сбросить</button>
+        )}
         <button onClick={exportCsv} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1"
           style={{ border: "1px solid #d0e8f5", color: "#0067a5", background: "#fff" }}>
           <Download size={11} /> Excel

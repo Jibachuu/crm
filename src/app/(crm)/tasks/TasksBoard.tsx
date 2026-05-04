@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Plus, Trash2, Edit2, Filter } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -9,7 +9,6 @@ import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import EditTaskModal from "@/components/ui/EditTaskModal";
 import { formatDate } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
 import Link from "next/link";
 
 const PRIORITY_VARIANTS: Record<string, "danger" | "warning" | "default"> = {
@@ -47,9 +46,11 @@ interface Task {
   creator?: { full_name: string };
 }
 
+interface UserOpt { id: string; full_name: string; role?: string }
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function TasksBoard({ initialTasks, entityIndex = {} }: { initialTasks: any[]; entityIndex?: Record<string, Record<string, string>> }) {
-  const { user: currentUser, isManager } = useCurrentUser();
+export default function TasksBoard({ initialTasks, entityIndex = {}, users = [], currentUser = null }: { initialTasks: any[]; entityIndex?: Record<string, Record<string, string>>; users?: UserOpt[]; currentUser?: UserOpt | null }) {
+  const isManager = currentUser?.role === "manager";
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -82,11 +83,6 @@ export default function TasksBoard({ initialTasks, entityIndex = {} }: { initial
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [filterUser, setFilterUser] = useState<string>(isManager && currentUser ? currentUser.id : "all");
-  const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
-
-  useEffect(() => {
-    createClient().from("users").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setUsers(data ?? []));
-  }, []);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const visibleTasks = filterUser === "all" ? tasks : tasks.filter((t) => (t as any).assigned_to === filterUser);

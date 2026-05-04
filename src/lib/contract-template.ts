@@ -17,16 +17,16 @@ body{font-family:Arial,sans-serif;font-size:11px;margin:15mm;color:#000;line-hei
 h2{text-align:center;font-size:14px;margin:0 0 10px}
 h3{font-size:12px;margin:15px 0 5px}
 p{margin:3px 0;text-align:justify}
-.sign-block{position:relative;min-height:80px}
-.stamp{position:absolute;left:0;bottom:-10px;width:140px;opacity:0.8}
-.signature{position:absolute;left:160px;bottom:10px;width:100px;opacity:0.8}
+.sign-block{position:relative;min-height:140px;margin-top:10px}
+.stamp{position:absolute;left:0;top:50px;width:150px;opacity:0.85}
+.signature{position:absolute;left:170px;top:0;width:120px;opacity:0.9}
 @media print{body{margin:10mm 12mm}@page{size:A4;margin:10mm 12mm}}
 </style></head><body>
 
 <h2>ДОГОВОР ПОСТАВКИ №${v("contract_number")}</h2>
 <table style="width:100%"><tr><td>город Казань</td><td style="text-align:right">${v("date")}</td></tr></table>
 
-<p>${v("supplier_name")}, именуемый в дальнейшем «Поставщик», действующий на основании ОГРНИП ${v("supplier_ogrnip")}, и ${v("buyer_legal_form_full")} "${v("buyer_name")}", именуемое в дальнейшем «Покупатель», в лице ${v("buyer_director_title")} ${v("buyer_director_name")}, действующего на основании ${v("buyer_director_basis")}, с другой стороны, далее совместно именуемые «Стороны», заключили настоящий Договор о нижеследующем:</p>
+<p>${v("supplier_name")}, именуемый в дальнейшем «Поставщик», действующий на основании ОГРНИП ${v("supplier_ogrnip")}, и ${v("buyer_legal_form_full")} «${v("buyer_name")}», именуемое в дальнейшем «Покупатель», в лице ${v("buyer_director_title")} ${v("buyer_director_name")}, действующего на основании ${v("buyer_director_basis")}, с другой стороны, далее совместно именуемые «Стороны», заключили настоящий Договор о нижеследующем:</p>
 
 <h3>1. ПРЕДМЕТ ДОГОВОРА</h3>
 <p>1.1. По настоящему договору Поставщик обязуется на согласованных Сторонами условиях передать в собственность Покупателя Товары, а Покупатель обязуется принимать и оплачивать Товары на условиях, установленных настоящим Договором.</p>

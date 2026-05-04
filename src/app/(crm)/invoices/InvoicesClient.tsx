@@ -160,9 +160,9 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     const variants: { suffix: string; price: number }[] = [
       { suffix: "Без УФ печати",                  price: bp },
       { suffix: "С УФ печатью",                   price: bp + 500 },
-      { suffix: "С УФ печатью и нашим лого",      price: Math.round((bp + 500) * 0.6) },
+      { suffix: "С УФ печатью и логотипом Havenberg",      price: Math.round((bp + 500) * 0.6) },
       { suffix: "С наклейкой",                    price: bp + 100 },
-      { suffix: "С наклейкой и нашим лого",       price: Math.round((bp + 100) * 0.6) },
+      { suffix: "С наклейкой и логотипом Havenberg",       price: Math.round((bp + 100) * 0.6) },
     ];
     // Strip an existing variant suffix if user already chose one.
     // Strip any trailing OR mid-string variant suffix so re-clicking
@@ -170,7 +170,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     // says "Без УФ печати"). \b doesn't work on Cyrillic in JS so we
     // anchor on whitespace/slash explicitly.
     const baseName = src.name
-      .replace(/\s*[\/\-]\s*(Без\s*УФ\s*печати|С\s*УФ\s*печатью( и нашим лого)?|С\s*наклейкой( и нашим лого)?)/gi, "")
+      .replace(/\s*[\/\-]\s*(Без\s*УФ\s*печати|С\s*УФ\s*печатью(\s+и\s+(?:нашим\s+лого|логотипом\s+Havenberg))?|С\s*наклейкой(\s+и\s+(?:нашим\s+лого|логотипом\s+Havenberg))?)/gi, "")
       .replace(/\s*[\/\-]\s*$/, "")
       .replace(/\s+/g, " ")
       .trim();
@@ -337,16 +337,16 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     const variants: { suffix: string; price: number }[] = [
       { suffix: "Без УФ печати",                  price: bp },
       { suffix: "С УФ печатью",                   price: bp + 500 },
-      { suffix: "С УФ печатью и нашим лого",      price: Math.round((bp + 500) * 0.6) },
+      { suffix: "С УФ печатью и логотипом Havenberg",      price: Math.round((bp + 500) * 0.6) },
       { suffix: "С наклейкой",                    price: bp + 100 },
-      { suffix: "С наклейкой и нашим лого",       price: Math.round((bp + 100) * 0.6) },
+      { suffix: "С наклейкой и логотипом Havenberg",       price: Math.round((bp + 100) * 0.6) },
     ];
     // Strip any trailing OR mid-string variant suffix so re-clicking
     // doesn't pile labels on top of each other (e.g. catalog name still
     // says "Без УФ печати"). \b doesn't work on Cyrillic in JS so we
     // anchor on whitespace/slash explicitly.
     const baseName = src.name
-      .replace(/\s*[\/\-]\s*(Без\s*УФ\s*печати|С\s*УФ\s*печатью( и нашим лого)?|С\s*наклейкой( и нашим лого)?)/gi, "")
+      .replace(/\s*[\/\-]\s*(Без\s*УФ\s*печати|С\s*УФ\s*печатью(\s+и\s+(?:нашим\s+лого|логотипом\s+Havenberg))?|С\s*наклейкой(\s+и\s+(?:нашим\s+лого|логотипом\s+Havenberg))?)/gi, "")
       .replace(/\s*[\/\-]\s*$/, "")
       .replace(/\s+/g, " ")
       .trim();
