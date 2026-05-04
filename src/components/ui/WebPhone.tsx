@@ -160,6 +160,28 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
         // Second incoming while first is active: park it in
         // secondSessionRef and let the user decide. We don't auto-reject
         // — they get the chance to take an important caller.
+        //
+        // Defensive: if the previous session ENDED but its event listener
+        // never fired endCall() (network hiccup, GC race), sessionRef is
+        // stale. Detect via JsSIP `isEnded()` and clear before deciding.
+        // Without this guard the next legitimate caller hits the
+        // "second slot" path and a third caller gets 486 Busy — observed
+        // as "клиент звонит и постоянно занято".
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const prev = sessionRef.current as any;
+        if (prev && (typeof prev.isEnded === "function" ? prev.isEnded() : false)) {
+          console.warn("[WebPhone] cleared stale primary session before accepting new call");
+          sessionRef.current = null;
+          setStateAndRef("registered");
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const second = secondSessionRef.current as any;
+        if (second && (typeof second.isEnded === "function" ? second.isEnded() : false)) {
+          console.warn("[WebPhone] cleared stale second session");
+          secondSessionRef.current = null;
+          setSecondCaller("");
+        }
+
         if (sessionRef.current && (stateRef.current === "incoming" || stateRef.current === "connected" || stateRef.current === "calling")) {
           // Already a queued second call — refuse the third with Busy.
           if (secondSessionRef.current) {
@@ -558,9 +580,35 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
               <span className="w-2 h-2 rounded-full" style={{ background: statusColor }} />
               <span className="text-xs" style={{ color: statusColor }}>{statusText}</span>
             </div>
-            <button onClick={() => setMinimized(true)} className="p-1 rounded hover:bg-gray-100">
-              <X size={14} style={{ color: "#888" }} />
-            </button>
+            <div className="flex items-center gap-1">
+              {/* Manual reset for the rare case when the SIP session
+                  state gets stuck (caller reports persistent "busy"
+                  while no call is actually visible). Forces cleanup
+                  + UA re-register on next interval. */}
+              <button
+                onClick={() => {
+                  try {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const s = sessionRef.current as any;
+                    if (s && typeof s.terminate === "function") s.terminate();
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const s2 = secondSessionRef.current as any;
+                    if (s2 && typeof s2.terminate === "function") s2.terminate();
+                  } catch { /* ignore */ }
+                  secondSessionRef.current = null;
+                  setSecondCaller("");
+                  endCall();
+                }}
+                className="text-[10px] px-1.5 py-0.5 rounded hover:bg-amber-50"
+                style={{ color: "#bf7600", border: "1px solid #ffe0b2" }}
+                title="Сбросить состояние SIP при залипшей сессии"
+              >
+                Сброс
+              </button>
+              <button onClick={() => setMinimized(true)} className="p-1 rounded hover:bg-gray-100">
+                <X size={14} style={{ color: "#888" }} />
+              </button>
+            </div>
           </div>
           <div className="space-y-2">
             <input
