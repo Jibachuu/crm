@@ -70,26 +70,40 @@ async function checkInbox() {
 
           if (!fromEmail || fromEmail === IMAP_USER.toLowerCase()) continue;
 
-          // Check if contact exists in Supabase
+          // Skip mail from any of our own users (admins replying from
+          // jibachuu@gmail.com, etc.) — those flooded the leads table on
+          // 2026-05-04 because the dedup below was broken.
+          const ownUsers = await supabaseQuery(
+            `/rest/v1/users?email=ilike.${encodeURIComponent(fromEmail)}&select=id&limit=1`
+          );
+          if (Array.isArray(ownUsers) && ownUsers.length > 0) continue;
+
+          // Check if contact exists in Supabase (also via email_other / created_at)
           const existingContacts = await supabaseQuery(
-            `/rest/v1/contacts?email=ilike.${encodeURIComponent(fromEmail)}&select=id,full_name,phone&limit=1`
+            `/rest/v1/contacts?email=ilike.${encodeURIComponent(fromEmail)}&select=id,full_name,phone&limit=1&deleted_at=is.null`
           );
           let contactId = null;
 
           if (Array.isArray(existingContacts) && existingContacts.length > 0) {
             contactId = existingContacts[0].id;
-            // Update name if current name looks like email
             const current = existingContacts[0];
             if (fromName && fromName !== fromEmail && (!current.full_name || current.full_name === fromEmail || current.full_name.includes("@"))) {
               await supabaseQuery(`/rest/v1/contacts?id=eq.${contactId}`, "PATCH", { full_name: fromName });
             }
           }
 
-          // Check if lead already exists
-          const leads = await supabaseQuery(
-            `/rest/v1/leads?source=eq.email&title=ilike.%25${encodeURIComponent(fromEmail)}%25&select=id&limit=1`
-          );
-          if (Array.isArray(leads) && leads.length > 0) { emailSet.add(fromEmail); continue; }
+          // Lead dedup — was looking up by title containing the email,
+          // but titles are "Email: Имя", so the lookup never matched and
+          // every poll spawned a fresh lead. Now: skip if any open
+          // (non-converted/rejected) email-source lead already exists for
+          // this contact within the last 30 days.
+          if (contactId) {
+            const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+            const dupLeads = await supabaseQuery(
+              `/rest/v1/leads?contact_id=eq.${contactId}&source=eq.email&created_at=gt.${encodeURIComponent(since)}&status=in.(new,callback,in_progress,samples,samples_shipped,invoice)&deleted_at=is.null&select=id&limit=1`
+            );
+            if (Array.isArray(dupLeads) && dupLeads.length > 0) continue;
+          }
 
           // Get admin user ID
           const admins = await supabaseQuery(`/rest/v1/users?role=eq.admin&select=id&limit=1`);
