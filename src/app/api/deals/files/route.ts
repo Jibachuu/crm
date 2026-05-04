@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { downscaleImage } from "@/lib/imageOptimize";
+import { downscaleImage, safeStorageName } from "@/lib/imageOptimize";
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
@@ -42,8 +42,13 @@ export async function POST(req: NextRequest) {
   const { buffer, contentType: outType, resized } = await downscaleImage(original, file.type || "application/octet-stream");
   const baseName = file.name.replace(/\.[^.]+$/, "");
   const ext = outType === "image/jpeg" ? "jpg" : outType === "image/png" ? "png" : (file.name.split(".").pop() ?? "bin");
-  const finalName = resized ? `${baseName}.${ext}` : file.name;
-  const path = `${folder}/${entityId}/${Date.now()}_${finalName}`;
+  // file.name (kept in DB for display) keeps cyrillic + special chars.
+  // The storage key is sanitised so Supabase doesn't reject "№" / spaces
+  // / cyrillic with "Invalid key" (seen 2026-05-04 with a Платёжное
+  // поручение PDF).
+  const displayName = resized ? `${baseName}.${ext}` : file.name;
+  const safeName = safeStorageName(displayName);
+  const path = `${folder}/${entityId}/${Date.now()}_${safeName}`;
 
   const { error: upErr } = await admin.storage.from("attachments").upload(path, buffer, { contentType: outType, upsert: true });
   if (upErr) {
@@ -60,7 +65,9 @@ export async function POST(req: NextRequest) {
   const { data, error } = await admin.from("deal_files").insert({
     deal_id: dealId || null,
     lead_id: leadId || null,
-    file_name: finalName,
+    // Keep the human-readable name (with cyrillic + №) for the UI; the
+    // storage key was sanitised separately above.
+    file_name: displayName,
     file_url: urlData.publicUrl,
     file_type: outType,
     file_size: buffer.byteLength,

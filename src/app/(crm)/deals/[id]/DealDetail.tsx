@@ -806,30 +806,36 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function DealProductBlock({ title, description, items, total, onAdd, block = "request", onRemove, onUpdate, onEdit }: { title: string; description: string; items: any[]; total: number; onAdd: () => void; block?: string; onRemove?: (id: string) => void; onUpdate?: (id: string, fields: Record<string, unknown>) => void; onEdit?: (item: any) => void }) {
 
+  // All deal_products mutations go through admin API — RLS blocks
+  // non-admin users from updating directly which manifested as
+  // "delete does nothing", "edit doesn't persist" (2026-05-04 report).
   async function handleDelete(id: string) {
     if (!confirm("Удалить товар из заказа?")) return;
-    const { error } = await createClient().from("deal_products").delete().eq("id", id);
-    if (!error) onRemove?.(id);
-    else alert("Ошибка: " + error.message);
+    const res = await fetch("/api/deals/products", {
+      method: "DELETE", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) onRemove?.(id);
+    else { const d = await res.json().catch(() => ({})); alert("Ошибка: " + (d.error || res.status)); }
   }
 
   async function handleFieldUpdate(id: string, field: string, value: number) {
     const updates: Record<string, unknown> = { [field]: value };
-    // Recalculate total_price if quantity or unit_price changed
     const item = items.find((i: { id: string }) => i.id === id);
     if (item) {
       const qty = field === "quantity" ? value : item.quantity;
       const price = field === "unit_price" ? value : item.unit_price;
       updates.total_price = qty * price;
     }
-    const { error } = await createClient().from("deal_products").update(updates).eq("id", id);
-    if (!error) onUpdate?.(id, updates);
-    else alert("Ошибка: " + error.message);
+    const res = await fetch("/api/deals/products", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...updates }),
+    });
+    if (res.ok) onUpdate?.(id, updates);
+    else { const d = await res.json().catch(() => ({})); alert("Ошибка: " + (d.error || res.status)); }
   }
 
   // Backlog v5 §1.1.3: remove a single variant row inside a product block.
-  // total_price is recomputed from the remaining variants (or unit_price *
-  // quantity if no variants left).
   async function handleVariantRemove(id: string, varIdx: number) {
     const item = items.find((i: { id: string }) => i.id === id);
     if (!item) return;
@@ -838,9 +844,12 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
       ? nextVariants.reduce((s: number, v: { sum?: number; price: number; quantity: number }) => s + (v.sum ?? v.price * v.quantity), 0)
       : (item.unit_price ?? 0) * (item.quantity ?? 1);
     const updates = { variants: nextVariants, total_price: total };
-    const { error } = await createClient().from("deal_products").update(updates).eq("id", id);
-    if (error) { alert("Ошибка: " + error.message); return; }
-    onUpdate?.(id, updates);
+    const res = await fetch("/api/deals/products", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...updates }),
+    });
+    if (res.ok) onUpdate?.(id, updates);
+    else { const d = await res.json().catch(() => ({})); alert("Ошибка: " + (d.error || res.status)); }
   }
   return (
     <div>
@@ -920,8 +929,11 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                           <input type="number" min="0" placeholder="дн." defaultValue={item.lifecycle_days ?? ""}
                             className="w-12 text-xs px-1 py-0.5 rounded outline-none" style={{ border: "1px solid #ffe0b2", color: "#e65c00" }}
                             onBlur={async (e) => {
-                              const val = Number(e.target.value) || null;
-                              await createClient().from("deal_products").update({ lifecycle_days: val }).eq("id", item.id);
+                              const val = e.target.value ? Number(e.target.value) : null;
+                              await fetch("/api/deals/products", {
+                                method: "PATCH", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ id: item.id, lifecycle_days: val }),
+                              }).catch(() => {});
                             }}
                           />
                           <span className="text-xs" style={{ color: "#bf7600" }}>дн.</span>
@@ -935,9 +947,22 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                     </td>
                     <td className="px-4 py-2 text-right" style={{ color: "#aaa" }}>{item.base_price ? formatCurrency(item.base_price) : "—"}</td>
                     <td className="px-4 py-2 text-right">
-                      <input type="number" min="0" step="0.01" defaultValue={item.unit_price}
-                        className="w-20 text-sm text-right px-1 py-0.5 rounded focus:outline-none" style={{ border: "1px solid #e0e0e0", color: "#555" }}
-                        onBlur={(e) => handleFieldUpdate(item.id, "unit_price", Number(e.target.value) || 0)} />
+                      {/* When the row carries variants, the per-row
+                          unit_price is meaningless — different variants
+                          have different prices. Showing the (stale)
+                          base unit_price misled users (backlog v5
+                          §1.1.7 reproduced 2026-05-04). Render "—" with
+                          a hint instead; total stays correct because
+                          it's computed from variants. */}
+                      {item.variants && item.variants.length > 0 ? (
+                        <span className="text-xs" style={{ color: "#7b1fa2" }} title="Цена задаётся в вариантах ниже">
+                          {item.variants.length} вар.
+                        </span>
+                      ) : (
+                        <input type="number" min="0" step="0.01" defaultValue={item.unit_price}
+                          className="w-20 text-sm text-right px-1 py-0.5 rounded focus:outline-none" style={{ border: "1px solid #e0e0e0", color: "#555" }}
+                          onBlur={(e) => handleFieldUpdate(item.id, "unit_price", Number(e.target.value) || 0)} />
+                      )}
                     </td>
                     <td className="px-4 py-2 text-right" style={{ color: item.discount_percent > 0 ? "#d32f2f" : "#aaa" }}>
                       {item.discount_percent > 0 ? `-${item.discount_percent}%` : "—"}

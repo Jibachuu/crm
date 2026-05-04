@@ -790,9 +790,12 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
 function ProductBlock({ title, description, items, total, onAdd, onEdit, onRemove }: { title: string; description: string; items: any[]; total: number; onAdd: () => void; onEdit?: (item: any) => void; onRemove?: (id: string) => void }) {
   async function handleDelete(id: string) {
     if (!confirm("Удалить товар?")) return;
-    const { error } = await createClient().from("lead_products").delete().eq("id", id);
-    if (!error) onRemove?.(id);
-    else alert("Ошибка: " + error.message);
+    const res = await fetch("/api/leads/products", {
+      method: "DELETE", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) onRemove?.(id);
+    else { const d = await res.json().catch(() => ({})); alert("Ошибка: " + (d.error || res.status)); }
   }
   return (
     <div>

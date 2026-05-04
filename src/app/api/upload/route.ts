@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { downscaleImage } from "@/lib/imageOptimize";
+import { downscaleImage, safeStorageName } from "@/lib/imageOptimize";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     const baseName = file.name.replace(/\.[^.]+$/, "");
     const ext = outType === "image/jpeg" ? "jpg" : outType === "image/png" ? "png" : (file.name.split(".").pop() ?? "bin");
     const finalName = resized ? `${baseName}.${ext}` : file.name;
-    const path = `uploads/${user.id}/${Date.now()}_${finalName}`;
+    const path = `uploads/${user.id}/${Date.now()}_${safeStorageName(finalName)}`;
 
     let uploadError = null;
     const { error: err1 } = await admin.storage.from("attachments").upload(path, buffer, { contentType: outType, upsert: true });
