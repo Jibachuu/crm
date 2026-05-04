@@ -102,3 +102,108 @@ WHERE c.channel = 'phone'
   AND c.contact_id = ct.id
   AND c.company_id IS NULL
   AND ct.company_id IS NOT NULL;
+
+-- ─────────────────────────────────────────────────────────────────
+-- 4. Merge webhook-twin contacts into the human-named originals
+-- ─────────────────────────────────────────────────────────────────
+-- Real example seen 2026-05-04: contact 535f636e... ("Алина", phone
+-- "+7 (905) 371-37-40", created 13:28) and webhook-twin a84233cb...
+-- (full_name = "79053713740", phone = "79053713740", created 13:52,
+-- 24 minutes later). The webhook couldn't match Алина's formatted
+-- phone, made a digit-named twin, then for the next dozen calls it
+-- DID find the twin (digit-only phone) and piled lead+call rows on
+-- it instead of on Алина.
+--
+-- A "twin" is a contact whose full_name consists entirely of digits
+-- and phone-formatting characters (+, -, (, ), spaces). For each
+-- twin sharing phone_digits with an older non-digit-named contact,
+-- reassign all communications / leads / deals to that original and
+-- soft-delete the twin.
+--
+-- Filter is intentionally strict so we never collapse a real person
+-- whose name happens to contain digits.
+
+UPDATE public.communications c
+SET contact_id = o.id
+FROM public.contacts t
+JOIN public.contacts o
+  ON o.phone_digits = t.phone_digits
+  AND o.id <> t.id
+  AND length(coalesce(o.phone_digits, '')) >= 10
+WHERE c.contact_id = t.id
+  AND t.full_name ~ '^[+\d\(\)\-\s]+$'
+  AND o.full_name !~ '^[+\d\(\)\-\s]+$'
+  AND t.deleted_at IS NULL
+  AND o.deleted_at IS NULL
+  AND o.created_at <= t.created_at;
+
+UPDATE public.leads l
+SET contact_id = o.id,
+    company_id = COALESCE(l.company_id, o.company_id)
+FROM public.contacts t
+JOIN public.contacts o
+  ON o.phone_digits = t.phone_digits
+  AND o.id <> t.id
+  AND length(coalesce(o.phone_digits, '')) >= 10
+WHERE l.contact_id = t.id
+  AND t.full_name ~ '^[+\d\(\)\-\s]+$'
+  AND o.full_name !~ '^[+\d\(\)\-\s]+$'
+  AND t.deleted_at IS NULL
+  AND o.deleted_at IS NULL
+  AND o.created_at <= t.created_at;
+
+UPDATE public.deals d
+SET contact_id = o.id,
+    company_id = COALESCE(d.company_id, o.company_id)
+FROM public.contacts t
+JOIN public.contacts o
+  ON o.phone_digits = t.phone_digits
+  AND o.id <> t.id
+  AND length(coalesce(o.phone_digits, '')) >= 10
+WHERE d.contact_id = t.id
+  AND t.full_name ~ '^[+\d\(\)\-\s]+$'
+  AND o.full_name !~ '^[+\d\(\)\-\s]+$'
+  AND t.deleted_at IS NULL
+  AND o.deleted_at IS NULL
+  AND o.created_at <= t.created_at;
+
+-- After re-pointing all references, soft-delete the twins themselves.
+-- Anything still linked stays as-is; this just hides them from lists.
+UPDATE public.contacts ct
+SET deleted_at = now()
+FROM public.contacts o
+WHERE ct.full_name ~ '^[+\d\(\)\-\s]+$'
+  AND o.full_name !~ '^[+\d\(\)\-\s]+$'
+  AND ct.phone_digits = o.phone_digits
+  AND ct.id <> o.id
+  AND length(coalesce(ct.phone_digits, '')) >= 10
+  AND ct.deleted_at IS NULL
+  AND o.deleted_at IS NULL
+  AND o.created_at <= ct.created_at;
+
+-- ─────────────────────────────────────────────────────────────────
+-- 5. After the merge — re-run the duplicate auto-lead cleanup.
+-- ─────────────────────────────────────────────────────────────────
+-- The earlier soft-delete in section 2 ran before the contact merge,
+-- so multiple "Звонок: PHONE" leads might still be sitting on the
+-- (now-deleted) twin. Run it again, this time grouping by contact +
+-- phone so we keep one active auto-lead per (contact, number).
+WITH dups AS (
+  SELECT id,
+         contact_id,
+         regexp_replace(coalesce(title, ''), '^Звонок:\s*', '') AS phone,
+         created_at,
+         row_number() OVER (
+           PARTITION BY contact_id, regexp_replace(coalesce(title, ''), '^Звонок:\s*', '')
+           ORDER BY created_at ASC
+         ) AS rn
+  FROM public.leads
+  WHERE source = 'phone'
+    AND title LIKE 'Звонок:%'
+    AND status IN ('new', 'callback')
+    AND deleted_at IS NULL
+    AND contact_id IS NOT NULL
+)
+UPDATE public.leads
+SET deleted_at = now()
+WHERE id IN (SELECT id FROM dups WHERE rn > 1);
