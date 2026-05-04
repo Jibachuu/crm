@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { downscaleImage, safeStorageName } from "@/lib/imageOptimize";
+import { safeStorageName } from "@/lib/safeFilename";
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
@@ -35,26 +35,17 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
   const entityId = dealId || leadId!;
   const folder = dealId ? "deals" : "leads";
-  const original = Buffer.from(new Uint8Array(await file.arrayBuffer()));
+  const buffer = Buffer.from(new Uint8Array(await file.arrayBuffer()));
+  // Storage path must be ASCII-safe so Supabase doesn't reject "№" /
+  // cyrillic with "Invalid key" (seen 2026-05-04). DB row keeps the
+  // original human-readable name for display.
+  const path = `${folder}/${entityId}/${Date.now()}_${safeStorageName(file.name)}`;
 
-  // Downscale screenshots before storing on the deal/lead. Audio/PDF/etc.
-  // are passed through unchanged by downscaleImage.
-  const { buffer, contentType: outType, resized } = await downscaleImage(original, file.type || "application/octet-stream");
-  const baseName = file.name.replace(/\.[^.]+$/, "");
-  const ext = outType === "image/jpeg" ? "jpg" : outType === "image/png" ? "png" : (file.name.split(".").pop() ?? "bin");
-  // file.name (kept in DB for display) keeps cyrillic + special chars.
-  // The storage key is sanitised so Supabase doesn't reject "№" / spaces
-  // / cyrillic with "Invalid key" (seen 2026-05-04 with a Платёжное
-  // поручение PDF).
-  const displayName = resized ? `${baseName}.${ext}` : file.name;
-  const safeName = safeStorageName(displayName);
-  const path = `${folder}/${entityId}/${Date.now()}_${safeName}`;
-
-  const { error: upErr } = await admin.storage.from("attachments").upload(path, buffer, { contentType: outType, upsert: true });
+  const { error: upErr } = await admin.storage.from("attachments").upload(path, buffer, { contentType: file.type, upsert: true });
   if (upErr) {
     if (upErr.message?.includes("not found") || upErr.message?.includes("Bucket")) {
       await admin.storage.createBucket("attachments", { public: true });
-      await admin.storage.from("attachments").upload(path, buffer, { contentType: outType, upsert: true });
+      await admin.storage.from("attachments").upload(path, buffer, { contentType: file.type, upsert: true });
     } else {
       return NextResponse.json({ error: upErr.message }, { status: 500 });
     }
@@ -65,12 +56,10 @@ export async function POST(req: NextRequest) {
   const { data, error } = await admin.from("deal_files").insert({
     deal_id: dealId || null,
     lead_id: leadId || null,
-    // Keep the human-readable name (with cyrillic + №) for the UI; the
-    // storage key was sanitised separately above.
-    file_name: displayName,
+    file_name: file.name,
     file_url: urlData.publicUrl,
-    file_type: outType,
-    file_size: buffer.byteLength,
+    file_type: file.type,
+    file_size: file.size,
     uploaded_by: user.id,
   }).select("*").single();
 

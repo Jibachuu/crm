@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { downscaleImage, safeStorageName } from "@/lib/imageOptimize";
+import { safeStorageName } from "@/lib/safeFilename";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -18,28 +18,20 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient();
-
-  // Downscale screenshots / phone photos before uploading. Voice messages
-  // (audio/webm) and other non-image types pass through untouched.
-  const original = Buffer.from(await file.arrayBuffer());
-  const { buffer, contentType: outType, resized } = await downscaleImage(original, file.type || "application/octet-stream");
-  const baseName = file.name.replace(/\.[^.]+$/, "");
-  const ext = outType === "image/jpeg" ? "jpg" : outType === "image/png" ? "png" : (file.name.split(".").pop() ?? "bin");
-  const finalName = resized ? `${baseName}.${ext}` : file.name;
-  // Storage path needs to be ASCII-safe; DB row keeps the original name
-  // for display (cyrillic + symbols welcome).
-  const path = `team/${user.id}/${Date.now()}_${safeStorageName(finalName)}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+  // Storage path must be ASCII-safe; DB row keeps the original.
+  const path = `team/${user.id}/${Date.now()}_${safeStorageName(file.name)}`;
 
   const { error: uploadErr } = await admin.storage
     .from("attachments")
-    .upload(path, buffer, { contentType: outType, upsert: false });
+    .upload(path, buffer, { contentType: file.type, upsert: false });
 
   if (uploadErr) {
     if (uploadErr.message?.includes("not found") || uploadErr.message?.includes("Bucket")) {
       await admin.storage.createBucket("attachments", { public: true });
       const { error: retryErr } = await admin.storage
         .from("attachments")
-        .upload(path, buffer, { contentType: outType, upsert: false });
+        .upload(path, buffer, { contentType: file.type, upsert: false });
       if (retryErr) return NextResponse.json({ error: retryErr.message }, { status: 500 });
     } else {
       return NextResponse.json({ error: uploadErr.message }, { status: 500 });
@@ -53,7 +45,7 @@ export async function POST(req: NextRequest) {
   if (toUser) {
     const { data: msg, error: msgErr } = await admin
       .from("internal_messages")
-      .insert({ from_user: user.id, to_user: toUser, body: null, file_url: fileUrl, file_name: finalName })
+      .insert({ from_user: user.id, to_user: toUser, body: null, file_url: fileUrl, file_name: file.name })
       .select("*")
       .single();
     if (msgErr) return NextResponse.json({ error: msgErr.message }, { status: 500 });
@@ -61,7 +53,7 @@ export async function POST(req: NextRequest) {
   } else {
     const { data: msg, error: msgErr } = await admin
       .from("group_messages")
-      .insert({ group_id: groupId, sender_id: user.id, body: null, file_url: fileUrl, file_name: finalName })
+      .insert({ group_id: groupId, sender_id: user.id, body: null, file_url: fileUrl, file_name: file.name })
       .select("*, users:sender_id(full_name)")
       .single();
     if (msgErr) return NextResponse.json({ error: msgErr.message }, { status: 500 });
