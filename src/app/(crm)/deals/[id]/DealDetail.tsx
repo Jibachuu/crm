@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, Package, Plus, CheckSquare, MessageSquare, Send, Paperclip, FileDown, Receipt } from "lucide-react";
+import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, Package, Plus, CheckSquare, MessageSquare, Send, Paperclip, FileDown, Receipt, X } from "lucide-react";
 import TaskItem from "@/components/ui/TaskItem";
 import TelegramChat from "@/components/ui/TelegramChat";
 import MaxChat from "@/components/ui/MaxChat";
@@ -826,6 +826,22 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
     if (!error) onUpdate?.(id, updates);
     else alert("Ошибка: " + error.message);
   }
+
+  // Backlog v5 §1.1.3: remove a single variant row inside a product block.
+  // total_price is recomputed from the remaining variants (or unit_price *
+  // quantity if no variants left).
+  async function handleVariantRemove(id: string, varIdx: number) {
+    const item = items.find((i: { id: string }) => i.id === id);
+    if (!item) return;
+    const nextVariants = (item.variants ?? []).filter((_: unknown, i: number) => i !== varIdx);
+    const total = nextVariants.length
+      ? nextVariants.reduce((s: number, v: { sum?: number; price: number; quantity: number }) => s + (v.sum ?? v.price * v.quantity), 0)
+      : (item.unit_price ?? 0) * (item.quantity ?? 1);
+    const updates = { variants: nextVariants, total_price: total };
+    const { error } = await createClient().from("deal_products").update(updates).eq("id", id);
+    if (error) { alert("Ошибка: " + error.message); return; }
+    onUpdate?.(id, updates);
+  }
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
@@ -886,8 +902,12 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                             <div className="mt-1.5 space-y-0.5">
                               {item.variants.map((v, i) => (
                                 <div key={i} className="flex items-center justify-between gap-2 text-xs" style={{ color: "#e65c00" }}>
-                                  <span>• {v.label}</span>
+                                  <span className="flex-1 min-w-0 break-words">• {v.label}</span>
                                   <span className="whitespace-nowrap" style={{ color: "#bf7600" }}>{v.quantity} × {formatCurrency(v.price)} = {formatCurrency(v.sum)}</span>
+                                  <button onClick={() => handleVariantRemove(item.id, i)}
+                                    className="text-red-300 hover:text-red-600 flex-shrink-0" title="Удалить вариацию">
+                                    <X size={11} />
+                                  </button>
                                 </div>
                               ))}
                             </div>

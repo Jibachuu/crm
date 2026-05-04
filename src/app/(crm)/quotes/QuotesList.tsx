@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Plus, Search, FileSpreadsheet, Trash2, Eye, EyeOff, Download, Copy, Check, Send, X, ImagePlus, RotateCcw } from "lucide-react";
+import { Plus, Search, FileSpreadsheet, Trash2, Eye, EyeOff, Download, Copy, Check, Send, X, ImagePlus, RotateCcw, Receipt } from "lucide-react";
 import RichTextEditor from "@/components/ui/RichTextEditor";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
@@ -1016,7 +1016,8 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                     <div className="flex-1 min-w-0 space-y-1.5">
                       <div className="flex items-start gap-2">
                         <input value={item.name} onChange={(e) => updateItem(idx, "name", e.target.value)}
-                          className="flex-1 text-xs font-medium px-2 py-1 rounded outline-none" style={{ border: "1px solid #e0e0e0" }}
+                          title={item.name}
+                          className="flex-1 text-xs font-medium px-2 py-1 rounded outline-none" style={{ border: "1px solid #e0e0e0", textOverflow: "ellipsis" }}
                           placeholder="Название товара" />
                         <button onClick={() => duplicateItem(idx)} className="p-1 rounded hover:bg-blue-50 flex-shrink-0" title="Дублировать"><Copy size={12} style={{ color: "#0067a5" }} /></button>
                         <button onClick={() => removeItem(idx)} className="p-1 rounded hover:bg-red-50 flex-shrink-0" title="Удалить"><X size={12} style={{ color: "#c62828" }} /></button>
@@ -1162,8 +1163,9 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                                     </div>
                                     {/* Label */}
                                     <input value={v.label} onChange={(e) => updateVariant(idx, vi, "label", e.target.value)}
+                                      title={v.label}
                                       className="flex-1 text-xs px-2 py-1 rounded outline-none"
-                                      style={{ border: "1px solid #e0e0e0", background: "#fff" }} />
+                                      style={{ border: "1px solid #e0e0e0", background: "#fff", textOverflow: "ellipsis" }} />
                                     {/* Price */}
                                     <span className="text-xs" style={{ color: "#888" }}>Цена:</span>
                                     <input type="number" value={v.price} onChange={(e) => updateVariant(idx, vi, "price", Number(e.target.value))}
@@ -1382,6 +1384,20 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
               navigator.clipboard.writeText(`${window.location.origin}/q/${qid}`);
               setCopied(true); setTimeout(() => setCopied(false), 2000);
             }}><Copy size={13} /> Ссылка</Button>
+            <Button size="sm" variant="secondary" onClick={async () => {
+              const qid = editing?.id;
+              if (!qid) { alert("Сначала сохраните КП"); return; }
+              const res = await fetch("/api/invoices/from-quote", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ quote_id: qid }),
+              });
+              const data = await res.json();
+              if (!res.ok) { alert("Не удалось создать счёт: " + (data.error ?? res.status)); return; }
+              if (confirm(`Счёт №${data.invoice.invoice_number} создан. Открыть страницу счетов?`)) {
+                window.open("/invoices", "_blank");
+              }
+            }}><Receipt size={13} /> Создать счёт</Button>
             <div className="flex-1" />
             <Button size="sm" variant="secondary" onClick={() => { setEditorOpen(false); window.location.reload(); }}>Закрыть</Button>
           </div>
