@@ -112,9 +112,41 @@ WHERE variants::text ~* 'наш(им|ем)\s+лого';
 -- ─────────────────────────────────────────────────────────────────
 -- 3. Repair compound city names mangled by pdftotext (§2.1.5)
 -- ─────────────────────────────────────────────────────────────────
+-- Companies have several address columns: legal_address, actual_address,
+-- delivery_address (v35) and an addresses JSONB array (v45). Fix all of
+-- them.
 UPDATE public.companies
-SET address = regexp_replace(
-  regexp_replace(address, '(Ростов\s*-\s*на)\s*-?\s*([А-ЯЁ])', '\1-\2', 'g'),
+SET legal_address = regexp_replace(
+  regexp_replace(legal_address, '(Ростов\s*-\s*на)\s*-?\s*([А-ЯЁ])', '\1-\2', 'g'),
   '(Комсомольск\s*-\s*на)\s*-?\s*([А-ЯЁ])', '\1-\2', 'g'
 )
-WHERE address ~ '(Ростов-на[А-ЯЁ]|Комсомольск-на[А-ЯЁ])';
+WHERE legal_address ~ '(Ростов-на[А-ЯЁ]|Комсомольск-на[А-ЯЁ])';
+
+UPDATE public.companies
+SET actual_address = regexp_replace(
+  regexp_replace(actual_address, '(Ростов\s*-\s*на)\s*-?\s*([А-ЯЁ])', '\1-\2', 'g'),
+  '(Комсомольск\s*-\s*на)\s*-?\s*([А-ЯЁ])', '\1-\2', 'g'
+)
+WHERE actual_address ~ '(Ростов-на[А-ЯЁ]|Комсомольск-на[А-ЯЁ])';
+
+UPDATE public.companies
+SET delivery_address = regexp_replace(
+  regexp_replace(delivery_address, '(Ростов\s*-\s*на)\s*-?\s*([А-ЯЁ])', '\1-\2', 'g'),
+  '(Комсомольск\s*-\s*на)\s*-?\s*([А-ЯЁ])', '\1-\2', 'g'
+)
+WHERE delivery_address ~ '(Ростов-на[А-ЯЁ]|Комсомольск-на[А-ЯЁ])';
+
+UPDATE public.companies
+SET addresses = regexp_replace(
+  regexp_replace(addresses::text, '(Ростов\s*-\s*на)\s*-?\s*([А-ЯЁ])', '\1-\2', 'g'),
+  '(Комсомольск\s*-\s*на)\s*-?\s*([А-ЯЁ])', '\1-\2', 'g'
+)::jsonb
+WHERE addresses::text ~ '(Ростов-на[А-ЯЁ]|Комсомольск-на[А-ЯЁ])';
+
+-- Same fix for contracts.buyer_address (used directly in договор/спец PDF).
+UPDATE public.contracts
+SET buyer_address = regexp_replace(
+  regexp_replace(buyer_address, '(Ростов\s*-\s*на)\s*-?\s*([А-ЯЁ])', '\1-\2', 'g'),
+  '(Комсомольск\s*-\s*на)\s*-?\s*([А-ЯЁ])', '\1-\2', 'g'
+)
+WHERE buyer_address ~ '(Ростов-на[А-ЯЁ]|Комсомольск-на[А-ЯЁ])';
