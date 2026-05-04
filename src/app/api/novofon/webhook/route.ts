@@ -70,14 +70,32 @@ export async function POST(req: NextRequest) {
     let companyId: string | null = null;
 
     if (cleanPhone.length >= 7) {
+      // Match by phone_digits (v74) — covers all formatting variants
+      // ("+79053713740", "8 (905) 371-37-40", "+7 905 371-37-40"...).
+      // Falls back to the legacy phone/phone_mobile ilike for envs that
+      // haven't run v74 yet.
       const { data: contact } = await admin.from("contacts")
-        .select("id, full_name, company_id")
-        .or(`phone.ilike.%${cleanPhone},phone_mobile.ilike.%${cleanPhone}`)
-        .limit(1).single();
+        .select("id, full_name, company_id, phone_digits")
+        .ilike("phone_digits", `%${cleanPhone}%`)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
       if (contact) {
         contactId = contact.id;
         dbContactName = contact.full_name;
         companyId = contact.company_id;
+      } else {
+        const { data: legacy } = await admin.from("contacts")
+          .select("id, full_name, company_id")
+          .or(`phone.ilike.%${cleanPhone}%,phone_mobile.ilike.%${cleanPhone}%`)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (legacy) {
+          contactId = legacy.id;
+          dbContactName = legacy.full_name;
+          companyId = legacy.company_id;
+        }
       }
     }
 
@@ -172,14 +190,29 @@ export async function POST(req: NextRequest) {
     let companyId: string | null = null;
 
     if (cleanPhone.length >= 7) {
+      // Same digits-aware lookup as the inbound branch (v74).
       const { data: contact } = await admin.from("contacts")
         .select("id, full_name, company_id")
-        .or(`phone.ilike.%${cleanPhone},phone_mobile.ilike.%${cleanPhone}`)
-        .limit(1).single();
+        .ilike("phone_digits", `%${cleanPhone}%`)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
       if (contact) {
         contactId = contact.id;
         dbContactName = contact.full_name;
         companyId = contact.company_id;
+      } else {
+        const { data: legacy } = await admin.from("contacts")
+          .select("id, full_name, company_id")
+          .or(`phone.ilike.%${cleanPhone}%,phone_mobile.ilike.%${cleanPhone}%`)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (legacy) {
+          contactId = legacy.id;
+          dbContactName = legacy.full_name;
+          companyId = legacy.company_id;
+        }
       }
     }
 
