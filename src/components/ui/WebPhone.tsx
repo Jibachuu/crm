@@ -487,16 +487,20 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
       <audio ref={audioRef} autoPlay />
       <audio ref={ringtoneRef} src="/notification.mp3" loop />
 
-      {/* Minimized: small phone icon */}
-      {minimized && !isActive && state === "registered" && (
+      {/* Minimized: small phone icon. Used to show only when state ===
+          "registered", which meant Rustem (and anyone whose SIP didn't
+          register) saw nothing at all — no clue why. Now always show
+          the icon if the user has SIP creds; status colour signals
+          state, click opens dialer card with status text. */}
+      {minimized && !isActive && (
         <button
           onClick={() => setMinimized(false)}
           className="fixed bottom-20 right-4 md:bottom-4 z-50 w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
-          style={{ background: "#0067a5" }}
-          title="Телефон"
+          style={{ background: state === "registered" ? "#0067a5" : state === "failed" ? "#c62828" : "#888" }}
+          title={state === "registered" ? "Телефон (онлайн)" : state === "failed" ? "Телефон (регистрация не прошла)" : "Телефон (соединение...)"}
         >
           <Phone size={20} className="text-white" />
-          <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full" style={{ background: statusColor }} />
+          <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full" style={{ background: statusColor, border: "1.5px solid white" }} />
         </button>
       )}
 
