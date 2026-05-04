@@ -48,8 +48,28 @@ interface Task {
 
 interface UserOpt { id: string; full_name: string; role?: string }
 
+// Compute "local time + offset from MSK" string for a given IANA timezone.
+// Empty when the entity's TZ is the same as МСК (no value in showing).
+function formatClientTzChip(tz: string): { text: string; color: string } | null {
+  if (!tz) return null;
+  try {
+    const now = new Date();
+    const localTime = new Intl.DateTimeFormat("ru-RU", { timeZone: tz, hour: "2-digit", minute: "2-digit" }).format(now);
+    const clientHour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(now));
+    const mskHour = parseInt(new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Moscow", hour: "numeric", hour12: false }).format(now));
+    const diff = clientHour - mskHour;
+    if (diff === 0) return null; // same as МСК, skip
+    const offsetStr = `МСК${diff > 0 ? "+" : ""}${diff}`;
+    // Working-hours colour: green 9-18, orange shoulder, red night.
+    const color = clientHour >= 9 && clientHour < 18 ? "#2e7d32"
+      : (clientHour >= 8 && clientHour < 9) || (clientHour >= 18 && clientHour < 20) ? "#e65c00"
+      : "#c62828";
+    return { text: `${localTime} (${offsetStr})`, color };
+  } catch { return null; }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function TasksBoard({ initialTasks, entityIndex = {}, users = [], currentUser = null }: { initialTasks: any[]; entityIndex?: Record<string, Record<string, string>>; users?: UserOpt[]; currentUser?: UserOpt | null }) {
+export default function TasksBoard({ initialTasks, entityIndex = {}, entityTz = {}, users = [], currentUser = null }: { initialTasks: any[]; entityIndex?: Record<string, Record<string, string>>; entityTz?: Record<string, Record<string, string>>; users?: UserOpt[]; currentUser?: UserOpt | null }) {
   const isManager = currentUser?.role === "manager";
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -212,6 +232,22 @@ export default function TasksBoard({ initialTasks, entityIndex = {}, users = [],
                         </span>
                       )}
                       {task.users && <span className="text-xs text-slate-400">• {task.users.full_name}</span>}
+                      {(() => {
+                        // Backlog v5 §1.6.2: show local time + МСК offset for
+                        // clients in other regions. Only when the linked
+                        // entity actually resolves to a non-MSK TZ.
+                        if (!task.entity_type || !task.entity_id) return null;
+                        const tz = entityTz[task.entity_type]?.[task.entity_id];
+                        if (!tz) return null;
+                        const chip = formatClientTzChip(tz);
+                        if (!chip) return null;
+                        return (
+                          <span className="text-xs flex items-center gap-1" title={`Часовой пояс клиента (${tz})`}>
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: chip.color }} />
+                            <span style={{ color: chip.color }}>{chip.text}</span>
+                          </span>
+                        );
+                      })()}
                     </div>
                     <div className="flex items-center gap-3 mb-3 flex-wrap text-xs text-slate-400">
                       {task.created_at && <span>создана {formatDate(task.created_at)}</span>}
