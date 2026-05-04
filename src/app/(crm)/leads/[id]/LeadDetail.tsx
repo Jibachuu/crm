@@ -103,14 +103,14 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   const [contactResults, setContactResults] = useState<any[]>([]);
 
   useEffect(() => {
-    createClient().from("lead_contacts")
-      .select("id, contact_id, is_primary, contacts(id, full_name, phone, email, telegram_id, maks_id)")
-      .eq("lead_id", lead.id)
-      .order("is_primary", { ascending: false })
-      .then(({ data }) => {
-        const extra = (data ?? []).filter((lc: { contact_id: string }) => lc.contact_id !== lead.contact_id);
+    fetch(`/api/leads/contacts?lead_id=${lead.id}`)
+      .then((r) => r.ok ? r.json() : { contacts: [] })
+      .then((d: { contacts?: { id: string; contact_id: string; is_primary: boolean; contacts: unknown }[] }) => {
+        const list = d.contacts ?? [];
+        const extra = list.filter((lc) => lc.contact_id !== lead.contact_id);
         setExtraContacts(extra);
-      });
+      })
+      .catch(() => {});
   }, [lead.id, lead.contact_id]);
 
   const requestProducts = leadProducts.filter((p: { product_block: string }) => p.product_block !== "order");

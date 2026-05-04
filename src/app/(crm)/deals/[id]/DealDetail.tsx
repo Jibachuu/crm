@@ -80,18 +80,19 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [contactResults, setContactResults] = useState<any[]>([]);
 
-  // Load additional contacts from junction table.
-  // SELECT can stay on RLS — managers are allowed to read, only writes were
-  // blocked. Writes now go through /api/deals/contacts.
+  // Load additional contacts via admin API. The previous direct
+  // supabase.from("deal_contacts").select() returned [] under RLS
+  // for manager-role users, so contacts added via POST disappeared
+  // after F5 even though the row was in the DB (2026-05-04 report).
   useEffect(() => {
-    createClient().from("deal_contacts")
-      .select("id, contact_id, is_primary, contacts(id, full_name, phone, email, telegram_id, maks_id)")
-      .eq("deal_id", deal.id)
-      .order("is_primary", { ascending: false })
-      .then(({ data }) => {
-        const extra = (data ?? []).filter((dc: { contact_id: string }) => dc.contact_id !== deal.contact_id);
+    fetch(`/api/deals/contacts?deal_id=${deal.id}`)
+      .then((r) => r.ok ? r.json() : { contacts: [] })
+      .then((d: { contacts?: { id: string; contact_id: string; is_primary: boolean; contacts: unknown }[] }) => {
+        const list = d.contacts ?? [];
+        const extra = list.filter((dc) => dc.contact_id !== deal.contact_id);
         setExtraContacts(extra);
-      });
+      })
+      .catch(() => {});
   }, [deal.id, deal.contact_id]);
   const funnelStages: FunnelStage[] = initialFunnelStages ?? [];
   const hasFunnelStages = funnelStages.length > 0;
