@@ -166,7 +166,78 @@ export default function SupplierSettings() {
         <button onClick={save} disabled={saving} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded text-white disabled:opacity-50" style={{ background: "#0067a5" }}>
           <Save size={12} /> {saving ? "Сохранение..." : "Сохранить реквизиты"}
         </button>
+
+        {/* Storage egress optimiser — sweeps existing >500 KB images in
+            Supabase Storage and re-uploads downscaled versions in place.
+            Only admins see this. Run multiple times if needed; each
+            click processes 25 heaviest files. */}
+        <StorageOptimiser />
       </div>
     </section>
+  );
+}
+
+function StorageOptimiser() {
+  const [preview, setPreview] = useState<{ count: number; totalHuman: string; files: { name: string; size: number; mimetype: string }[] } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [running, setRunning] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [lastRun, setLastRun] = useState<any>(null);
+
+  async function loadPreview() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/storage/optimize");
+      if (res.ok) setPreview(await res.json());
+    } finally { setLoading(false); }
+  }
+
+  async function runBatch() {
+    setRunning(true);
+    try {
+      const res = await fetch("/api/admin/storage/optimize", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 25 }),
+      });
+      const data = await res.json();
+      setLastRun(data);
+      await loadPreview();
+    } finally { setRunning(false); }
+  }
+
+  return (
+    <div className="mt-6 pt-4" style={{ borderTop: "1px solid #f0f0f0" }}>
+      <h3 className="text-sm font-semibold mb-1" style={{ color: "#333" }}>Оптимизация Storage (egress)</h3>
+      <p className="text-xs mb-3" style={{ color: "#888" }}>
+        Пересжимает уже загруженные крупные изображения в Supabase Storage без изменения URL — экономит исходящий трафик.
+        Безопасно: пути и ссылки сохраняются, формат сохраняется (PNG → PNG, JPEG → JPEG).
+      </p>
+
+      <div className="flex items-center gap-2 mb-2">
+        <button onClick={loadPreview} disabled={loading} className="text-xs px-3 py-1.5 rounded" style={{ border: "1px solid #d0e8f5", color: "#0067a5" }}>
+          {loading ? "Загрузка..." : "Показать кандидатов"}
+        </button>
+        <button onClick={runBatch} disabled={running} className="text-xs px-3 py-1.5 rounded text-white" style={{ background: "#2e7d32", opacity: running ? 0.5 : 1 }}>
+          {running ? "Сжатие..." : "Сжать 25 самых тяжёлых"}
+        </button>
+      </div>
+
+      {preview && (
+        <div className="text-xs" style={{ color: "#555" }}>
+          Найдено <b>{preview.count}</b> файлов крупнее 500 КБ. Суммарно: <b>{preview.totalHuman}</b>.
+          {preview.count === 0 && <span style={{ color: "#2e7d32" }}> — нечего сжимать ✓</span>}
+        </div>
+      )}
+
+      {lastRun && (
+        <div className="mt-2 p-2 rounded text-xs" style={{ background: "#f0f9f0", border: "1px solid #c8e6c9", color: "#1b5e20" }}>
+          Сжато: <b>{lastRun.files.filter((f: { status: string }) => f.status === "shrunk").length}</b> из {lastRun.processed}.
+          Освобождено: <b>{lastRun.totalSavedHuman}</b>.
+          {lastRun.files.filter((f: { status: string }) => f.status === "error").length > 0 && (
+            <> · Ошибок: <b>{lastRun.files.filter((f: { status: string }) => f.status === "error").length}</b></>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

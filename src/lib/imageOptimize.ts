@@ -15,6 +15,7 @@ const TARGET_BYTES = 700_000;
 export async function downscaleImage(
   buffer: Buffer,
   contentType: string,
+  opts: { preserveFormat?: boolean } = {},
 ): Promise<{ buffer: Buffer; contentType: string; resized: boolean }> {
   // Skip non-images (audio, PDFs, etc.) and small images that don't need
   // resizing. < 200 KB images stay untouched — recompressing tiny PNGs
@@ -40,12 +41,15 @@ export async function downscaleImage(
       pipeline = pipeline.resize({ width: meta.width && meta.width >= meta.height ? MAX_EDGE : undefined, height: meta.height && meta.height > meta.width ? MAX_EDGE : undefined, withoutEnlargement: true });
     }
 
-    // PNG → keep PNG when source has alpha (transparency), otherwise
-    // collapse to JPEG which is ~5x smaller for photos.
+    // preserveFormat=true keeps PNG-as-PNG so the storage path's
+    // extension and content-type stay valid (used by the in-place
+    // optimiser that overwrites existing objects). Default behaviour
+    // is to collapse photos to JPEG for ~5x size win.
     const hasAlpha = !!meta.hasAlpha;
+    const outIsPng = opts.preserveFormat ? contentType === "image/png" : hasAlpha;
     let outBuffer: Buffer;
     let outType: string;
-    if (hasAlpha) {
+    if (outIsPng) {
       outBuffer = await pipeline.png({ quality: JPEG_QUALITY, compressionLevel: 9, palette: true }).toBuffer();
       outType = "image/png";
     } else {
@@ -57,11 +61,18 @@ export async function downscaleImage(
     // try a second pass at a tighter quality. Common for 6000×6000 PNGs.
     if (outBuffer.byteLength > TARGET_BYTES) {
       const second = sharp(outBuffer, { failOn: "none" });
-      if (hasAlpha) {
+      if (outIsPng) {
         outBuffer = await second.png({ quality: 70, compressionLevel: 9, palette: true }).toBuffer();
       } else {
         outBuffer = await second.jpeg({ quality: 70, mozjpeg: true }).toBuffer();
       }
+    }
+
+    // If somehow our "optimised" version ended up bigger than the
+    // original (rare — usually means the source was already close to
+    // optimal), keep the original.
+    if (outBuffer.byteLength >= buffer.byteLength) {
+      return { buffer, contentType, resized: false };
     }
 
     return { buffer: outBuffer, contentType: outType, resized: true };
