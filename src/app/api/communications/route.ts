@@ -20,9 +20,8 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient();
   // NB: only fields that actually exist in the communications table.
-  // Schema lives in supabase/schema.sql + migrations v31/v36/v53.
-  // attachments was wishful — no such column → каждая заметка падала
-  // с "Could not find the 'attachments' column" пока этот ключ был.
+  // Schema lives in supabase/schema.sql + migrations v31/v36/v53/v73.
+  // Backlog v5 §1.4.1: optional file attachments on notes.
   const { data, error } = await admin
     .from("communications")
     .insert({
@@ -40,6 +39,10 @@ export async function POST(req: NextRequest) {
       company_id: body.company_id || null,
       lead_id: body.lead_id || null,
       deal_id: body.deal_id || null,
+      attachment_url: body.attachment_url || null,
+      attachment_name: body.attachment_name || null,
+      attachment_size: body.attachment_size || null,
+      attachment_type: body.attachment_type || null,
       created_by: body.created_by || user.id,
     })
     .select("*, users!communications_created_by_fkey(full_name)")

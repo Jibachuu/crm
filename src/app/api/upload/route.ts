@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
 
     const { data: urlData } = admin.storage.from("attachments").getPublicUrl(path);
-    return NextResponse.json({ url: urlData.publicUrl, name: file.name });
+    return NextResponse.json({ url: urlData.publicUrl, name: file.name, size: file.size, type: file.type });
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as { message?: string }).message ?? String(err) }, { status: 500 });
   }

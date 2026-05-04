@@ -38,11 +38,14 @@ export default function CreateTaskModal({ open, onClose, entityType, entityId, d
   useEffect(() => {
     if (!open) { setDataReady(false); return; }
     const supabase = createClient();
+    // Users via admin API — RLS hid rows from manager-role users so the
+    // dropdown stayed empty (backlog v5 §1.6.1). Auth still happens
+    // client-side; we just need the id.
     Promise.all([
-      supabase.from("users").select("id, full_name").eq("is_active", true),
+      fetch("/api/users").then((r) => r.ok ? r.json() : { users: [] }).catch(() => ({ users: [] })),
       supabase.auth.getUser(),
     ]).then(([u, auth]) => {
-      setUsers(u.data ?? []);
+      setUsers(u.users ?? []);
       setCurrentUserId(auth.data.user?.id ?? null);
       setDataReady(true);
     }).catch(() => setDataReady(true));
@@ -56,12 +59,14 @@ export default function CreateTaskModal({ open, onClose, entityType, entityId, d
     setLoading(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
 
-    const { data, error: err } = await supabase
-      .from("tasks")
-      .insert({
+    // Insert through admin API — RLS on tasks blocked managers from
+    // creating, which manifested as the dialog hanging without feedback
+    // (backlog v5 §1.6.1).
+    const res = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         title: fd.get("title") as string,
         description: (fd.get("description") as string) || null,
         priority: (fd.get("priority") as string) || "medium",
@@ -69,13 +74,10 @@ export default function CreateTaskModal({ open, onClose, entityType, entityId, d
         assigned_to: (fd.get("assigned_to") as string) || null,
         entity_type: entityType,
         entity_id: entityId || null,
-        status: "pending",
-        created_by: user?.id ?? null,
-      })
-      .select("*, users!tasks_assigned_to_fkey(full_name), creator:users!tasks_created_by_fkey(full_name)")
-      .single();
-
-    if (err) setError(err.message);
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) setError(data.error || `HTTP ${res.status}`);
     else { onCreated(data); onClose(); }
     setLoading(false);
   }

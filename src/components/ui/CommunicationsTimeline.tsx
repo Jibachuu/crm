@@ -217,6 +217,13 @@ export default function CommunicationsTimeline({ entityType, entityId, refreshKe
                           </audio>
                         </div>
                       )}
+                      {(c as { attachment_url?: string; attachment_name?: string }).attachment_url && (
+                        <a href={(c as { attachment_url?: string }).attachment_url} target="_blank" rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded hover:underline"
+                          style={{ background: "#f0f7fb", border: "1px solid #d0e8f5", color: "#0067a5" }}>
+                          📎 {(c as { attachment_name?: string }).attachment_name || "Файл"}
+                        </a>
+                      )}
                       {(c as { duration_seconds?: number }).duration_seconds != null && (
                         <span className="text-xs mt-1 inline-block" style={{ color: "#888" }}>
                           Длительность: {Math.floor(((c as { duration_seconds?: number }).duration_seconds ?? 0) / 60)}:{String(((c as { duration_seconds?: number }).duration_seconds ?? 0) % 60).padStart(2, "0")}

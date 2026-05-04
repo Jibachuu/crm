@@ -64,6 +64,8 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   }, [deal.id]);
   const [noteText, setNoteText] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
+  const [noteAttachment, setNoteAttachment] = useState<{ url: string; name: string; size?: number; type?: string } | null>(null);
+  const [noteUploading, setNoteUploading] = useState(false);
   const [commsRefreshKey, setCommsRefreshKey] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
@@ -101,16 +103,36 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   const orderProducts = dealProducts.filter((p: { product_block: string }) => p.product_block === "order");
 
   async function addNote() {
-    if (!noteText.trim()) return;
+    if (!noteText.trim() && !noteAttachment) return;
     setNoteLoading(true);
     const { data, error } = await apiPost<typeof communications[number]>("/api/communications", {
-      entity_type: "deal", entity_id: deal.id, channel: "note", direction: "outbound", body: noteText.trim(),
+      entity_type: "deal", entity_id: deal.id, channel: "note", direction: "outbound",
+      body: noteText.trim() || (noteAttachment ? `📎 ${noteAttachment.name}` : ""),
+      attachment_url: noteAttachment?.url ?? null,
+      attachment_name: noteAttachment?.name ?? null,
+      attachment_size: noteAttachment?.size ?? null,
+      attachment_type: noteAttachment?.type ?? null,
     });
     if (error || !data) { alert("Не удалось сохранить заметку: " + (error ?? "")); setNoteLoading(false); return; }
     setCommunications((p: unknown[]) => [data, ...p]);
     setNoteText("");
+    setNoteAttachment(null);
     setCommsRefreshKey((k) => k + 1);
     setNoteLoading(false);
+  }
+
+  async function attachToNote(file: File) {
+    setNoteUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const d = await res.json();
+      if (!res.ok) { alert("Не удалось загрузить файл: " + (d.error || res.status)); return; }
+      setNoteAttachment({ url: d.url, name: d.name, size: d.size, type: d.type });
+    } finally {
+      setNoteUploading(false);
+    }
   }
 
   // Stock adjustments still use the supabase client because product_variants
@@ -396,8 +418,20 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                       placeholder="Добавить заметку..." rows={4}
                       className="w-full text-sm p-3 resize-none focus:outline-none"
                       style={{ border: "1px solid #ddd", borderRadius: 4, minHeight: 100 }} />
-                    <div className="flex justify-end mt-2">
-                      <Button size="sm" onClick={addNote} loading={noteLoading} disabled={!noteText.trim()}>
+                    {noteAttachment && (
+                      <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded text-xs" style={{ background: "#f0f7fb", border: "1px solid #d0e8f5", color: "#0067a5" }}>
+                        <Paperclip size={12} />
+                        <a href={noteAttachment.url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate hover:underline">{noteAttachment.name}</a>
+                        <button onClick={() => setNoteAttachment(null)} className="text-slate-500 hover:text-red-600">×</button>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center mt-2">
+                      <label className="flex items-center gap-1 text-xs cursor-pointer hover:underline" style={{ color: "#0067a5" }}>
+                        <Paperclip size={12} />
+                        {noteUploading ? "Загрузка..." : "Прикрепить файл"}
+                        <input type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) attachToNote(f); e.target.value = ""; }} disabled={noteUploading} />
+                      </label>
+                      <Button size="sm" onClick={addNote} loading={noteLoading} disabled={!noteText.trim() && !noteAttachment}>
                         <MessageSquare size={13} /> Добавить заметку
                       </Button>
                     </div>
@@ -496,10 +530,16 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                           const fd = new FormData();
                           fd.append("file", files[i]);
                           fd.append("deal_id", deal.id);
-                          const res = await fetch("/api/deals/files", { method: "POST", body: fd });
-                          if (res.ok) {
-                            const f = await res.json();
-                            setDealFiles((prev) => [f, ...prev]);
+                          try {
+                            const res = await fetch("/api/deals/files", { method: "POST", body: fd });
+                            const data = await res.json().catch(() => ({}));
+                            if (res.ok) {
+                              setDealFiles((prev) => [data, ...prev]);
+                            } else {
+                              alert(`Не удалось загрузить ${files[i].name}: ${data.error || `HTTP ${res.status}`}`);
+                            }
+                          } catch (err) {
+                            alert(`Не удалось загрузить ${files[i].name}: ${(err as Error).message}`);
                           }
                         }
                         setFileUploading(false);

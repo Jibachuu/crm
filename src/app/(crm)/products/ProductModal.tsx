@@ -60,7 +60,6 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
     setLoading(true);
     setError(null);
     const fd = new FormData(e.currentTarget);
-    const supabase = createClient();
 
     const payload = {
       sku: fd.get("sku") as string,
@@ -75,18 +74,23 @@ export default function ProductModal({ open, onClose, product, onSaved }: { open
       is_active: isEdit ? product.is_active : true,
     };
 
-    let savedProduct;
-    if (isEdit) {
-      const { data, error: err } = await supabase.from("products").update(payload).eq("id", product.id).select("*").single();
-      if (err) { setError(err.message); setLoading(false); return; }
-      savedProduct = data;
-    } else {
-      const { data, error: err } = await supabase.from("products").insert(payload).select("*").single();
-      if (err) { setError(err.message); setLoading(false); return; }
-      savedProduct = data;
-    }
+    // Route through admin API — RLS on products only lets admin INSERT/UPDATE
+    // directly. Backlog v5 §1.2.2.
+    const res = isEdit
+      ? await fetch("/api/products", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: product.id, ...payload }),
+        })
+      : await fetch("/api/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+    const data = await res.json();
+    if (!res.ok) { setError(data.error || `HTTP ${res.status}`); setLoading(false); return; }
 
-    onSaved(savedProduct);
+    onSaved(data.product);
     onClose();
     setLoading(false);
   }
