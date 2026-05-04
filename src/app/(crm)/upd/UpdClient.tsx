@@ -55,8 +55,10 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // Form state
-  const [form, setForm] = useState({ upd_date: new Date().toISOString().slice(0, 10), invoice_id: "", buyer_company_id: "", buyer_name: "", buyer_inn: "", buyer_kpp: "", buyer_address: "", basis: "Основной договор", vat_included: false, comment: "" });
+  // Form state. status_code is the УПД "Статус 1/2" mark (top-left of the
+  // form): 1 = счёт-фактура + передаточный акт, 2 = только передаточный
+  // акт. Default 2 because Артево is ИП на УСН — не выставляет счёт-фактуру.
+  const [form, setForm] = useState({ upd_date: new Date().toISOString().slice(0, 10), invoice_id: "", buyer_company_id: "", buyer_name: "", buyer_inn: "", buyer_kpp: "", buyer_address: "", basis: "Основной договор", vat_included: false, comment: "", status_code: 2 as 1 | 2 });
   const [items, setItems] = useState<UpdItem[]>([]);
   const [productSearch, setProductSearch] = useState("");
 
@@ -65,7 +67,7 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
 
   function openCreate() {
     setEditing(null);
-    setForm({ upd_date: new Date().toISOString().slice(0, 10), invoice_id: "", buyer_company_id: "", buyer_name: "", buyer_inn: "", buyer_kpp: "", buyer_address: "", basis: "Основной договор", vat_included: false, comment: "" });
+    setForm({ upd_date: new Date().toISOString().slice(0, 10), invoice_id: "", buyer_company_id: "", buyer_name: "", buyer_inn: "", buyer_kpp: "", buyer_address: "", basis: "Основной договор", vat_included: false, comment: "", status_code: 2 });
     setItems([]);
     setEditorOpen(true);
   }
@@ -74,7 +76,7 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
     const u = updList.find((x: { id: string }) => x.id === updId);
     if (!u) return;
     setEditing(u);
-    setForm({ upd_date: u.upd_date ?? new Date().toISOString().slice(0, 10), invoice_id: u.invoice_id ?? "", buyer_company_id: u.buyer_company_id ?? "", buyer_name: u.buyer_name ?? "", buyer_inn: u.buyer_inn ?? "", buyer_kpp: u.buyer_kpp ?? "", buyer_address: u.buyer_address ?? "", basis: u.basis ?? "Основной договор", vat_included: u.vat_included ?? false, comment: u.comment ?? "" });
+    setForm({ upd_date: u.upd_date ?? new Date().toISOString().slice(0, 10), invoice_id: u.invoice_id ?? "", buyer_company_id: u.buyer_company_id ?? "", buyer_name: u.buyer_name ?? "", buyer_inn: u.buyer_inn ?? "", buyer_kpp: u.buyer_kpp ?? "", buyer_address: u.buyer_address ?? "", basis: u.basis ?? "Основной договор", vat_included: u.vat_included ?? false, comment: u.comment ?? "", status_code: (u.status_code === 1 ? 1 : 2) });
     const supabase = createClient();
     const { data } = await supabase.from("upd_items").select("*").eq("upd_id", updId).order("sort_order");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -289,7 +291,7 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label style={lblStyle}>Дата УПД</label>
               <input type="date" value={form.upd_date} onChange={(e) => setForm({ ...form, upd_date: e.target.value })} style={inputStyle} />
@@ -297,6 +299,13 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
             <div>
               <label style={lblStyle}>Основание</label>
               <input value={form.basis} onChange={(e) => setForm({ ...form, basis: e.target.value })} style={inputStyle} />
+            </div>
+            <div>
+              <label style={lblStyle}>Статус (для печати)</label>
+              <select value={form.status_code} onChange={(e) => setForm({ ...form, status_code: Number(e.target.value) === 1 ? 1 : 2 })} style={inputStyle}>
+                <option value={2}>2 — передаточный документ (акт)</option>
+                <option value={1}>1 — счёт-фактура и передаточный документ (акт)</option>
+              </select>
             </div>
           </div>
 
@@ -455,7 +464,7 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
           <div style={{ padding: "20px", display: "flex", justifyContent: "center" }}>
             <div id="upd-content" style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.15)", background: "#fff" }}>
               <UpdTemplate
-                upd={{ upd_number: previewUpd.upd_number, upd_date: previewUpd.upd_date, buyer_name: previewUpd.buyer_name, buyer_inn: previewUpd.buyer_inn, buyer_kpp: previewUpd.buyer_kpp, buyer_address: previewUpd.buyer_address, basis: previewUpd.basis, vat_included: previewUpd.vat_included }}
+                upd={{ upd_number: previewUpd.upd_number, upd_date: previewUpd.upd_date, buyer_name: previewUpd.buyer_name, buyer_inn: previewUpd.buyer_inn, buyer_kpp: previewUpd.buyer_kpp, buyer_address: previewUpd.buyer_address, basis: previewUpd.basis, vat_included: previewUpd.vat_included, status_code: (previewUpd.status_code === 1 ? 1 : 2) }}
                 items={previewItems}
                 supplier={supplier}
               />

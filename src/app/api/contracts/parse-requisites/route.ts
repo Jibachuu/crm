@@ -107,16 +107,36 @@ function parseRequisites(text: string) {
   if (bankName) r.buyer_bank_name = bankName;
 
   // ── Account (р/с, расчётный счёт) ──
+  // Russian settlement accounts (р/с) start with 40/41/42; corr accounts
+  // (к/с) always start with 301 or 304. We use the prefix as a sanity
+  // gate so a mislabelled or PDF-mangled source can't slot a р/с into
+  // the corr field (backlog v5 §2.1.7 — wrong PDF showed corr_account
+  // = 40702..., which is a settlement-account prefix).
+  const SETTLEMENT_PREFIX = /^(40|41|42)/;
+  const CORR_PREFIX = /^(30101|30102|304)/;
+
   const accMatch = text.match(/(?:Расчётный счёт|Расч[её]тный\s+сч[её]т|[рР]\/[сС])\s*:?\s*(\d{20})/i);
-  if (accMatch) r.buyer_account = accMatch[1];
+  if (accMatch && SETTLEMENT_PREFIX.test(accMatch[1])) r.buyer_account = accMatch[1];
 
   // ── BIK ──
-  const bikMatch = text.match(/БИК(?:\s+банка)?\s*:?\s*(\d{9})/i);
+  // Russian BIKs always start with 04. Anything else is bogus / OCR noise.
+  const bikMatch = text.match(/БИК(?:\s+банка)?\s*:?\s*(04\d{7})/i);
   if (bikMatch) r.buyer_bik = bikMatch[1];
 
   // ── Corr account ──
   const corrMatch = text.match(/(?:Корреспондентский\s+сч[её]т|[кК]\/[сС]|Корр\.?\s*сч[её]т)\s*:?\s*(\d{20})/i);
-  if (corrMatch) r.buyer_corr_account = corrMatch[1];
+  if (corrMatch && CORR_PREFIX.test(corrMatch[1])) r.buyer_corr_account = corrMatch[1];
+
+  // If the labelled corr match captured a settlement-account number, the
+  // labels in the source PDF are swapped — treat the captured digits as
+  // р/с (only if р/с didn't match by its own label).
+  if (corrMatch && !r.buyer_corr_account && SETTLEMENT_PREFIX.test(corrMatch[1])) {
+    if (!r.buyer_account) r.buyer_account = corrMatch[1];
+  }
+  // Symmetric salvage for misslabelled р/с.
+  if (accMatch && !r.buyer_account && CORR_PREFIX.test(accMatch[1])) {
+    if (!r.buyer_corr_account) r.buyer_corr_account = accMatch[1];
+  }
 
   // ── Director (for non-IP) ──
   if (!r.buyer_director_name) {
@@ -154,18 +174,32 @@ function parseRequisites(text: string) {
   const phoneMatch = text.match(/Тел\.?\s*:?\s*([+\d\s\-()]{7,})/i);
   if (phoneMatch) r.buyer_phone = phoneMatch[1].trim();
 
-  // ── Fallback: find account numbers by pattern ──
+  // ── Fallback: find account numbers by prefix pattern ──
+  // Settlement: 40/41/42 + 18 digits. Corr: 30101/30102/304 + 15 digits.
   if (!r.buyer_account) {
-    const acc = text.match(/40[0-9]{18}/g);
+    const acc = text.match(/\b(?:40|41|42)\d{18}\b/g);
     if (acc?.[0]) r.buyer_account = acc[0];
   }
   if (!r.buyer_corr_account) {
-    const corr = text.match(/30[0-9]{18}/g);
+    const corr = text.match(/\b(?:30101|30102|304\d{2})\d{15}\b/g);
     if (corr?.[0]) r.buyer_corr_account = corr[0];
   }
   if (!r.buyer_bik) {
-    const bik = text.match(/04\d{7}/g);
+    const bik = text.match(/\b04\d{7}\b/g);
     if (bik?.[0]) r.buyer_bik = bik[0];
+  }
+
+  // Final swap-check: if both fields ended up populated but with prefixes
+  // that don't match Russian banking convention, swap them. Cheap insurance
+  // against bookkeeper-flagged bug §2.1.7.
+  if (r.buyer_account && r.buyer_corr_account) {
+    const accIsCorr = CORR_PREFIX.test(r.buyer_account);
+    const corrIsAcc = SETTLEMENT_PREFIX.test(r.buyer_corr_account);
+    if (accIsCorr && corrIsAcc) {
+      const tmp = r.buyer_account;
+      r.buyer_account = r.buyer_corr_account;
+      r.buyer_corr_account = tmp;
+    }
   }
 
   // Clean all values — remove excessive spaces from PDF layout

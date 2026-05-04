@@ -3,8 +3,8 @@
 import { formatCurrency } from "@/lib/utils";
 
 interface UpdItem { name: string; quantity: number; unit: string; price: number; total: number }
-interface Supplier { legal_name?: string; company_name?: string; address?: string; inn?: string; kpp?: string; director?: string; director_short?: string; ogrnip?: string }
-interface UpdData { upd_number: number; upd_date: string; buyer_name: string; buyer_inn: string; buyer_kpp: string; buyer_address: string; basis: string; vat_included: boolean }
+interface Supplier { legal_name?: string; company_name?: string; address?: string; contract_address?: string; inn?: string; kpp?: string; director?: string; director_short?: string; ogrnip?: string; ogrnip_date?: string }
+interface UpdData { upd_number: number; upd_date: string; buyer_name: string; buyer_inn: string; buyer_kpp: string; buyer_address: string; basis: string; vat_included: boolean; status_code?: 1 | 2 }
 
 export default function UpdTemplate({ upd, items, supplier }: { upd: UpdData; items: UpdItem[]; supplier: Supplier | null }) {
   const total = items.reduce((s, i) => s + i.total, 0);
@@ -17,8 +17,13 @@ export default function UpdTemplate({ upd, items, supplier }: { upd: UpdData; it
   const dateShort = d.toLocaleDateString("ru-RU");
   const sel = supplier ?? {} as Supplier;
   const selName = sel.legal_name || sel.company_name || "";
+  const sellerAddress = sel.contract_address || sel.address || "";
   const dir = sel.director_short || sel.director || "";
   const ogrnip = sel.ogrnip || "";
+  const statusCode: 1 | 2 = upd.status_code === 1 ? 1 : 2;
+  const ogrnipDate = sel.ogrnip_date
+    ? new Date(sel.ogrnip_date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }) + " г."
+    : "";
 
   const b = "1px solid #000";
   const f7: React.CSSProperties = { fontSize: 7 };
@@ -36,10 +41,19 @@ export default function UpdTemplate({ upd, items, supplier }: { upd: UpdData; it
       <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
         <colgroup><col style={{ width: 100 }} /><col /><col style={{ width: 28 }} /><col style={{ width: 100 }} /><col /><col style={{ width: 28 }} /></colgroup>
         <tbody>
-          {/* Row: УПД title + Счёт-фактура */}
+          {/* Row: УПД title + Счёт-фактура. Top-left also carries the
+              "Статус: N" mark and legend per the bookkeeper's reference
+              УПД (backlog v5 §5). */}
           <tr>
-            <td rowSpan={3} style={{ ...f7, verticalAlign: "top", paddingRight: 6 }}>
+            <td rowSpan={5} style={{ ...f7, verticalAlign: "top", paddingRight: 6 }}>
               <b>Универсальный<br/>передаточный<br/>документ</b>
+              <div style={{ marginTop: 8, padding: "2px 6px", border: b, display: "inline-block", fontSize: 9 }}>
+                <b>Статус: {statusCode}</b>
+              </div>
+              <div style={{ marginTop: 6, ...f6, color: "#444", lineHeight: 1.25 }}>
+                1 – счёт-фактура и<br/>передаточный<br/>документ (акт)<br/>
+                2 – передаточный<br/>документ (акт)
+              </div>
             </td>
             <td style={f8}>Счёт-фактура № <u><b>&nbsp;{upd.upd_number}&nbsp;</b></u> от <u><b>&nbsp;{dateText}&nbsp;</b></u></td>
             <td style={{ ...f7, color: "#888" }}>(1)</td>
@@ -65,7 +79,7 @@ export default function UpdTemplate({ upd, items, supplier }: { upd: UpdData; it
           </tr>
           <tr>
             <td style={{ ...f7, color: "#555" }}>Адрес:</td>
-            <td style={f8}>{sel.address}</td>
+            <td style={f8}>{sellerAddress}</td>
             <td style={{ ...f7, color: "#888" }}>(2а)</td>
             <td style={{ ...f7, color: "#555" }}>Адрес:</td>
             <td style={f8}>{upd.buyer_address}</td>
@@ -238,7 +252,7 @@ export default function UpdTemplate({ upd, items, supplier }: { upd: UpdData; it
             <td style={f7}>Индивидуальный предприниматель<br/>или иное уполномоченное лицо</td>
             <td style={f8}>{dir}</td>
             <td></td>
-            <td colSpan={2} style={f7}>ОГРНИП {ogrnip || "_______________"}, дата регистрации _______________</td>
+            <td colSpan={2} style={f7}>ОГРНИП {ogrnip || "_______________"}, дата регистрации {ogrnipDate || "_______________"}</td>
           </tr>
           <tr>
             <td></td>

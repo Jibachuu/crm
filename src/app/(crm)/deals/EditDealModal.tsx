@@ -35,6 +35,12 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
   const [contacts, setContacts] = useState<{ id: string; full_name: string }[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
+  // Delivery address picker (backlog v5 §3) — backed by /api/addresses so
+  // a new address never overwrites existing company addresses.
+  const [companyAddresses, setCompanyAddresses] = useState<{ id: string; address: string; kind: string; is_default: boolean }[]>([]);
+  const [deliveryAddressId, setDeliveryAddressId] = useState<string>("");
+  const [deliveryAddressText, setDeliveryAddressText] = useState<string>("");
+  const [companyIdSelected, setCompanyIdSelected] = useState<string>("");
   // Track when reference data is loaded — Select uses defaultValue which only
   // applies on mount. If we render before users[] arrives, the "Ответственный"
   // dropdown shows "Выберите сотрудника" even though deal.assigned_to is set.
@@ -57,7 +63,34 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
       setUsers(u.data ?? []);
       setDataReady(true);
     }).catch(() => setDataReady(true));
-  }, [open]);
+    // Seed delivery address state from the deal we're editing.
+    setDeliveryAddressId(deal?.delivery_address_id ?? "");
+    setDeliveryAddressText(deal?.delivery_address_text ?? "");
+    setCompanyIdSelected(deal?.company_id ?? "");
+  }, [open, deal]);
+
+  // Whenever the user picks a company, refresh its addresses for the picker.
+  useEffect(() => {
+    if (!companyIdSelected) { setCompanyAddresses([]); return; }
+    fetch(`/api/addresses?company_id=${companyIdSelected}`)
+      .then((r) => r.ok ? r.json() : { addresses: [] })
+      .then((d) => setCompanyAddresses(d.addresses ?? []))
+      .catch(() => setCompanyAddresses([]));
+  }, [companyIdSelected]);
+
+  async function addDeliveryAddress(text: string) {
+    if (!companyIdSelected || !text.trim()) return;
+    const res = await fetch("/api/addresses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company_id: companyIdSelected, address: text.trim(), kind: "delivery" }),
+    });
+    if (!res.ok) { alert("Не удалось сохранить адрес"); return; }
+    const d = await res.json();
+    setCompanyAddresses((prev) => [...prev, d.address]);
+    setDeliveryAddressId(d.address.id);
+    setDeliveryAddressText("");
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -80,6 +113,8 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
           assigned_to: (fd.get("assigned_to") as string) || null,
           description: (fd.get("description") as string) || null,
           objections: (fd.get("objections") as string) || null,
+          delivery_address_id: deliveryAddressId || null,
+          delivery_address_text: deliveryAddressText || null,
         }),
       });
       const data = await res.json();
@@ -133,9 +168,30 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
             options={companies.map((c) => ({ value: c.id, label: c.name }))}
             placeholder="Выберите компанию"
             defaultValue={deal?.company_id ?? ""}
-            onCreated={(item) => setCompanies((prev) => [...prev, { id: item.id, name: item.label }])}
+            onCreated={(item) => { setCompanies((prev) => [...prev, { id: item.id, name: item.label }]); setCompanyIdSelected(item.id); }}
           />
         </div>
+        {/* Delivery address picker. Pulls from company.addresses (M:N).
+            Free-text fallback for ad-hoc adresses. */}
+        {companyIdSelected && (
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700">Адрес доставки</label>
+            <select value={deliveryAddressId} onChange={(e) => setDeliveryAddressId(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">— не выбран —</option>
+              {companyAddresses.map((a) => (
+                <option key={a.id} value={a.id}>{({ legal: "Юр.", delivery: "Доставка", office: "Офис", other: "Другой" } as Record<string, string>)[a.kind] ?? a.kind} · {a.address}</option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <input value={deliveryAddressText} onChange={(e) => setDeliveryAddressText(e.target.value)}
+                placeholder="...или введите новый адрес и нажмите «Сохранить»"
+                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none" />
+              <Button type="button" variant="secondary" size="sm" onClick={() => addDeliveryAddress(deliveryAddressText)} disabled={!deliveryAddressText.trim()}>+ Сохранить</Button>
+            </div>
+            <p className="text-xs" style={{ color: "#888" }}>Новый адрес добавляется в карточку компании, не затирая существующие.</p>
+          </div>
+        )}
         <Select
           label="Ответственный"
           name="assigned_to"

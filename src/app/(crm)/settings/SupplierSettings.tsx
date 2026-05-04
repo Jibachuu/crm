@@ -13,6 +13,9 @@ export default function SupplierSettings() {
     bank_name: "", bik: "", account_number: "", corr_account: "", director: "",
     stamp_url: "", signature_url: "", logo_url: "",
     legal_name: "", ogrnip: "", director_short: "", phone: "", email: "",
+    // §2.1.3 — split "адрес для договоров" from прописки ИП.
+    // §2.1.2/§5 — store ОГРНИП registration date so it prints in УПД.
+    contract_address: "", ogrnip_date: "",
   });
   const [uploadingStamp, setUploadingStamp] = useState(false);
   const [uploadingSig, setUploadingSig] = useState(false);
@@ -76,7 +79,13 @@ export default function SupplierSettings() {
         <div className="grid grid-cols-3 gap-3">
           <div><label style={lblStyle}>ИНН</label><input value={form.inn} onChange={(e) => setForm({ ...form, inn: e.target.value })} style={inputStyle} /></div>
           <div><label style={lblStyle}>КПП</label><input value={form.kpp ?? ""} onChange={(e) => setForm({ ...form, kpp: e.target.value })} style={inputStyle} /></div>
-          <div><label style={lblStyle}>Адрес</label><input value={form.address ?? ""} onChange={(e) => setForm({ ...form, address: e.target.value })} style={inputStyle} /></div>
+          <div><label style={lblStyle}>Прописка ИП (паспорт)</label><input value={form.address ?? ""} onChange={(e) => setForm({ ...form, address: e.target.value })} style={inputStyle} placeholder="427970, Удмуртская Республика, г Сарапул..." /></div>
+        </div>
+        {/* §2.1.3: contract_address — где реально ведётся деятельность.
+            Иначе в договорах появлялся адрес прописки, что неверно. */}
+        <div className="grid grid-cols-2 gap-3">
+          <div><label style={lblStyle}>Адрес для договоров и УПД</label><input value={form.contract_address ?? ""} onChange={(e) => setForm({ ...form, contract_address: e.target.value })} style={inputStyle} placeholder="420054, республика Татарстан, г. Казань, ул. Воскресенская, 20а" /></div>
+          <div><label style={lblStyle}>Дата регистрации ОГРНИП</label><input type="date" value={form.ogrnip_date ?? ""} onChange={(e) => setForm({ ...form, ogrnip_date: e.target.value })} style={inputStyle} /></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div><label style={lblStyle}>Банк</label><input value={form.bank_name ?? ""} onChange={(e) => setForm({ ...form, bank_name: e.target.value })} style={inputStyle} placeholder="АО «Тинькофф Банк»" /></div>

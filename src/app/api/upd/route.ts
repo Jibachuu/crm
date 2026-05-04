@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
 
   if (action === "create" || action === "update") {
-    const { id, upd_date, invoice_id, buyer_company_id, buyer_name, buyer_inn, buyer_kpp, buyer_address, basis, status, vat_included, comment, items } = body;
+    const { id, upd_date, invoice_id, buyer_company_id, buyer_name, buyer_inn, buyer_kpp, buyer_address, basis, status, status_code, vat_included, comment, items } = body;
 
     const totalAmount = (items ?? []).reduce((s: number, i: { total: number }) => s + (i.total ?? 0), 0);
 
@@ -26,6 +26,8 @@ export async function POST(req: NextRequest) {
       buyer_address: buyer_address || null,
       basis: basis || "Основной договор",
       status: status || "draft",
+      // 1 = СФ + передаточный акт, 2 = только передаточный акт.
+      status_code: status_code === 1 ? 1 : 2,
       vat_included: vat_included ?? false,
       comment: comment || null,
       total_amount: totalAmount,

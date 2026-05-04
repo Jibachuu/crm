@@ -223,7 +223,21 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   const totalAmount = items.reduce((s, i) => s + i.total, 0);
 
   async function handleCreate() {
-    if (!form.buyer_name || items.length === 0) return;
+    // Backlog v5 §4.3.1: enforce полные реквизиты at create time. ИНН
+    // length distinguishes юрлицо (10) from ИП (12) — КПП is required
+    // for the former, irrelevant for the latter.
+    const innLen = (form.buyer_inn || "").replace(/\D/g, "").length;
+    const isLegalEntity = innLen === 10;
+    const missing: string[] = [];
+    if (!form.buyer_name?.trim()) missing.push("Наименование покупателя");
+    if (innLen !== 10 && innLen !== 12) missing.push("ИНН (10 или 12 цифр)");
+    if (isLegalEntity && !form.buyer_kpp?.trim()) missing.push("КПП");
+    if (!form.buyer_address?.trim()) missing.push("Юридический адрес");
+    if (items.length === 0) missing.push("Хотя бы одна позиция");
+    if (missing.length > 0) {
+      alert("Заполните обязательные поля:\n• " + missing.join("\n• "));
+      return;
+    }
     setSaving(true);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -627,12 +641,35 @@ function doPrint(){
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label style={lblStyle}>Название покупателя</label><input value={form.buyer_name} onChange={(e) => setForm({ ...form, buyer_name: e.target.value })} style={inputStyle} /></div>
-            <div><label style={lblStyle}>ИНН покупателя</label><input value={form.buyer_inn} onChange={(e) => setForm({ ...form, buyer_inn: e.target.value })} style={inputStyle} /></div>
+            <div><label style={lblStyle}>Полное наименование покупателя <span style={{ color: "#c62828" }}>*</span></label><input value={form.buyer_name} onChange={(e) => setForm({ ...form, buyer_name: e.target.value })} style={inputStyle} placeholder="ООО «Ярмарка Групп» / ИП Иванов И.И." /></div>
+            <div>
+              <label style={lblStyle}>ИНН покупателя <span style={{ color: "#c62828" }}>*</span> <span style={{ color: "#888", fontWeight: 400 }}>(Tab → автозаполнение из ЕГРЮЛ)</span></label>
+              <input value={form.buyer_inn}
+                onChange={(e) => setForm({ ...form, buyer_inn: e.target.value })}
+                onBlur={async (e) => {
+                  const inn = e.target.value.replace(/\D/g, "");
+                  if (inn.length !== 10 && inn.length !== 12) return;
+                  try {
+                    const res = await fetch("/api/dadata/company", {
+                      method: "POST", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ inn }),
+                    });
+                    if (!res.ok) return;
+                    const d = await res.json();
+                    setForm((prev) => ({
+                      ...prev,
+                      buyer_name: prev.buyer_name || d.name || "",
+                      buyer_kpp: prev.buyer_kpp || d.kpp || "",
+                      buyer_address: prev.buyer_address || d.address || "",
+                    }));
+                  } catch { /* network — silently fall back to manual entry */ }
+                }}
+                placeholder="10 или 12 цифр" style={inputStyle} />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label style={lblStyle}>КПП покупателя</label><input value={form.buyer_kpp} onChange={(e) => setForm({ ...form, buyer_kpp: e.target.value })} style={inputStyle} /></div>
-            <div><label style={lblStyle}>Адрес покупателя</label><input value={form.buyer_address} onChange={(e) => setForm({ ...form, buyer_address: e.target.value })} style={inputStyle} /></div>
+            <div><label style={lblStyle}>КПП покупателя <span style={{ color: "#888", fontWeight: 400 }}>(для ООО)</span></label><input value={form.buyer_kpp} onChange={(e) => setForm({ ...form, buyer_kpp: e.target.value })} style={inputStyle} /></div>
+            <div><label style={lblStyle}>Юридический адрес покупателя <span style={{ color: "#c62828" }}>*</span></label><input value={form.buyer_address} onChange={(e) => setForm({ ...form, buyer_address: e.target.value })} style={inputStyle} placeholder="Только юр. адрес — без склада / ТК / пометок" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label style={lblStyle}>Основание</label><input value={form.basis} onChange={(e) => setForm({ ...form, basis: e.target.value })} style={inputStyle} /></div>

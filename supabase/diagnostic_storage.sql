@@ -64,6 +64,6 @@ SELECT 'internal_messages' AS tbl, count(*) AS rows,
        pg_size_pretty(sum(octet_length(coalesce(body, '')))::bigint) AS body_bytes
 FROM public.internal_messages
 UNION ALL
-SELECT 'group_chat_messages', count(*),
+SELECT 'group_messages', count(*),
        pg_size_pretty(sum(octet_length(coalesce(body, '')))::bigint)
-FROM public.group_chat_messages;
+FROM public.group_messages;

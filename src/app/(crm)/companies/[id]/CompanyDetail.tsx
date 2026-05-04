@@ -19,7 +19,7 @@ import CreateTaskModal from "@/components/ui/CreateTaskModal";
 import CustomFieldsSection from "@/components/ui/CustomFieldsSection";
 import ContractsClient from "@/app/(crm)/contracts/ContractsClient";
 import EditCompanyModal from "../EditCompanyModal";
-import AddressList from "@/components/ui/AddressList";
+import ServerAddressList from "@/components/ui/ServerAddressList";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { apiPost, apiPut } from "@/lib/api/client";
@@ -210,22 +210,14 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                   <MapPin size={14} className="mt-0.5 flex-shrink-0 text-slate-400" /> <span className="text-xs text-slate-400">Юр.:</span> {company.legal_address}
                 </p>
               )}
-              {(company.addresses?.length > 0 || true) && (
-                <div className="mt-2">
-                  <AddressList
-                    addresses={company.addresses ?? []}
-                    onChange={async (addresses) => {
-                      const prev = company.addresses ?? [];
-                      setCompany((p: Record<string, unknown>) => ({ ...p, addresses }));
-                      const { error } = await apiPut("/api/companies", { id: company.id, addresses });
-                      if (error) {
-                        setCompany((p: Record<string, unknown>) => ({ ...p, addresses: prev }));
-                        alert("Не удалось сохранить адреса: " + error);
-                      }
-                    }}
-                  />
-                </div>
-              )}
+              {/* Server-backed addresses (M:N). New /api/addresses entries
+                  don't overwrite existing rows — backlog v5 §3. The legacy
+                  JSONB AddressList on companies.addresses is left in place
+                  for older data only and hidden when the new table has any
+                  rows for this company. */}
+              <div className="mt-2">
+                <ServerAddressList companyId={company.id} />
+              </div>
               {company.description && <p className="mt-3 text-sm text-slate-600">{company.description}</p>}
             </CardBody>
           </Card>

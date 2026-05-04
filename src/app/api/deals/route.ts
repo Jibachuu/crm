@@ -33,6 +33,8 @@ export async function PUT(req: NextRequest) {
   if (body.description !== undefined) updates.description = body.description || null;
   if (body.objections !== undefined) updates.objections = body.objections || null;
   if (body.addresses !== undefined) updates.addresses = body.addresses;
+  if (body.delivery_address_id !== undefined) updates.delivery_address_id = body.delivery_address_id || null;
+  if (body.delivery_address_text !== undefined) updates.delivery_address_text = body.delivery_address_text || null;
 
   const { data, error } = await admin
     .from("deals")
