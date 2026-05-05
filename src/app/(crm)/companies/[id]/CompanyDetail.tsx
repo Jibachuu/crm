@@ -85,6 +85,12 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
   const [contractFileName, setContractFileName] = useState(company.contract_file_name ?? "");
   const [contractSaving, setContractSaving] = useState(false);
   const [contractUploading, setContractUploading] = useState(false);
+  // Multi-file contracts (v76). The legacy single-file state above is
+  // still kept so older PDF generators reading company.contract_file_url
+  // keep working — it tracks the most-recently-uploaded file.
+  const [contractFiles, setContractFiles] = useState<{ url: string; name: string; uploaded_at: string; signed_at?: string; status?: string; comment?: string }[]>(
+    Array.isArray(company.contract_files) ? company.contract_files : []
+  );
   const [exportOpen, setExportOpen] = useState(false);
   const [commsRefreshKey, setCommsRefreshKey] = useState(0);
 
@@ -138,13 +144,39 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
     const res = await fetch("/api/companies/contract", { method: "POST", body: fd });
     if (res.ok) {
       const data = await res.json();
-      setContractFileUrl(data.url);
-      setContractFileName(data.name);
+      // New API returns { file, files }; old returned { url, name }
+      if (Array.isArray(data.files)) {
+        setContractFiles(data.files);
+        const last = data.file;
+        if (last) { setContractFileUrl(last.url); setContractFileName(last.name); }
+      } else {
+        setContractFileUrl(data.url);
+        setContractFileName(data.name);
+      }
     } else {
       const data = await res.json();
       alert("Ошибка загрузки: " + (data.error ?? ""));
     }
     setContractUploading(false);
+  }
+
+  async function deleteContractFile(url: string) {
+    if (!confirm("Удалить файл договора?")) return;
+    const res = await fetch("/api/companies/contract", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company_id: company.id, url }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setContractFiles(data.files ?? []);
+      const last = data.files?.[data.files.length - 1] ?? null;
+      setContractFileUrl(last?.url ?? "");
+      setContractFileName(last?.name ?? "");
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert("Не удалось удалить: " + (data.error ?? ""));
+    }
   }
 
   // Find contacts with telegram/maks for company tabs
@@ -530,29 +562,41 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                   </div>
                 )}
                 <div>
-                  <label className="text-xs text-slate-500 block mb-1">Файл договора</label>
-                  {contractFileUrl ? (
-                    <div className="flex items-center gap-2">
-                      <a href={contractFileUrl} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-blue-50"
-                        style={{ color: "#0067a5", border: "1px solid #e0e0e0" }}>
-                        <Download size={11} /> {contractFileName || "Скачать"}
-                      </a>
-                      <label className="flex items-center gap-1 text-xs px-2 py-1.5 rounded cursor-pointer hover:bg-gray-50"
-                        style={{ color: "#888", border: "1px solid #e0e0e0" }}>
-                        <Upload size={11} /> Заменить
-                        <input type="file" accept=".pdf,.doc,.docx" className="hidden"
-                          onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadContractFile(f); }} />
-                      </label>
-                    </div>
-                  ) : (
+                  <label className="text-xs text-slate-500 block mb-1">Файлы договоров {contractFiles.length > 0 && <span style={{ color: "#888" }}>({contractFiles.length})</span>}</label>
+                  <div className="space-y-1.5">
+                    {contractFiles.map((f) => (
+                      <div key={f.url} className="flex items-center gap-2">
+                        <a href={f.url} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-blue-50 flex-1 min-w-0"
+                          style={{ color: "#0067a5", border: "1px solid #e0e0e0" }}>
+                          <Download size={11} className="flex-shrink-0" />
+                          <span className="truncate">{f.name || "Скачать"}</span>
+                        </a>
+                        <button onClick={() => deleteContractFile(f.url)} className="p-1 rounded hover:bg-red-50 flex-shrink-0" title="Удалить файл">
+                          <Trash2 size={11} style={{ color: "#c62828" }} />
+                        </button>
+                      </div>
+                    ))}
+                    {contractFiles.length === 0 && contractFileUrl && (
+                      // Legacy single-file fallback shown only if contract_files
+                      // is empty but old contract_file_url is set (migration v76
+                      // not run yet). After running v76 it copies into the array.
+                      <div className="flex items-center gap-2">
+                        <a href={contractFileUrl} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs px-2 py-1.5 rounded hover:bg-blue-50 flex-1 min-w-0"
+                          style={{ color: "#0067a5", border: "1px solid #e0e0e0" }}>
+                          <Download size={11} className="flex-shrink-0" />
+                          <span className="truncate">{contractFileName || "Скачать"}</span>
+                        </a>
+                      </div>
+                    )}
                     <label className="flex items-center gap-1.5 text-xs px-3 py-2 rounded cursor-pointer hover:bg-gray-50 transition-colors"
                       style={{ border: "1px dashed #d0d0d0", color: "#888" }}>
-                      <Upload size={13} /> {contractUploading ? "Загрузка..." : "Загрузить PDF"}
+                      <Upload size={13} /> {contractUploading ? "Загрузка..." : (contractFiles.length > 0 ? "+ Ещё договор" : "Загрузить договор")}
                       <input type="file" accept=".pdf,.doc,.docx" className="hidden" disabled={contractUploading}
-                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadContractFile(f); }} />
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadContractFile(f); e.target.value = ""; }} />
                     </label>
-                  )}
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-slate-500 block mb-1">Комментарий</label>
