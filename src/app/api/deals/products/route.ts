@@ -8,6 +8,31 @@ import { createAdminClient } from "@/lib/supabase/admin";
 // silently fails — managers couldn't remove rows from the Запрос /
 // Заказ blocks (backlog v5 follow-up reported 2026-05-04).
 
+// GET — same admin-route reasoning. Direct SELECT was returning []
+// from manager browsers, so the new "Из заказа сделки" button kept
+// reporting "В сделке нет товаров в блоке Заказ" even when there
+// were rows (2026-05-05).
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const dealId = searchParams.get("deal_id");
+  const block = searchParams.get("block"); // 'order' | 'request' | null = both
+  if (!dealId) return NextResponse.json({ error: "deal_id required" }, { status: 400 });
+
+  const admin = createAdminClient();
+  let q = admin
+    .from("deal_products")
+    .select("id, name, quantity, unit_price, total_price, product_id, product_block, variants, products(name, sku, category, subcategory, liters, container)")
+    .eq("deal_id", dealId);
+  if (block) q = q.eq("product_block", block);
+  const { data, error } = await q;
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ products: data ?? [] });
+}
+
 export async function DELETE(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

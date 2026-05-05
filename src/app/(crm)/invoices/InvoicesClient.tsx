@@ -131,15 +131,18 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   // Pull "Заказ"-block products straight from the linked deal into the
   // invoice (request 2026-05-05). Variants get flattened — one invoice
   // line per variant — so the printed счёт matches what's в сделке.
+  // Loaded via admin API: direct supabase select hit RLS and returned
+  // [] from manager browsers even when the deal had order rows.
   async function importFromDealOrder() {
     const dealId = form.deal_id;
     if (!dealId) { alert("Сначала привяжите счёт к сделке"); return; }
-    const supabase = createClient();
-    const { data: rows } = await supabase
-      .from("deal_products")
-      .select("id, name, quantity, unit_price, total_price, product_id, variants, products(name, sku, category, subcategory, liters, container)")
-      .eq("deal_id", dealId)
-      .eq("product_block", "order");
+    const res = await fetch(`/api/deals/products?deal_id=${dealId}&block=order`);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert("Не удалось загрузить товары: " + (d.error || res.status));
+      return;
+    }
+    const { products: rows } = await res.json() as { products: unknown[] };
     if (!rows?.length) { alert("В сделке нет товаров в блоке «Заказ»"); return; }
 
     type V = { label: string; price: number; quantity: number; sum?: number };
