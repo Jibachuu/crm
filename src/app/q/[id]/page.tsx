@@ -3,6 +3,14 @@ import { notFound } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import DownloadPdfButton from "@/components/ui/DownloadPdfButton";
 
+// Public quote page must always reflect the latest save — no Next.js
+// route caching. Without this, info-blocks added to a quote weren't
+// showing up because the page kept serving an SSR snapshot from
+// before the edit (2026-05-05 report: "В начале КП" block visible
+// in editor but missing on /q/<id>).
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function PublicQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const admin = createAdminClient();
