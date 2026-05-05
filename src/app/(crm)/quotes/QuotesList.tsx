@@ -858,14 +858,14 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                 <div className="space-y-2">
                   {blocks.map((b) => (
                     <div key={b.id} className="p-3 rounded" style={{ border: "1px solid #e4e4e4", background: "#fafafa" }}>
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <input value={b.title} onChange={(e) => updateBlock(b.id, { title: e.target.value })}
                           placeholder="Заголовок блока"
-                          className="flex-1 text-xs px-2 py-1 rounded outline-none"
+                          className="flex-1 min-w-[120px] text-xs px-2 py-1 rounded outline-none"
                           style={{ border: "1px solid #e0e0e0", fontWeight: 600, fontSize: 13 }} />
                         <select value={b.position} onChange={(e) => updateBlock(b.id, { position: e.target.value })}
-                          className="text-xs px-2 py-1 rounded outline-none"
-                          style={{ border: "1px solid #e0e0e0" }}>
+                          className="text-xs px-2 py-1 rounded outline-none flex-shrink min-w-0"
+                          style={{ border: "1px solid #e0e0e0", maxWidth: 200 }}>
                           <option value="top">В начале КП</option>
                           {catsList.map((cat) => <option key={cat} value={`after:${cat}`}>После &quot;{cat}&quot;</option>)}
                           {blocks.filter((ob) => ob.id !== b.id && ob.title).map((ob) => (
@@ -873,8 +873,12 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
                           ))}
                           <option value="bottom">В конце КП</option>
                         </select>
-                        <button onClick={() => removeBlock(b.id)} className="p-1 hover:bg-red-50 rounded">
-                          <X size={12} style={{ color: "#c62828" }} />
+                        <button type="button"
+                          onClick={() => { if (confirm(`Удалить блок "${b.title || "без названия"}"?`)) removeBlock(b.id); }}
+                          className="text-xs px-2.5 py-1 rounded flex items-center gap-1 flex-shrink-0 hover:bg-red-100"
+                          style={{ background: "#fff5f5", color: "#c62828", border: "1px solid #ffcdd2", fontWeight: 500 }}
+                          title="Удалить блок">
+                          <Trash2 size={12} /> Удалить
                         </button>
                       </div>
                       <div className="mb-2">
