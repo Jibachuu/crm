@@ -4,6 +4,7 @@ import { useState } from "react";
 import Modal from "@/components/ui/Modal";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
+import SelectOrCreate from "@/components/ui/SelectOrCreate";
 import Textarea from "@/components/ui/Textarea";
 import Button from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -51,7 +52,14 @@ export default function CreateContactModal({ open, onClose, companies, users, on
         <Input label="Полное имя" name="full_name" placeholder="Иван Иванов" required />
         <div className="grid grid-cols-2 gap-3">
           <Input label="Должность" name="position" placeholder="Менеджер" />
-          <Select label="Компания" name="company_id" options={companyOptions} placeholder="Выберите компанию" />
+          <SelectOrCreate
+            label="Компания"
+            name="company_id"
+            entityType="company"
+            options={companyOptions}
+            placeholder="Поиск по названию или ИНН..."
+            onCreated={() => { /* parent re-fetches companies on next open */ }}
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Input label="Телефон" name="phone" type="tel" placeholder="+7 (999) 000-00-00" />

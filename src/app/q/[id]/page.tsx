@@ -63,19 +63,49 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
   const overrides = (quote.category_overrides ?? {}) as Record<string, { title: string; description: string }>;
   type CustomBlock = { id: string; title: string; description: string; photos: string[]; position: string };
   const customBlocks = (quote.custom_blocks ?? []) as CustomBlock[];
-  const blocksTop = customBlocks.filter((b) => b.position === "top");
+  // Categories that actually have items in this quote — needed to detect
+  // "after:<category>" blocks whose target was renamed/removed and would
+  // otherwise vanish from the rendered КП. Real case 2026-05-05: a block
+  // with position pointing at an old category was completely missing
+  // from /q/<id> even though it's saved in DB and shown in the editor.
+  const allItemCategories = new Set<string>();
+  for (const it of items ?? []) {
+    const parts = it.name.split(" / ");
+    allItemCategories.add(parts.length >= 2 ? parts[0] : "Товары");
+  }
+  const knownBlockIds = new Set(customBlocks.map((b) => b.id));
+
+  const blocksTop: CustomBlock[] = [];
   const blocksBottom = customBlocks.filter((b) => b.position === "bottom");
   const blocksByCategory = new Map<string, CustomBlock[]>();
   const blocksAfterBlock = new Map<string, CustomBlock[]>();
   for (const b of customBlocks) {
-    if (b.position?.startsWith("after:")) {
-      const cat = b.position.slice(6);
-      if (!blocksByCategory.has(cat)) blocksByCategory.set(cat, []);
-      blocksByCategory.get(cat)!.push(b);
-    } else if (b.position?.startsWith("after_block:")) {
-      const parentId = b.position.slice("after_block:".length);
-      if (!blocksAfterBlock.has(parentId)) blocksAfterBlock.set(parentId, []);
-      blocksAfterBlock.get(parentId)!.push(b);
+    const pos = b.position ?? "top";
+    if (pos === "top") {
+      blocksTop.push(b);
+    } else if (pos === "bottom") {
+      // already collected via filter above
+    } else if (pos.startsWith("after:")) {
+      const cat = pos.slice(6);
+      if (allItemCategories.has(cat)) {
+        if (!blocksByCategory.has(cat)) blocksByCategory.set(cat, []);
+        blocksByCategory.get(cat)!.push(b);
+      } else {
+        // Target category no longer exists — fall back to top so the
+        // block doesn't silently disappear.
+        blocksTop.push(b);
+      }
+    } else if (pos.startsWith("after_block:")) {
+      const parentId = pos.slice("after_block:".length);
+      if (knownBlockIds.has(parentId)) {
+        if (!blocksAfterBlock.has(parentId)) blocksAfterBlock.set(parentId, []);
+        blocksAfterBlock.get(parentId)!.push(b);
+      } else {
+        blocksTop.push(b);
+      }
+    } else {
+      // Unknown / legacy position string — show at top.
+      blocksTop.push(b);
     }
   }
 

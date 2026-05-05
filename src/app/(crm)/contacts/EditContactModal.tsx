@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Modal from "@/components/ui/Modal";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
+import SelectOrCreate from "@/components/ui/SelectOrCreate";
 import Textarea from "@/components/ui/Textarea";
 import Button from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -80,12 +81,14 @@ export default function EditContactModal({ open, onClose, contact, onSaved }: { 
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Input label="Должность" name="position" defaultValue={contact?.position ?? ""} />
-          <Select
+          <SelectOrCreate
             label="Компания"
             name="company_id"
+            entityType="company"
             options={companies.map((c) => ({ value: c.id, label: c.name }))}
-            placeholder="Выберите компанию"
+            placeholder="Поиск по названию или ИНН..."
             defaultValue={contact?.company_id ?? ""}
+            onCreated={(item) => setCompanies((prev) => [...prev, { id: item.id, name: item.label }])}
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
