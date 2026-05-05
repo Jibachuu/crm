@@ -23,9 +23,12 @@ export async function GET(req: NextRequest) {
   if (!dealId) return NextResponse.json({ error: "deal_id required" }, { status: 400 });
 
   const admin = createAdminClient();
+  // deal_products has no `name` column — name lives on the joined
+  // products row. Including a non-existent column made the whole query
+  // 400 with "column deal_products.name does not exist" 2026-05-05.
   let q = admin
     .from("deal_products")
-    .select("id, name, quantity, unit_price, total_price, product_id, product_block, variants, products(name, sku, category, subcategory, liters, container)")
+    .select("id, quantity, unit_price, total_price, product_id, product_block, variants, base_price, category, subcategory, volume_ml, flavor, products(name, sku, category, subcategory, liters, container)")
     .eq("deal_id", dealId);
   if (block) q = q.eq("product_block", block);
   const { data, error } = await q;

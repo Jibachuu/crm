@@ -148,19 +148,26 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     type V = { label: string; price: number; quantity: number; sum?: number };
     type Row = {
       product_id: string | null;
-      name: string | null;
       quantity: number;
       unit_price: number;
       total_price: number;
       variants: V[] | null;
-      products?: { name?: string; category?: string; subcategory?: string; liters?: string; container?: string } | null;
+      base_price?: number;
+      category?: string;
+      subcategory?: string;
+      products?: { name?: string; sku?: string; category?: string; subcategory?: string; liters?: string; container?: string } | null;
     };
 
     const newItems: InvoiceItem[] = [];
     for (const r of rows as Row[]) {
       const p = r.products ?? {};
       const litersPart = p.liters ? formatLiters(p.liters) : "";
-      const baseName = [p.category, p.subcategory, litersPart, p.container, p.name ?? r.name].filter(Boolean).join(" / ");
+      // deal_products has no own `name` — pull from joined products.
+      // Override category/subcategory with row-level if set (some
+      // imports denormalised them in v30 migration).
+      const cat = r.category || p.category;
+      const sub = r.subcategory || p.subcategory;
+      const baseName = [cat, sub, litersPart, p.container, p.name].filter(Boolean).join(" / ") || p.name || "Товар";
 
       const vs = Array.isArray(r.variants) ? r.variants : [];
       if (vs.length > 0) {
