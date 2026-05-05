@@ -882,16 +882,16 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
             </p>
           </CardBody>
         ) : (
-          <div>
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: 720 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #e4e4e4", background: "#fafafa" }}>
                   <th className="text-left px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Товар</th>
-                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Кол-во</th>
-                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Баз. цена</th>
-                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Цена продажи</th>
-                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Скидка</th>
-                  <th className="text-right px-4 py-2 text-xs font-medium" style={{ color: "#888" }}>Сумма</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium whitespace-nowrap" style={{ color: "#888" }}>Кол-во</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium whitespace-nowrap" style={{ color: "#888" }}>Баз. цена</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium whitespace-nowrap" style={{ color: "#888" }}>Цена продажи</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium whitespace-nowrap" style={{ color: "#888" }}>Скидка</th>
+                  <th className="text-right px-4 py-2 text-xs font-medium whitespace-nowrap" style={{ color: "#888" }}>Сумма</th>
                   <th className="px-2 py-2 text-xs font-medium" style={{ color: "#888", width: 70 }}></th>
                 </tr>
               </thead>
@@ -925,8 +925,8 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                                   <span className="flex-1 min-w-0 break-words">• {v.label}</span>
                                   <span className="whitespace-nowrap" style={{ color: "#bf7600" }}>{v.quantity} × {formatCurrency(v.price)} = {formatCurrency(v.sum)}</span>
                                   <button onClick={() => handleVariantRemove(item.id, i)}
-                                    className="text-red-300 hover:text-red-600 flex-shrink-0" title="Удалить вариацию">
-                                    <X size={11} />
+                                    className="p-1 rounded hover:bg-red-50 text-red-400 hover:text-red-600 flex-shrink-0" title="Удалить вариацию">
+                                    <X size={14} />
                                   </button>
                                 </div>
                               ))}
