@@ -128,6 +128,63 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     })));
   }
 
+  // Pull "Заказ"-block products straight from the linked deal into the
+  // invoice (request 2026-05-05). Variants get flattened — one invoice
+  // line per variant — so the printed счёт matches what's в сделке.
+  async function importFromDealOrder() {
+    const dealId = form.deal_id;
+    if (!dealId) { alert("Сначала привяжите счёт к сделке"); return; }
+    const supabase = createClient();
+    const { data: rows } = await supabase
+      .from("deal_products")
+      .select("id, name, quantity, unit_price, total_price, product_id, variants, products(name, sku, category, subcategory, liters, container)")
+      .eq("deal_id", dealId)
+      .eq("product_block", "order");
+    if (!rows?.length) { alert("В сделке нет товаров в блоке «Заказ»"); return; }
+
+    type V = { label: string; price: number; quantity: number; sum?: number };
+    type Row = {
+      product_id: string | null;
+      name: string | null;
+      quantity: number;
+      unit_price: number;
+      total_price: number;
+      variants: V[] | null;
+      products?: { name?: string; category?: string; subcategory?: string; liters?: string; container?: string } | null;
+    };
+
+    const newItems: InvoiceItem[] = [];
+    for (const r of rows as Row[]) {
+      const p = r.products ?? {};
+      const litersPart = p.liters ? formatLiters(p.liters) : "";
+      const baseName = [p.category, p.subcategory, litersPart, p.container, p.name ?? r.name].filter(Boolean).join(" / ");
+
+      const vs = Array.isArray(r.variants) ? r.variants : [];
+      if (vs.length > 0) {
+        for (const v of vs) {
+          newItems.push({
+            product_id: r.product_id ?? "",
+            name: v.label ? `${baseName} / ${v.label}` : baseName,
+            quantity: v.quantity || 1,
+            unit: "шт",
+            price: v.price ?? 0,
+            total: v.sum ?? (v.price ?? 0) * (v.quantity || 1),
+          });
+        }
+      } else {
+        newItems.push({
+          product_id: r.product_id ?? "",
+          name: baseName,
+          quantity: r.quantity || 1,
+          unit: "шт",
+          price: r.unit_price ?? 0,
+          total: r.total_price ?? (r.unit_price ?? 0) * (r.quantity || 1),
+        });
+      }
+    }
+    setItems(newItems);
+  }
+
   function selectBuyer(companyId: string) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const c = companies.find((co: any) => co.id === companyId);
@@ -690,6 +747,16 @@ function doPrint(){
             <div className="flex items-center justify-between mb-2">
               <label style={{ ...lblStyle, marginBottom: 0 }}>Товары</label>
               <div className="flex items-center gap-2">
+                {/* Import "Заказ" rows from the linked deal — only useful
+                    when a deal is actually attached to this invoice. */}
+                {form.deal_id && (
+                  <button type="button" onClick={() => {
+                    if (items.length > 0 && !confirm("Заменить текущие позиции на товары из заказа сделки?")) return;
+                    importFromDealOrder();
+                  }} className="text-xs px-2 py-1 rounded" style={{ color: "#2e7d32", border: "1px solid #c8e6c9", background: "#f0f9f0" }}>
+                    Из заказа сделки
+                  </button>
+                )}
                 {quotes.length > 0 && (
                   /* "Из КП..." — same problem as the deal picker, made
                       searchable. value="" so it acts as an action-picker:
