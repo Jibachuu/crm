@@ -674,10 +674,14 @@ function doPrint(){
           <div className="grid grid-cols-2 gap-3">
             <div><label style={lblStyle}>Основание</label><input value={form.basis} onChange={(e) => setForm({ ...form, basis: e.target.value })} style={inputStyle} /></div>
             <div><label style={lblStyle}>Привязать к сделке</label>
-              <select value={form.deal_id} onChange={(e) => setForm({ ...form, deal_id: e.target.value })} style={inputStyle}>
-                <option value="">Не привязан</option>
-                {deals.map((d: { id: string; title: string }) => <option key={d.id} value={d.id}>{d.title}</option>)}
-              </select>
+              {/* Native <select> with hundreds of deals isn't searchable
+                  and forced operators to scroll alphabetically. */}
+              <SearchableSelect
+                value={form.deal_id}
+                onChange={(id) => setForm({ ...form, deal_id: id })}
+                options={deals.map((d: { id: string; title: string }) => ({ id: d.id, label: d.title }))}
+                placeholder="Поиск сделки по названию..."
+              />
             </div>
           </div>
 
@@ -687,12 +691,23 @@ function doPrint(){
               <label style={{ ...lblStyle, marginBottom: 0 }}>Товары</label>
               <div className="flex items-center gap-2">
                 {quotes.length > 0 && (
-                  <select onChange={(e) => { importFromQuote(e.target.value); e.target.value = ""; }}
-                    className="text-xs px-2 py-1 rounded" style={{ border: "1px solid #e65c00", color: "#e65c00", maxWidth: 180 }}>
-                    <option value="">Из КП...</option>
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    {quotes.map((q: any) => <option key={q.id} value={q.id}>КП #{q.quote_number} {q.companies?.name ? `· ${q.companies.name}` : ""}</option>)}
-                  </select>
+                  /* "Из КП..." — same problem as the deal picker, made
+                      searchable. value="" so it acts as an action-picker:
+                      selecting a КП calls importFromQuote and resets. */
+                  <div style={{ minWidth: 240 }}>
+                    <SearchableSelect
+                      value=""
+                      onChange={(id) => { if (id) importFromQuote(id); }}
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      options={(quotes as any[]).map((q) => ({
+                        id: q.id,
+                        label: `КП #${q.quote_number}`,
+                        sublabel: q.companies?.name ?? "",
+                      }))}
+                      placeholder="Импорт из КП..."
+                      style={{ border: "1px solid #e65c00", borderRadius: 4, padding: "4px 8px", fontSize: 12, width: "100%", outline: "none", color: "#e65c00" }}
+                    />
+                  </div>
                 )}
                 <button onClick={addItem} className="text-xs px-2 py-1 rounded" style={{ color: "#0067a5", border: "1px solid #0067a5" }}>+ Строка</button>
               </div>
