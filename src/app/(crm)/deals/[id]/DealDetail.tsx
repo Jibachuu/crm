@@ -228,8 +228,18 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
     router.push("/deals");
   }
 
-  const totalRequest = requestProducts.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
-  const totalOrder = orderProducts.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
+  // Use variant sums when a row has variants — stored total_price can
+  // be stale (e.g. legacy quantity*unit_price=35 900 while variants
+  // actually total 2 590, real case 2026-05-05).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function rowSum(p: any): number {
+    if (Array.isArray(p.variants) && p.variants.length > 0) {
+      return p.variants.reduce((s: number, v: { sum?: number; price: number; quantity: number }) => s + (v.sum ?? v.price * v.quantity), 0);
+    }
+    return p.total_price ?? 0;
+  }
+  const totalRequest = requestProducts.reduce((s: number, p: unknown) => s + rowSum(p), 0);
+  const totalOrder = orderProducts.reduce((s: number, p: unknown) => s + rowSum(p), 0);
   const stageIndex = STAGES.findIndex((s) => s.key === deal.stage);
 
   // Recalculate deal.amount from products. Only "order" rows count — "request"
@@ -238,7 +248,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
   function recalcDealAmount(products: any[]) {
     const total = products
       .filter((p: { product_block?: string }) => p.product_block === "order")
-      .reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
+      .reduce((s: number, p: unknown) => s + rowSum(p), 0);
     if (total === deal.amount) return;
     setDeal((prev: typeof deal) => ({ ...prev, amount: total }));
     fetch("/api/deals", {
@@ -941,13 +951,21 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-right">
-                      <input type="number" min="1" defaultValue={item.quantity}
-                        className="w-14 text-sm text-right px-1 py-0.5 rounded focus:outline-none" style={{ border: "1px solid #e0e0e0", color: "#555" }}
-                        onBlur={(e) => handleFieldUpdate(item.id, "quantity", Number(e.target.value) || 1)} />
+                    <td className="px-4 py-2 text-right whitespace-nowrap">
+                      {/* Variants carry their own quantities — a top-row
+                          quantity is meaningless and was confusing
+                          (10 displayed while variants summed to 1).
+                          Show "—" when variants exist. */}
+                      {item.variants && item.variants.length > 0 ? (
+                        <span className="text-xs" style={{ color: "#aaa" }}>—</span>
+                      ) : (
+                        <input type="number" min="1" defaultValue={item.quantity}
+                          className="w-14 text-sm text-right px-1 py-0.5 rounded focus:outline-none" style={{ border: "1px solid #e0e0e0", color: "#555" }}
+                          onBlur={(e) => handleFieldUpdate(item.id, "quantity", Number(e.target.value) || 1)} />
+                      )}
                     </td>
-                    <td className="px-4 py-2 text-right" style={{ color: "#aaa" }}>{item.base_price ? formatCurrency(item.base_price) : "—"}</td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="px-4 py-2 text-right whitespace-nowrap" style={{ color: "#aaa" }}>{item.base_price ? formatCurrency(item.base_price) : "—"}</td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">
                       {/* When the row carries variants, the per-row
                           unit_price is meaningless — different variants
                           have different prices. Showing the (stale)
@@ -965,10 +983,14 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                           onBlur={(e) => handleFieldUpdate(item.id, "unit_price", Number(e.target.value) || 0)} />
                       )}
                     </td>
-                    <td className="px-4 py-2 text-right" style={{ color: item.discount_percent > 0 ? "#d32f2f" : "#aaa" }}>
+                    <td className="px-4 py-2 text-right whitespace-nowrap" style={{ color: item.discount_percent > 0 ? "#d32f2f" : "#aaa" }}>
                       {item.discount_percent > 0 ? `-${item.discount_percent}%` : "—"}
                     </td>
-                    <td className="px-4 py-2 text-right font-semibold" style={{ color: "#333" }}>{formatCurrency(item.total_price)}</td>
+                    <td className="px-4 py-2 text-right font-semibold whitespace-nowrap" style={{ color: "#333" }}>{formatCurrency(
+                      item.variants && item.variants.length > 0
+                        ? item.variants.reduce((s, v) => s + (v.sum ?? v.price * v.quantity), 0)
+                        : item.total_price
+                    )}</td>
                     <td className="px-2 py-2 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button onClick={() => onEdit?.(item)} className="p-1 rounded hover:bg-blue-50" title="Редактировать">
