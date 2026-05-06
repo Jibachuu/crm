@@ -2,6 +2,40 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// Server-side search — bypasses RLS so the company-detail "+ Привязать"
+// picker can find any contact, not just ones the manager can see
+// directly. Used to filter `company_id IS NULL` (only orphan contacts),
+// but operators wanted to re-link existing contacts too — drop that
+// filter.
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const q = (searchParams.get("q") ?? "").trim();
+  const onlyOrphans = searchParams.get("only_orphans") === "1";
+  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? "20"), 1), 100);
+
+  const admin = createAdminClient();
+  let query = admin
+    .from("contacts")
+    .select("id, full_name, phone, phone_mobile, email, company_id, companies(id, name)")
+    .is("deleted_at", null)
+    .order("full_name");
+  if (onlyOrphans) query = query.is("company_id", null);
+  if (q.length >= 2) {
+    // ilike across name, phone, mobile and email so search by digits
+    // or email also works (operators expected it).
+    query = query.or(`full_name.ilike.%${q}%,phone.ilike.%${q}%,phone_mobile.ilike.%${q}%,email.ilike.%${q}%`);
+  }
+  query = query.limit(limit);
+
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ contacts: data ?? [] });
+}
+
 // Create a new contact (bypasses RLS via admin client)
 export async function POST(req: NextRequest) {
   const supabase = await createClient();

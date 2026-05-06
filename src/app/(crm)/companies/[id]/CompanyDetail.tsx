@@ -270,22 +270,38 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                   <input value={contactSearch} onChange={async (e) => {
                     setContactSearch(e.target.value);
                     if (e.target.value.length >= 2) {
-                      const { data } = await createClient().from("contacts").select("id, full_name, phone").is("company_id", null).ilike("full_name", `%${e.target.value}%`).limit(10);
-                      setContactResults(data ?? []);
+                      // Search through admin API — RLS hid contacts
+                      // belonging to other managers, and the old query
+                      // also excluded anyone who already had a company,
+                      // so re-attaching wasn't possible (the Екатерина
+                      // case 2026-05-06).
+                      const res = await fetch(`/api/contacts?q=${encodeURIComponent(e.target.value)}&limit=15`);
+                      const d = await res.json().catch(() => ({ contacts: [] }));
+                      setContactResults(d.contacts ?? []);
                     } else setContactResults([]);
-                  }} placeholder="Поиск контакта без компании..." className="w-full text-xs px-3 py-1.5 rounded mb-2 focus:outline-none" style={{ border: "1px solid #d0d0d0" }} />
-                  {contactResults.length > 0 && contactResults.map((c: { id: string; full_name: string; phone?: string }) => (
-                    <button key={c.id} onClick={async () => {
-                      const { error } = await apiPut("/api/contacts", { id: c.id, company_id: company.id });
-                      if (error) { alert("Не удалось привязать контакт: " + error); return; }
-                      setCompanyContacts((prev: { id: string }[]) => [...prev, c]);
-                      setAddContactOpen(false); setContactSearch(""); setContactResults([]);
-                    }} className="w-full text-left text-xs px-3 py-2 rounded hover:bg-blue-50">
-                      {c.full_name} {c.phone ? `· ${c.phone}` : ""}
-                    </button>
-                  ))}
+                  }} placeholder="Поиск по имени / телефону / email..." className="w-full text-xs px-3 py-1.5 rounded mb-2 focus:outline-none" style={{ border: "1px solid #d0d0d0" }} />
+                  {contactResults.length > 0 && contactResults.map((c: { id: string; full_name: string; phone?: string; email?: string; company_id?: string | null; companies?: { name?: string } | null }) => {
+                    const alreadyHere = c.company_id === company.id;
+                    const linkedElsewhere = !!c.company_id && c.company_id !== company.id;
+                    return (
+                      <button key={c.id} onClick={async () => {
+                        if (alreadyHere) { alert("Контакт уже привязан к этой компании."); return; }
+                        if (linkedElsewhere && !confirm(`Контакт уже в компании «${c.companies?.name ?? "(другой)"}». Перенести сюда?`)) return;
+                        const { error } = await apiPut("/api/contacts", { id: c.id, company_id: company.id });
+                        if (error) { alert("Не удалось привязать контакт: " + error); return; }
+                        setCompanyContacts((prev: { id: string }[]) => [...prev, c]);
+                        setAddContactOpen(false); setContactSearch(""); setContactResults([]);
+                      }} className="w-full text-left text-xs px-3 py-2 rounded hover:bg-blue-50">
+                        <span className="text-blue-700 font-medium">{c.full_name}</span>
+                        {c.phone && <span className="text-slate-500"> · {c.phone}</span>}
+                        {c.email && <span className="text-slate-400"> · {c.email}</span>}
+                        {alreadyHere && <span className="text-slate-400 italic"> — уже здесь</span>}
+                        {linkedElsewhere && <span style={{ color: "#bf7600" }}> — в «{c.companies?.name ?? "?"}»</span>}
+                      </button>
+                    );
+                  })}
                   {contactSearch.length >= 2 && contactResults.length === 0 && (
-                    <p className="text-xs py-2" style={{ color: "#aaa" }}>Не найдено (ищет контакты без компании)</p>
+                    <p className="text-xs py-2" style={{ color: "#aaa" }}>Ничего не найдено</p>
                   )}
                 </div>
               )}
@@ -310,6 +326,21 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                             {linkingContact === c.id ? "..." : "Мессенджеры"}
                           </button>
                         )}
+                        {/* Unlink — keeps the contact, just clears
+                            company_id so it stops appearing here.
+                            Useful when wrong contact got attached. */}
+                        <button
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            if (!confirm(`Отвязать "${c.full_name}" от этой компании? Сам контакт не удаляется.`)) return;
+                            const { error } = await apiPut("/api/contacts", { id: c.id, company_id: null });
+                            if (error) { alert("Не удалось отвязать: " + error); return; }
+                            setCompanyContacts((prev: { id: string }[]) => prev.filter((x) => x.id !== c.id));
+                          }}
+                          className="p-1 rounded hover:bg-red-50"
+                          title="Отвязать от компании">
+                          <Trash2 size={11} style={{ color: "#c62828" }} />
+                        </button>
                       </div>
                     </li>
                   ))}
