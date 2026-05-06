@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTimezoneFromRegion } from "@/components/ui/ClientTimeIndicator";
+import { getTimezoneFromRegion } from "@/lib/timezone";
 import Header from "@/components/layout/Header";
 import TasksBoard from "./TasksBoard";
 
