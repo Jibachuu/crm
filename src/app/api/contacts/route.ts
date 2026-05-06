@@ -25,9 +25,23 @@ export async function GET(req: NextRequest) {
     .order("full_name");
   if (onlyOrphans) query = query.is("company_id", null);
   if (q.length >= 2) {
-    // ilike across name, phone, mobile and email so search by digits
-    // or email also works (operators expected it).
-    query = query.or(`full_name.ilike.%${q}%,phone.ilike.%${q}%,phone_mobile.ilike.%${q}%,email.ilike.%${q}%`);
+    // ilike across name + phone columns + email so search by digits or
+    // email also works.
+    //
+    // Cyrillic ё/е equivalence: PostgreSQL treats them as distinct
+    // characters, so searching "Артём" missed "Артем" (real bug
+    // 2026-05-06). Generate up to three name-variants and OR them.
+    // Phone/email don't have ё, so they keep the original term.
+    const qLower = q.toLowerCase();
+    const nameVariants = new Set<string>([qLower]);
+    if (qLower.includes("ё")) nameVariants.add(qLower.replace(/ё/g, "е"));
+    if (qLower.includes("е")) nameVariants.add(qLower.replace(/е/g, "ё"));
+    const escape = (s: string) => s.replace(/[%_,()]/g, "\\$&");
+    const ors: string[] = [];
+    for (const v of nameVariants) ors.push(`full_name.ilike.%${escape(v)}%`);
+    const escapedQ = escape(q);
+    ors.push(`phone.ilike.%${escapedQ}%`, `phone_mobile.ilike.%${escapedQ}%`, `email.ilike.%${escapedQ}%`);
+    query = query.or(ors.join(","));
   }
   query = query.limit(limit);
 

@@ -120,12 +120,14 @@ export default function ContactDetail({ contact: initialContact, communications:
   async function searchMerge(q: string) {
     setMergeSearch(q);
     if (q.length < 2) { setMergeResults([]); return; }
-    const { data } = await createClient().from("contacts")
-      .select("id, full_name, phone, email")
-      .neq("id", contact.id)
-      .or(`full_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`)
-      .limit(10);
-    setMergeResults(data ?? []);
+    // Admin-routed search: handles cyrillic ё/е equivalence and
+    // bypasses RLS so duplicates created by other managers / webhooks
+    // surface here. Real bug 2026-05-06: the duplicate "Артем" (no ё)
+    // didn't show up when searching from "Артём, ФСК".
+    const res = await fetch(`/api/contacts?q=${encodeURIComponent(q)}&limit=15`);
+    if (!res.ok) { setMergeResults([]); return; }
+    const d = await res.json() as { contacts?: { id: string; full_name: string; phone?: string; email?: string }[] };
+    setMergeResults((d.contacts ?? []).filter((c) => c.id !== contact.id));
   }
 
   async function doMerge() {
