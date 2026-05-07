@@ -138,13 +138,34 @@ export async function POST(req: NextRequest) {
     stageId = stage?.id ?? null;
   }
 
-  // Create lead
-  const leadTitle = `Заявка с сайта: ${finalName || finalEmail || finalPhone}`;
+  // Detect a PAID order vs an ordinary form submission. Tilda's
+  // payment-system webhook posts a `payment[orderid]` and either
+  // `payment[amount]` or `payment[sys]`. Form-only submissions don't.
+  const orderId = body["payment[orderid]"] || body["payment[order]"] || "";
+  const paidAmountStr = body["payment[amount]"] || body["payment[sum]"] || body["amount"] || "";
+  const paidAmount = Number(String(paidAmountStr).replace(/[^\d.,]/g, "").replace(",", "."));
+  const paymentSys = body["payment[sys]"] || body["payment[system]"] || "";
+  const isPaidOrder = !!orderId || (Number.isFinite(paidAmount) && paidAmount > 0) || !!paymentSys;
+
+  const leadTitle = isPaidOrder
+    ? `Оплачено: ${finalName || finalEmail || finalPhone}${orderId ? ` (заказ ${orderId})` : ""}${Number.isFinite(paidAmount) && paidAmount > 0 ? ` — ${paidAmount.toFixed(0)} ₽` : ""}`
+    : `Заявка с сайта: ${finalName || finalEmail || finalPhone}`;
+
   const { data: lead, error } = await admin.from("leads").insert({
     title: leadTitle,
-    source: "website",
-    status: "new",
-    description: [message, pageUrl ? `Страница: ${pageUrl}` : "", `Форма: ${source}`, `\n--- Сырые данные ---\n${rawData}`].filter(Boolean).join("\n"),
+    source: isPaidOrder ? "tilda_paid" : "website",
+    // Paid orders skip "новый/первый контакт" — they're already past
+    // qualification. Use "samples" stage if it exists in the funnel,
+    // otherwise leave default.
+    status: isPaidOrder ? "samples_shipped" : "new",
+    description: [
+      message,
+      pageUrl ? `Страница: ${pageUrl}` : "",
+      `Форма: ${source}`,
+      isPaidOrder ? `Платёжная система: ${paymentSys || "—"}` : "",
+      isPaidOrder && Number.isFinite(paidAmount) && paidAmount > 0 ? `Сумма: ${paidAmount} ₽` : "",
+      `\n--- Сырые данные ---\n${rawData}`,
+    ].filter(Boolean).join("\n"),
     contact_id: contactId,
     company_id: companyId,
     funnel_id: funnel?.id ?? null,
@@ -183,7 +204,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, lead_id: lead?.id, contact_id: contactId, products_count: 0 });
+  return NextResponse.json({
+    ok: true,
+    lead_id: lead?.id,
+    contact_id: contactId,
+    paid_order: isPaidOrder,
+    order_id: orderId || null,
+    amount: Number.isFinite(paidAmount) && paidAmount > 0 ? paidAmount : null,
+  });
 }
 
 // Also accept GET for Tilda test pings
