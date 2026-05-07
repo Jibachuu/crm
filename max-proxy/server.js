@@ -72,7 +72,17 @@ function handleWsMessage(raw) {
       if (pingInterval) clearInterval(pingInterval);
       pingInterval = setInterval(() => { if (ws && ws.readyState === 1) send(1, { interactive: true }); }, 25000);
     }
-    if (m.opcode === 19 && m.cmd === 3) { connected = false; }
+    if (m.opcode === 19 && m.cmd === 3) {
+      connected = false;
+      console.log("[MAX] Server-initiated logout. payload:", JSON.stringify(m.payload).slice(0, 300));
+    }
+    // Log any other opcode that arrives JUST before a disconnect — when
+    // the token is bad MAX often replies with an error frame on opcode
+    // 19 cmd 1 with no profile. Helpful diagnostic for "token expired"
+    // vs "session kicked" cases (2026-05-07 disconnect-loop).
+    if (m.opcode === 19 && m.cmd === 1 && !m.payload?.profile) {
+      console.log("[MAX] Login failed. payload:", JSON.stringify(m.payload).slice(0, 300));
+    }
     if (m.opcode === 64 && m.cmd === 1 && m.payload?.message) addMessage(m.payload.chatId, m.payload.message);
   } catch {}
 }
@@ -273,13 +283,39 @@ function addMessage(chatId, msg) {
   if (msgs.length > 200) chatMessages.set(chatId, msgs.slice(-200));
 }
 
+// Exponential backoff for reconnects — when MAX rejects the token /
+// kicks our session, the previous flat 5s retry hammered the server
+// once a second (real loop seen 2026-05-07: ~1 reconnect/sec for hours
+// because each "OK!" was followed by an immediate close).
+let reconnectDelay = 5000;
+const RECONNECT_DELAY_MAX = 5 * 60 * 1000; // 5 min cap
+function bumpDelay() { reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_DELAY_MAX); }
+function resetDelay() { reconnectDelay = 5000; }
+
 function connect() {
   if (!MAX_TOKEN || (ws && ws.readyState === 1)) return;
-  console.log("[MAX] Connecting...");
+  console.log("[MAX] Connecting... (next retry in " + Math.round(reconnectDelay / 1000) + "s if this fails)");
   ws = new WebSocket(WS_URL, { headers: { Origin: "https://web.max.ru", "User-Agent": "Mozilla/5.0 Chrome/146.0.0.0" } });
+  let establishedAt = 0;
   ws.on("open", () => send(6, { deviceId: "web_crm_artevo", userAgent: { deviceType: "WEB", locale: "ru", deviceLocale: "ru", osVersion: "Android", deviceName: "Chrome" }, headerUserAgent: "Mozilla/5.0 Chrome/146.0.0.0" }));
-  ws.on("message", r => handleWsMessage(r.toString()));
-  ws.on("close", () => { console.log("[MAX] Disconnected"); connected = false; ws = null; if (pingInterval) { clearInterval(pingInterval); pingInterval = null; } for (const [,v] of pending) v.resolve(null); pending.clear(); setTimeout(connect, 5000); });
+  ws.on("message", r => {
+    handleWsMessage(r.toString());
+    // First successful login → reset backoff so a transient blip
+    // recovers instantly. We consider "received profile" as success.
+    if (connected && !establishedAt) { establishedAt = Date.now(); resetDelay(); }
+  });
+  ws.on("close", (code, reason) => {
+    const heldFor = establishedAt ? Date.now() - establishedAt : 0;
+    console.log(`[MAX] Disconnected (code=${code} reason=${(reason || "").toString().slice(0, 80)} held=${heldFor}ms)`);
+    connected = false; ws = null;
+    if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+    for (const [, v] of pending) v.resolve(null); pending.clear();
+    // If the connection didn't survive even 10s, treat it as a token /
+    // session failure and bump the backoff. Otherwise keep retrying
+    // fast (network blip).
+    if (heldFor < 10000) bumpDelay();
+    setTimeout(connect, reconnectDelay);
+  });
   ws.on("error", () => {});
 }
 
