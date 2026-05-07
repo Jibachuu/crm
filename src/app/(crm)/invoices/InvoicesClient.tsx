@@ -113,19 +113,28 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   async function importFromQuote(quoteId: string) {
     if (!quoteId) return;
     const supabase = createClient();
-    const { data: qItems } = await supabase.from("quote_items").select("*").eq("quote_id", quoteId).order("sort_order");
+    const { data: qItems } = await supabase.from("quote_items").select("*, products(sku, article)").eq("quote_id", quoteId).order("sort_order");
     if (!qItems?.length) { alert("В КП нет товаров"); return; }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const q = quotes.find((qq: any) => qq.id === quoteId);
     if (q?.company_id) selectBuyer(q.company_id);
-    setItems(qItems.map((qi: { product_id?: string; name: string; qty: number; client_price: number; sum: number }) => ({
-      product_id: qi.product_id || "",
-      name: qi.name,
-      quantity: qi.qty ?? 1,
-      unit: "шт",
-      price: qi.client_price ?? 0,
-      total: qi.sum ?? 0,
-    })));
+    setItems(qItems.map((qi: { product_id?: string; name: string; article?: string; qty: number; client_price: number; sum: number; products?: { sku?: string; article?: string } | null }) => {
+      // SKU/article must end up in the printed invoice line — operators
+      // were complaining "не видно артикулов" 2026-05-07. Quotes carry
+      // either an inline `article` (manual rows) or a sku via the
+      // joined products row. Append if not already in the name.
+      const sku = qi.article || qi.products?.article || qi.products?.sku || "";
+      const baseName = qi.name || "";
+      const withSku = sku && !baseName.toLowerCase().includes(sku.toLowerCase()) ? `${baseName} / арт. ${sku}` : baseName;
+      return {
+        product_id: qi.product_id || "",
+        name: withSku,
+        quantity: qi.qty ?? 1,
+        unit: "шт",
+        price: qi.client_price ?? 0,
+        total: qi.sum ?? 0,
+      };
+    }));
   }
 
   // Pull "Заказ"-block products straight from the linked deal into the
@@ -167,7 +176,12 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       // imports denormalised them in v30 migration).
       const cat = r.category || p.category;
       const sub = r.subcategory || p.subcategory;
-      const baseName = [cat, sub, litersPart, p.container, p.name].filter(Boolean).join(" / ") || p.name || "Товар";
+      const composed = [cat, sub, litersPart, p.container, p.name].filter(Boolean).join(" / ") || p.name || "Товар";
+      // Always append /арт. <sku> so the printed invoice carries the
+      // article — operators rely on it for stock lookups (2026-05-07).
+      const baseName = p.sku && !composed.toLowerCase().includes(p.sku.toLowerCase())
+        ? `${composed} / арт. ${p.sku}`
+        : composed;
 
       const vs = Array.isArray(r.variants) ? r.variants : [];
       if (vs.length > 0) {
