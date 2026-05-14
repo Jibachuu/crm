@@ -142,12 +142,18 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     return () => { cancelled = true; };
   }, [previewInvoice, previewItems, supplier]);
 
-  // Create form state
+  // Create form state. Comment defaults to the standard shipping memo
+  // (backlog v6 §11.3 — Артево's two normal сроки отгрузки: 10 дней
+  // обычные / 12 индивидуальные). Operators edit per-invoice when the
+  // деал has a non-standard срок, but the prefill saves the typing in
+  // the common case.
   const [form, setForm] = useState({
     invoice_date: new Date().toISOString().slice(0, 10),
     payment_due: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
     buyer_company_id: "", buyer_name: "", buyer_inn: "", buyer_kpp: "", buyer_address: "",
-    basis: "Основной договор", deal_id: "", comment: "", vat_included: false,
+    basis: "Основной договор", deal_id: "",
+    comment: "Срок отгрузки до 10 рабочих дней (12 при индивидуальном заказе)",
+    vat_included: false,
   });
   const [items, setItems] = useState<InvoiceItem[]>([{ product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]);
 
