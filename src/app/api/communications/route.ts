@@ -19,6 +19,27 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient();
+
+  // Auto-fill the dedicated FK column (deal_id/company_id/lead_id/contact_id)
+  // from entity_type+entity_id so the per-entity timeline filter can use the
+  // simple `${fk}.eq.${id}` clause. Without this, new notes only have
+  // entity_type/entity_id set and queries depending on the FK miss them
+  // (backlog v6 §9.3 — deal notes vanish from the deal feed). Caller-provided
+  // FKs win over inferred values.
+  const fkByEntity: Record<string, string> = {
+    deal: "deal_id", company: "company_id", lead: "lead_id", contact: "contact_id",
+  };
+  const inferredFk = fkByEntity[body.entity_type as string];
+  const fkValues: Record<string, string | null> = {
+    contact_id: body.contact_id || null,
+    company_id: body.company_id || null,
+    lead_id: body.lead_id || null,
+    deal_id: body.deal_id || null,
+  };
+  if (inferredFk && body.entity_id && !fkValues[inferredFk]) {
+    fkValues[inferredFk] = body.entity_id;
+  }
+
   // NB: only fields that actually exist in the communications table.
   // Schema lives in supabase/schema.sql + migrations v31/v36/v53/v73.
   // Backlog v5 §1.4.1: optional file attachments on notes.
@@ -35,10 +56,7 @@ export async function POST(req: NextRequest) {
       subject: body.subject || null,
       external_id: body.external_id || null,
       sender_name: body.sender_name || null,
-      contact_id: body.contact_id || null,
-      company_id: body.company_id || null,
-      lead_id: body.lead_id || null,
-      deal_id: body.deal_id || null,
+      ...fkValues,
       attachment_url: body.attachment_url || null,
       attachment_name: body.attachment_name || null,
       attachment_size: body.attachment_size || null,
