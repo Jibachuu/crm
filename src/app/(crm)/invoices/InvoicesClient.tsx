@@ -159,23 +159,58 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const q = quotes.find((qq: any) => qq.id === quoteId);
     if (q?.company_id) selectBuyer(q.company_id);
-    setItems(qItems.map((qi: { product_id?: string; name: string; article?: string; qty: number; client_price: number; sum: number; products?: { sku?: string; article?: string } | null }) => {
+    type V = { label: string; price: number; quantity: number; sum?: number };
+    type QI = {
+      product_id?: string;
+      name: string;
+      article?: string;
+      qty: number;
+      client_price: number;
+      sum: number;
+      variants?: V[] | null;
+      products?: { sku?: string; article?: string } | null;
+    };
+    const out: InvoiceItem[] = [];
+    for (const qi of qItems as QI[]) {
       // SKU/article must end up in the printed invoice line — operators
       // were complaining "не видно артикулов" 2026-05-07. Quotes carry
       // either an inline `article` (manual rows) or a sku via the
       // joined products row. Append if not already in the name.
       const sku = qi.article || qi.products?.article || qi.products?.sku || "";
       const baseName = qi.name || "";
-      const withSku = sku && !baseName.toLowerCase().includes(sku.toLowerCase()) ? `${baseName} / арт. ${sku}` : baseName;
-      return {
-        product_id: qi.product_id || "",
-        name: withSku,
-        quantity: qi.qty ?? 1,
-        unit: "шт",
-        price: qi.client_price ?? 0,
-        total: qi.sum ?? 0,
-      };
-    }));
+      const withSku = sku && !baseName.toLowerCase().includes(sku.toLowerCase())
+        ? `${baseName} / арт. ${sku}`
+        : baseName;
+      // Backlog v6 §6.4 — quotes with chosen variants (e.g. флакон 500мл +
+      // УФ-печать) were collapsing back to the base price/quantity. Mirror
+      // the /api/invoices/from-quote behaviour: one invoice line per
+      // variant, with the variant label appended and its own price/qty/sum.
+      const variants = Array.isArray(qi.variants) ? qi.variants : [];
+      if (variants.length > 0) {
+        for (const v of variants) {
+          const qty = v.quantity || 1;
+          const price = v.price || 0;
+          out.push({
+            product_id: qi.product_id || "",
+            name: `${withSku} / ${v.label}`,
+            quantity: qty,
+            unit: "шт",
+            price,
+            total: v.sum ?? price * qty,
+          });
+        }
+      } else {
+        out.push({
+          product_id: qi.product_id || "",
+          name: withSku,
+          quantity: qi.qty ?? 1,
+          unit: "шт",
+          price: qi.client_price ?? 0,
+          total: qi.sum ?? 0,
+        });
+      }
+    }
+    setItems(out);
   }
 
   // Pull "Заказ"-block products straight from the linked deal into the
