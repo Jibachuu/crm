@@ -30,8 +30,9 @@ export async function PATCH(req: NextRequest) {
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
   const updates: Record<string, unknown> = {};
+  // base_price editable from EditProductModal — backlog v6 §2.1.
   for (const k of [
-    "quantity", "unit_price", "discount_percent", "total_price",
+    "quantity", "unit_price", "base_price", "discount_percent", "total_price",
     "lifecycle_days", "variants", "product_block",
   ]) {
     if (body[k] !== undefined) updates[k] = body[k];
@@ -42,7 +43,8 @@ export async function PATCH(req: NextRequest) {
 
   const admin = createAdminClient();
   const { data, error } = await admin.from("lead_products")
-    .update(updates).eq("id", body.id).select("*").single();
+    .update(updates).eq("id", body.id)
+    .select("*, products(name, sku, image_url)").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ product: data });
 }

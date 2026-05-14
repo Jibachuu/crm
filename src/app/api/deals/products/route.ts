@@ -61,9 +61,12 @@ export async function PATCH(req: NextRequest) {
 
   const updates: Record<string, unknown> = {};
   // Whitelist editable fields so a malformed body can't write nonsense
-  // columns (e.g. created_by, deal_id).
+  // columns (e.g. created_by, deal_id). base_price is editable from
+  // EditProductModal (backlog v6 §2.1 — leaving it out silently dropped
+  // base-price updates, which the modal then re-derived as the price-reset
+  // bug after refresh).
   for (const k of [
-    "quantity", "unit_price", "discount_percent", "total_price",
+    "quantity", "unit_price", "base_price", "discount_percent", "total_price",
     "lifecycle_days", "variants", "product_block",
   ]) {
     if (body[k] !== undefined) updates[k] = body[k];
@@ -74,7 +77,8 @@ export async function PATCH(req: NextRequest) {
 
   const admin = createAdminClient();
   const { data, error } = await admin.from("deal_products")
-    .update(updates).eq("id", body.id).select("*").single();
+    .update(updates).eq("id", body.id)
+    .select("*, products(name, sku, image_url)").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ product: data });
 }

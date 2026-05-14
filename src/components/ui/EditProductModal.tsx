@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Trash2, Plus } from "lucide-react";
 import Modal from "./Modal";
 import Button from "./Button";
-import { createClient } from "@/lib/supabase/client";
+import { apiPatch } from "@/lib/api/client";
 import { formatCurrency } from "@/lib/utils";
 
 interface ItemVariant { label: string; price: number; quantity: number; sum: number; image_url?: string }
@@ -105,30 +105,30 @@ export default function EditProductModal({ open, onClose, entityType, item, onSa
   async function handleSave() {
     if (!item) return;
     setLoading(true);
-    const supabase = createClient();
-    const table = entityType === "lead" ? "lead_products" : "deal_products";
+    // Route through admin-backed API — direct supabase.from(...).update
+    // silently fails under RLS for managers (backlog v6 §2.1/§2.2 — edit
+    // icon "did nothing", variant prices "reset to base" because nothing
+    // was actually persisted).
+    const path = entityType === "lead" ? "/api/leads/products" : "/api/deals/products";
+    const { data, error } = await apiPatch<{ product: ExistingItem & { products?: ExistingItem["products"] } }>(path, {
+      id: item.id,
+      quantity: effectiveQty,
+      base_price: basePrice,
+      unit_price: unitPrice,
+      discount_percent: Number(discountPct) || 0,
+      total_price: total,
+      lifecycle_days: lifecycleDays > 0 ? lifecycleDays : null,
+      variants: hasVariants ? variants : [],
+    });
 
-    const { data, error } = await supabase
-      .from(table)
-      .update({
-        quantity: effectiveQty,
-        base_price: basePrice,
-        unit_price: unitPrice,
-        discount_percent: Number(discountPct) || 0,
-        total_price: total,
-        lifecycle_days: lifecycleDays > 0 ? lifecycleDays : null,
-        variants: hasVariants ? variants : [],
-      })
-      .eq("id", item.id)
-      .select("*, products(name, sku, image_url)")
-      .single();
-
-    if (!error && data) {
-      onSaved(data);
+    if (!error && data?.product) {
+      // Preserve the joined products(name, sku, image_url) the row was
+      // originally loaded with, in case the API select didn't return it.
+      onSaved({ ...data.product, products: data.product.products ?? item.products });
       onClose();
-    } else if (error) {
+    } else {
       console.error("[EditProductModal] update failed:", error);
-      alert("Не удалось сохранить: " + error.message);
+      alert("Не удалось сохранить: " + (error ?? "неизвестная ошибка"));
     }
     setLoading(false);
   }
