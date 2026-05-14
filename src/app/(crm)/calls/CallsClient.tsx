@@ -113,6 +113,24 @@ export default function CallsClient({ calls, users }: { calls: any[]; users: { i
 
   return (
     <div>
+      {/* Backlog v6 §1.5: VPN cheatsheet. Inline so the operator doesn't
+          have to ask Жибу each time SIP refuses to register. */}
+      <details className="mb-3 rounded-lg" style={{ background: "#fffbeb", border: "1px solid #fde68a", padding: "8px 12px" }}>
+        <summary style={{ color: "#b45309", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+          ❓ Помощь с подключением (VPN, hosts, SIP)
+        </summary>
+        <div style={{ marginTop: 8, fontSize: 12, color: "#7c2d12", lineHeight: 1.5 }}>
+          <p style={{ marginBottom: 6 }}>Если звонки не работают или «соединение» висит, проверь, что эти хосты идут <b>в обход VPN</b> (Amnezia / split tunneling) и/или прописаны в <code>%WinDir%\System32\drivers\etc\hosts</code>:</p>
+          <ul style={{ marginLeft: 16, marginBottom: 6, listStyle: "disc" }}>
+            <li><code>sip.novofon.ru</code></li>
+            <li><code>stun.novofon.ru</code></li>
+            <li><code>37.139.38.218</code>, <code>37.139.38.219</code>, <code>37.139.38.222</code> (SIP / RTP сервера Novofon)</li>
+          </ul>
+          <p style={{ marginBottom: 6 }}>Также RTP-порты <code>10000–20000/udp</code> должны быть открыты.</p>
+          <p style={{ color: "#a16207", fontSize: 11 }}>Признак того что VPN режет аудио: соединение идёт, длительность считается, но собеседника не слышно и записи нет.</p>
+        </div>
+      </details>
+
       {/* Filters */}
       <div className="flex flex-wrap gap-2 mb-3 items-center">
         <div className="relative flex-1 min-w-48">
