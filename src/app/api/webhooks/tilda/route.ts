@@ -22,14 +22,31 @@ export async function POST(req: NextRequest) {
     body = Object.fromEntries(new URLSearchParams(text));
   }
 
-  // Auth: check key from query param, header, or POST body
-  // Skip auth if TILDA_WEBHOOK_KEY env not set
+  // Auth: check key from query param, header, or POST body.
+  // Skip auth if TILDA_WEBHOOK_KEY env not set.
+  //
+  // Tilda passes form data as POST body — query strings in the webhook
+  // URL aren't reliably preserved across all Tilda integrations (Cart
+  // strips them, Forms keep them). The most reliable transport is a
+  // hidden form field with a stable name. Accept several aliases so the
+  // operator can use whichever Tilda allows in their form designer.
   if (WEBHOOK_KEY) {
     const { searchParams } = new URL(req.url);
     const keyParam = searchParams.get("key") || "";
     const keyHeader = req.headers.get("x-webhook-key") || "";
-    const keyBody = body["TILDA_WEBHOOK_KEY"] || body["api_key"] || "";
-    if (keyParam !== WEBHOOK_KEY && keyHeader !== WEBHOOK_KEY && keyBody !== WEBHOOK_KEY) {
+    const keyBody =
+      body["secret"] ||
+      body["webhook_key"] ||
+      body["tilda_key"] ||
+      body["TILDA_WEBHOOK_KEY"] ||
+      body["api_key"] ||
+      "";
+    if (
+      keyParam !== WEBHOOK_KEY &&
+      keyHeader !== WEBHOOK_KEY &&
+      keyBody !== WEBHOOK_KEY
+    ) {
+      console.warn("[TILDA] Rejected: key mismatch. Got bodyKeys:", Object.keys(body).filter((k) => /key|secret|api|tilda/i.test(k)));
       return NextResponse.json({ error: "Invalid webhook key" }, { status: 403 });
     }
   }
