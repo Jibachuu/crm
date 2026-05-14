@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateContractHtml } from "@/lib/contract-template";
+import { generateInvoiceContractHtml } from "@/lib/invoice-contract-template";
+import { generateRentalContractHtml, generateRentalEquipmentActHtml } from "@/lib/rental-contract-template";
 import { amountToWords } from "@/lib/numToWords";
 import { toGenitiveFullName } from "@/lib/russianDeclension";
 
@@ -76,6 +78,130 @@ export async function GET(req: NextRequest) {
   function proxyUrl(url: string) { return `/api/image-proxy?url=${encodeURIComponent(url)}`; }
   const stampSrc = supplier?.stamp_url ? proxyUrl(supplier.stamp_url) : "";
   const sigSrc = supplier?.signature_url ? proxyUrl(supplier.signature_url) : "";
+
+  // ── Dispatch on contract_type ──
+  // Backlog v6 §4.5 — Счёт-договор: один компактный документ, без
+  // отдельной спецификации; товары лежат в specifications/spec_items
+  // как «единственная» Спецификация №1, см. /api/contracts POST.
+  if (contract.contract_type === "invoice_contract" && type === "contract") {
+    const { data: spec } = await admin.from("specifications").select("*").eq("contract_id", contractId).order("spec_number").limit(1).single();
+    const { data: rawItems } = spec
+      ? await admin.from("specification_items").select("*").eq("specification_id", spec.id).order("sort_order")
+      : { data: [] as Array<{ name: string; quantity: number; price: number; total: number }> };
+    const items = sortSpecItems(rawItems ?? []);
+    const total = (contract.total_amount ?? 0) > 0
+      ? Number(contract.total_amount)
+      : items.reduce((s, i) => s + (i.total || 0), 0);
+
+    const html = generateInvoiceContractHtml({
+      contract_number: contract.contract_number,
+      date_ru: dateStr,
+      supplier_bank_name: supplier?.bank_name || "АО \"ТБанк\" г. Москва",
+      supplier_bik: supplier?.bik || "044525974",
+      supplier_corr_account: supplier?.corr_account || "30101810145250000974",
+      supplier_inn: supplier?.inn || "182707065507",
+      supplier_kpp: supplier?.kpp || undefined,
+      supplier_account: supplier?.account_number || "40802810100004357759",
+      supplier_legal_name: supplier?.legal_name || "ИП Абзалов Никита Львович",
+      supplier_ogrnip: supplier?.ogrnip || "323183200014134",
+      supplier_director_short: supplier?.director_short || "Абзалов Н.Л.",
+      buyer_legal_form_full: contract.buyer_legal_form || "Общество с ограниченной ответственностью",
+      buyer_name: contract.buyer_name,
+      buyer_inn: contract.buyer_inn || "",
+      buyer_kpp: contract.buyer_kpp || undefined,
+      buyer_ogrn: contract.buyer_ogrn || undefined,
+      buyer_address: contract.buyer_address || undefined,
+      buyer_bank_name: contract.buyer_bank_name || undefined,
+      buyer_account: contract.buyer_account || undefined,
+      buyer_bik: contract.buyer_bik || undefined,
+      buyer_corr_account: contract.buyer_corr_account || undefined,
+      buyer_director_title: contract.buyer_director_title || "генерального директора",
+      buyer_director_name_genitive: toGenitiveFullName(contract.buyer_director_name || ""),
+      buyer_director_basis: contract.buyer_director_basis_full || contract.buyer_director_basis || "Устава",
+      buyer_director_short: contract.buyer_short_name || "",
+      buyer_email: contract.buyer_email || undefined,
+      buyer_phone: contract.buyer_phone || undefined,
+      items: items.map((i) => ({ name: i.name, quantity: i.quantity, unit: "шт", price: i.price, total: i.total })),
+      total_amount: total,
+      prepayment_days: contract.prepayment_days ?? 5,
+      shipment_days_after_payment: contract.shipment_days_after_payment ?? 3,
+      validity_bank_days: contract.validity_bank_days ?? 5,
+      stamp_img: stampSrc,
+      sig_img: sigSrc,
+    });
+    return NextResponse.json({ html });
+  }
+
+  // Backlog v6 §4.6 — Договор аренды: четыре вьюшки
+  //   type=contract    → основной текст договора (с §4 про оборудование)
+  //   type=spec        → Приложение №2 Спецификация (товары на покупку)
+  //   type=equipment   → Приложение №3 Акт приёма-передачи оборудования
+  //   type=request     → Приложение №1 Заявка (опционально)
+  if (contract.contract_type === "rental") {
+    if (type === "equipment") {
+      const { data: equipment } = await admin.from("contract_equipment_items").select("*").eq("contract_id", contractId).order("sort_order");
+      const html = generateRentalEquipmentActHtml({
+        contract_number: contract.contract_number,
+        contract_date_short: new Date(contract.contract_date).toLocaleDateString("ru-RU"),
+        date_ru: dateStr,
+        supplier_legal_name: supplier?.legal_name || "ИП Абзалов Никита Львович",
+        supplier_inn: supplier?.inn || "182707065507",
+        supplier_ogrnip: supplier?.ogrnip || "323183200014134",
+        supplier_director_short: supplier?.director_short || "Абзалов Н.Л.",
+        buyer_legal_form_full: contract.buyer_legal_form || "Общество с ограниченной ответственностью",
+        buyer_name: contract.buyer_name,
+        buyer_inn: contract.buyer_inn || "",
+        buyer_kpp: contract.buyer_kpp || undefined,
+        buyer_director_short: contract.buyer_short_name || "",
+        equipment_location_address: contract.equipment_location_address || "—",
+        items: (equipment ?? []).map((e) => ({ name: e.name, quantity: e.quantity, valuation: e.valuation })),
+        stamp_img: stampSrc,
+        sig_img: sigSrc,
+      });
+      return NextResponse.json({ html });
+    }
+    if (type === "contract") {
+      const html = generateRentalContractHtml({
+        contract_number: contract.contract_number,
+        date_ru: dateStr,
+        valid_until: validUntil,
+        supplier_legal_name: supplier?.legal_name || "ИП Абзалов Никита Львович",
+        supplier_ogrnip: supplier?.ogrnip || "323183200014134",
+        supplier_address: supplier?.contract_address || supplier?.address || "420111, г. Казань, ул. Профсоюзная, д. 50",
+        supplier_inn: supplier?.inn || "182707065507",
+        supplier_bank: supplier?.bank_name || "АО \"ТБанк\" г. Москва",
+        supplier_account: supplier?.account_number || "",
+        supplier_bik: supplier?.bik || "",
+        supplier_corr: supplier?.corr_account || "",
+        supplier_email: supplier?.email || "info@art-evo.ru",
+        supplier_phone: supplier?.phone || "+7 (843) 297-33-22",
+        supplier_director_short: supplier?.director_short || "Абзалов Н.Л.",
+        buyer_legal_form_full: contract.buyer_legal_form || "Общество с ограниченной ответственностью",
+        buyer_name: contract.buyer_name,
+        buyer_director_title: contract.buyer_director_title || "генерального директора",
+        buyer_director_name_genitive: toGenitiveFullName(contract.buyer_director_name || ""),
+        buyer_director_basis: contract.buyer_director_basis_full || contract.buyer_director_basis || "Устава",
+        buyer_inn: contract.buyer_inn || "",
+        buyer_kpp: contract.buyer_kpp || "",
+        buyer_ogrn: contract.buyer_ogrn || "",
+        buyer_address: contract.buyer_address || "",
+        buyer_bank: contract.buyer_bank_name || "",
+        buyer_account: contract.buyer_account || "",
+        buyer_bik: contract.buyer_bik || "",
+        buyer_corr: contract.buyer_corr_account || "",
+        buyer_email: contract.buyer_email || "",
+        buyer_phone: contract.buyer_phone || "",
+        buyer_director_short: contract.buyer_short_name || "",
+        purchase_frequency_terms: contract.purchase_frequency_terms || "",
+        equipment_location_address: contract.equipment_location_address || "",
+        stamp_img: stampSrc,
+        sig_img: sigSrc,
+      });
+      return NextResponse.json({ html });
+    }
+    // For type=spec fall through to the default spec renderer below — it
+    // already understands specification_items, just with rental headline.
+  }
 
   // ── Specification ──
   if (type === "spec" && specId) {

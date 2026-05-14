@@ -55,6 +55,8 @@ const navItems: NavItem[] = [
   { href: "/upd", label: "УПД", icon: FileCheck },
   { href: "/quotes", label: "КП", icon: FileSpreadsheet },
   { href: "/contracts", label: "Договоры", icon: FileText },
+  { href: "/invoice-contracts", label: "Счёт-договоры", icon: Receipt },
+  { href: "/rental-contracts", label: "Договоры аренды", icon: FileText },
   { href: "/gallery", label: "Галерея", icon: Image },
   { href: "/production", label: "Производство", icon: Factory },
   { href: "/calls", label: "Звонки", icon: Phone },
