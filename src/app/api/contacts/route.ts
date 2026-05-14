@@ -41,6 +41,15 @@ export async function GET(req: NextRequest) {
     for (const v of nameVariants) ors.push(`full_name.ilike.%${escape(v)}%`);
     const escapedQ = escape(q);
     ors.push(`phone.ilike.%${escapedQ}%`, `phone_mobile.ilike.%${escapedQ}%`, `email.ilike.%${escapedQ}%`);
+    // Backlog v6 §5.11: also search by Telegram username (with or without
+    // leading @) and by numeric telegram_id / maks_id. Contacts created
+    // from inbox messages often have only one of these.
+    const qNoAt = q.replace(/^@/, "");
+    const escapedNoAt = escape(qNoAt);
+    ors.push(`telegram_username.ilike.%${escapedNoAt}%`);
+    if (/^\d+$/.test(qNoAt)) {
+      ors.push(`telegram_id.eq.${qNoAt}`, `maks_id.eq.${qNoAt}`);
+    }
     query = query.or(ors.join(","));
   }
   query = query.limit(limit);
