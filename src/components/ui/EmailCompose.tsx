@@ -282,8 +282,17 @@ export default function EmailCompose({ to, recipients, entityType, entityId, def
               setFiles((prev) => [...prev, ...imageFiles]);
               return;
             }
-            // Plain text paste — let browser default; rich text from
-            // mail clients gets sanitized to plain by execCommand.
+            // Backlog v6 §5.13: pasted HTML from web Yandex / Gmail kept
+            // its inline styles ("вставить как plain text" не работало).
+            // Always coerce paste to plain text — insert it via
+            // execCommand so undo / caret position behave normally.
+            // The «Снять форматирование» toolbar button covers post-paste
+            // cleanup of any other rich content.
+            const text = e.clipboardData?.getData("text/plain");
+            if (text != null) {
+              e.preventDefault();
+              document.execCommand("insertText", false, text);
+            }
           }}
           data-placeholder="Текст письма..."
           style={{
