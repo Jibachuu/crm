@@ -211,11 +211,19 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
     setUploading(true);
     try {
       const buffer = await file.arrayBuffer();
+      // Backlog v6 §5.5 — file.name пустое при вставке скриншота из
+      // clipboard (Ctrl+V на Windows), и file.type иногда пуст у
+      // голосовых/нестандартных файлов. Синтезируем имя из MIME, чтобы
+      // на VPS прокси ушло читаемое расширение — иначе клиент видит
+      // вложение без расширения и не может его открыть.
+      const mime = file.type || "application/octet-stream";
+      const ext = (mime.split("/")[1] || "bin").replace("jpeg", "jpg").split(";")[0];
+      const safeName = file.name?.trim() || `image_${Date.now()}.${ext}`;
       // Upload to MAX via VPS proxy
       const uploadRes = await fetch(`/api/max`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "upload", chat_id: chatId, fileName: file.name, fileType: file.type, fileBase64: arrayBufferToBase64(buffer) }),
+        body: JSON.stringify({ action: "upload", chat_id: chatId, fileName: safeName, fileType: mime, fileBase64: arrayBufferToBase64(buffer) }),
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
       const data = await uploadRes.json();

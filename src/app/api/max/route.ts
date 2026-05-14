@@ -173,11 +173,53 @@ export async function POST(req: NextRequest) {
       const proxyKey = process.env.MAX_PROXY_KEY;
       if (!proxyUrl || !proxyKey) return NextResponse.json({ error: "Proxy not configured" }, { status: 503 });
 
+      // Backlog v6 §5.5 — клиенты получали файлы «в неверном формате».
+      // Корень — пустые/мусорные fileName и fileType, особенно для
+      // скриншотов из clipboard (file.name = "" у Chrome) и для голосовых
+      // (file.type иногда пуст). MAX-прокси отдавал контент с
+      // application/octet-stream и расширения у клиента не было → файл
+      // открывался как бинарь, фото не превьюилось.
+      //
+      // Синтезируем MIME из расширения и расширение из MIME, чтобы оба
+      // были корректны, плюс прокидываем kind=photo для изображений.
+      const EXT_TO_MIME: Record<string, string> = {
+        jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif",
+        webp: "image/webp", bmp: "image/bmp", svg: "image/svg+xml", heic: "image/heic",
+        mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm",
+        mp3: "audio/mpeg", ogg: "audio/ogg", oga: "audio/ogg", wav: "audio/wav", m4a: "audio/mp4",
+        pdf: "application/pdf", doc: "application/msword",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        xls: "application/vnd.ms-excel",
+        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        txt: "text/plain", csv: "text/csv", zip: "application/zip", rar: "application/vnd.rar",
+      };
+      function extFromMime(mime: string): string {
+        const sub = (mime.split(";")[0] || "").split("/")[1] || "";
+        if (!sub) return "bin";
+        if (sub === "jpeg") return "jpg";
+        if (sub === "quicktime") return "mov";
+        if (sub === "svg+xml") return "svg";
+        if (sub.startsWith("vnd.openxmlformats-officedocument.wordprocessingml")) return "docx";
+        if (sub.startsWith("vnd.openxmlformats-officedocument.spreadsheetml")) return "xlsx";
+        if (sub === "vnd.ms-excel") return "xls";
+        if (sub === "msword") return "doc";
+        return sub;
+      }
+      const rawName = (fileName || "").trim();
+      const rawType = (fileType || "").trim();
+      const nameExt = (rawName.split(".").pop() || "").toLowerCase();
+      const guessedMimeFromExt = EXT_TO_MIME[nameExt] || "";
+      const safeMime = rawType || guessedMimeFromExt || "application/octet-stream";
+      const ext = nameExt || extFromMime(safeMime);
+      const safeName = rawName || `attachment_${Date.now()}.${ext}`;
+      const isImage = safeMime.startsWith("image/") && safeMime !== "image/svg+xml";
+      const kind = isImage ? "photo" : (safeMime.startsWith("audio/") ? "voice" : "file");
+
       // Upload file to MAX via proxy (opcode 87 → fu.oneme.ru → fileId)
       const fileBuffer = Buffer.from(fileBase64, "base64");
-      const uploadRes = await fetch(`${proxyUrl}/upload?name=${encodeURIComponent(fileName || "file")}`, {
+      const uploadRes = await fetch(`${proxyUrl}/upload?name=${encodeURIComponent(safeName)}&kind=${kind}`, {
         method: "POST",
-        headers: { Authorization: proxyKey, "Content-Type": fileType || "application/octet-stream" },
+        headers: { Authorization: proxyKey, "Content-Type": safeMime, "X-Filename": safeName },
         body: new Uint8Array(fileBuffer),
         signal: AbortSignal.timeout(25000),
       }).catch((e) => {

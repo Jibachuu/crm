@@ -17,16 +17,36 @@ export async function GET(req: NextRequest) {
   const contractType = searchParams.get("contract_type") || "supply";
 
   const admin = createAdminClient();
-  let query = admin.from("contracts")
-    .select("*, companies:buyer_company_id(id, name), deals(id, title), specifications(id, spec_number, spec_date, total_amount), contract_equipment_items(id, name, quantity, valuation, sort_order)")
-    .eq("contract_type", contractType)
-    .order("created_at", { ascending: false });
 
-  if (companyId) query = query.eq("buyer_company_id", companyId);
-  if (dealId) query = query.eq("deal_id", dealId);
+  // Defensive: migration v81 added `contract_type` and `contract_equipment_items`
+  // but operators apply migrations by hand in Supabase. If the DB is on a
+  // pre-v81 schema, the filtered query 500s. Try the new shape first, fall
+  // back to a legacy-compatible query so /contracts keeps working even
+  // before the migration is applied.
+  async function runQuery(withV81: boolean) {
+    let q = admin.from("contracts")
+      .select(withV81
+        ? "*, companies:buyer_company_id(id, name), deals(id, title), specifications(id, spec_number, spec_date, total_amount), contract_equipment_items(id, name, quantity, valuation, sort_order)"
+        : "*, companies:buyer_company_id(id, name), deals(id, title), specifications(id, spec_number, spec_date, total_amount)"
+      )
+      .order("created_at", { ascending: false });
+    if (withV81) q = q.eq("contract_type", contractType);
+    if (companyId) q = q.eq("buyer_company_id", companyId);
+    if (dealId) q = q.eq("deal_id", dealId);
+    return q.limit(100);
+  }
 
-  const { data } = await query.limit(100);
-  return NextResponse.json({ contracts: data ?? [] });
+  let result = await runQuery(true);
+  if (result.error) {
+    const msg = result.error.message || "";
+    if (/column.*contract_type.*does not exist|contract_equipment_items.*does not exist|42703|42P01/i.test(msg)) {
+      // Pre-v81 schema — only supply contracts exist; if caller asked for
+      // invoice_contract / rental, return empty so the new pages render.
+      if (contractType !== "supply") return NextResponse.json({ contracts: [], migration_required: "v81" });
+      result = await runQuery(false);
+    }
+  }
+  return NextResponse.json({ contracts: result.data ?? [] });
 }
 
 export async function POST(req: NextRequest) {
@@ -44,17 +64,17 @@ export async function POST(req: NextRequest) {
 
     // Get next contract number — independent counter per contract_type
     // so счета-договоры и аренды нумеруются с 1 и не «съедают» номера
-    // обычных договоров поставки.
-    const { data: maxContract } = await admin.from("contracts")
-      .select("contract_number")
-      .eq("contract_type", contractType)
-      .order("created_at", { ascending: false })
-      .limit(1);
+    // обычных договоров поставки. If pre-v81 schema, fall back to global
+    // counter.
+    let maxQuery = admin.from("contracts").select("contract_number");
+    const v81Probe = await admin.from("contracts").select("contract_type").limit(1);
+    const hasV81 = !v81Probe.error;
+    if (hasV81) maxQuery = maxQuery.eq("contract_type", contractType);
+    const { data: maxContract } = await maxQuery.order("created_at", { ascending: false }).limit(1);
     const lastNum = maxContract?.[0]?.contract_number ? parseInt(maxContract[0].contract_number) : 0;
     const nextNum = String(isNaN(lastNum) ? 1 : lastNum + 1);
 
-    const { data, error } = await admin.from("contracts").insert({
-      contract_type: contractType,
+    const baseInsert: Record<string, unknown> = {
       contract_number: nextNum,
       contract_date: body.contract_date || new Date().toISOString().slice(0, 10),
       valid_until: body.valid_until || new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
@@ -72,23 +92,30 @@ export async function POST(req: NextRequest) {
       buyer_director_name: body.buyer_director_name || null,
       buyer_director_title: body.buyer_director_title || "генерального директора",
       buyer_director_basis: body.buyer_director_basis || "Устава",
-      buyer_director_basis_full: body.buyer_director_basis_full || null,
       buyer_email: body.buyer_email || null,
       buyer_phone: body.buyer_phone || null,
       buyer_short_name: body.buyer_short_name || null,
       deal_id: body.deal_id || null,
       comment: body.comment || null,
       created_by: user.id,
-      // Invoice-contract specific
+    };
+    const v81Insert: Record<string, unknown> = hasV81 ? {
+      contract_type: contractType,
+      buyer_director_basis_full: body.buyer_director_basis_full || null,
       prepayment_days: body.prepayment_days ?? null,
       shipment_days_after_payment: body.shipment_days_after_payment ?? null,
       validity_bank_days: body.validity_bank_days ?? null,
       total_amount: body.total_amount ?? null,
       shipping_cost: body.shipping_cost ?? null,
-      // Rental specific
       purchase_frequency_terms: body.purchase_frequency_terms || null,
       equipment_location_address: body.equipment_location_address || null,
-    }).select("*").single();
+    } : {};
+
+    if (!hasV81 && contractType !== "supply") {
+      return NextResponse.json({ error: "Schema v81 not applied — apply supabase/migration_v81.sql in Supabase SQL Editor first." }, { status: 409 });
+    }
+
+    const { data, error } = await admin.from("contracts").insert({ ...baseInsert, ...v81Insert }).select("*").single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -218,6 +245,32 @@ export async function POST(req: NextRequest) {
   if (body.action === "update") {
     const { id, action: _action, ...fields } = body;
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+
+    // Strip v81-only columns if schema is pre-v81 to keep /contracts (supply)
+    // working even before the operator applies the migration.
+    const v81Probe = await admin.from("contracts").select("contract_type").limit(1);
+    if (v81Probe.error) {
+      delete (fields as Record<string, unknown>).contract_type;
+      delete (fields as Record<string, unknown>).buyer_director_basis_full;
+      delete (fields as Record<string, unknown>).prepayment_days;
+      delete (fields as Record<string, unknown>).shipment_days_after_payment;
+      delete (fields as Record<string, unknown>).validity_bank_days;
+      delete (fields as Record<string, unknown>).total_amount;
+      delete (fields as Record<string, unknown>).shipping_cost;
+      delete (fields as Record<string, unknown>).purchase_frequency_terms;
+      delete (fields as Record<string, unknown>).equipment_location_address;
+    }
+    // Strip read-only/joined fields that don't exist as columns (the
+    // existing UI re-sends the entire row including joins like `companies`
+    // and `specifications`, which throws «column does not exist»).
+    delete (fields as Record<string, unknown>).companies;
+    delete (fields as Record<string, unknown>).deals;
+    delete (fields as Record<string, unknown>).specifications;
+    delete (fields as Record<string, unknown>).contract_equipment_items;
+    delete (fields as Record<string, unknown>).purchase_items;
+    delete (fields as Record<string, unknown>).equipment_items;
+    delete (fields as Record<string, unknown>).items;
+
     const { data, error } = await admin.from("contracts").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", id).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json(data);
