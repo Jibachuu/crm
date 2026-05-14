@@ -36,9 +36,13 @@ interface Props {
   refreshKey?: number;
 }
 
+const PAGE_SIZE = 500;
+
 export default function CommunicationsTimeline({ entityType, entityId, refreshKey }: Props) {
   const [comms, setComms] = useState<Communication[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasOlder, setHasOlder] = useState(false);
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState<Set<string>>(new Set());
   const [dateFrom, setDateFrom] = useState<string | null>(null);
@@ -49,26 +53,51 @@ export default function CommunicationsTimeline({ entityType, entityId, refreshKe
 
   useEffect(() => {
     loadComms();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityType, entityId, refreshKey]);
 
+  // Load the newest PAGE_SIZE rows on mount/refresh. Older rows are fetched
+  // on demand via loadOlder() — the previous 200-row hard cap was the
+  // root of backlog v6 §5.6 ("сообщения обрываются после некоторой даты").
   async function loadComms() {
     setLoading(true);
-    const supabase = createClient();
+    const data = await fetchPage(null);
+    const unique = new Map<string, Communication>();
+    for (const c of data) unique.set(c.id, c);
+    setComms(Array.from(unique.values()));
+    setHasOlder(data.length === PAGE_SIZE);
+    setLoading(false);
+  }
 
+  async function fetchPage(olderThan: string | null): Promise<Communication[]> {
+    const supabase = createClient();
     // Load from both entity_type/entity_id AND direct FK columns
     const fkField = entityType === "company" ? "company_id" : entityType === "deal" ? "deal_id" : entityType === "lead" ? "lead_id" : "contact_id";
 
-    const { data } = await supabase.from("communications")
+    let q = supabase.from("communications")
       .select("*, users!communications_created_by_fkey(full_name)")
       .or(`${fkField}.eq.${entityId},and(entity_type.eq.${entityType},entity_id.eq.${entityId})`)
       .order("created_at", { ascending: false })
-      .limit(200);
+      .limit(PAGE_SIZE);
+    if (olderThan) q = q.lt("created_at", olderThan);
 
-    // Deduplicate by id
-    const unique = new Map<string, Communication>();
-    for (const c of data ?? []) unique.set(c.id, c);
-    setComms(Array.from(unique.values()));
-    setLoading(false);
+    const { data } = await q;
+    return data ?? [];
+  }
+
+  async function loadOlder() {
+    if (loadingOlder || comms.length === 0) return;
+    setLoadingOlder(true);
+    const oldest = comms[comms.length - 1].created_at;
+    const data = await fetchPage(oldest);
+    if (data.length > 0) {
+      const merged = new Map<string, Communication>();
+      for (const c of comms) merged.set(c.id, c);
+      for (const c of data) merged.set(c.id, c);
+      setComms(Array.from(merged.values()));
+    }
+    setHasOlder(data.length === PAGE_SIZE);
+    setLoadingOlder(false);
   }
 
   const filtered = comms.filter((c) => {
@@ -241,6 +270,17 @@ export default function CommunicationsTimeline({ entityType, entityId, refreshKe
       {hasMore && (
         <button onClick={() => showMore()} className="w-full text-sm py-2 rounded hover:bg-blue-50" style={{ color: "#0067a5", border: "1px dashed #d0e8f5" }}>
           <ChevronDown size={14} className="inline mr-1" />Загрузить ещё ({remaining})
+        </button>
+      )}
+
+      {/* When the client-side page hits the bottom of what we've fetched,
+          pull the next batch of older rows from the server. */}
+      {!hasMore && hasOlder && (
+        <button onClick={() => loadOlder()} disabled={loadingOlder}
+          className="w-full text-sm py-2 rounded hover:bg-amber-50 disabled:opacity-60"
+          style={{ color: "#b45309", border: "1px dashed #fde68a", background: "#fffbeb" }}>
+          <ChevronDown size={14} className="inline mr-1" />
+          {loadingOlder ? "Загружаю…" : "Загрузить более ранние сообщения"}
         </button>
       )}
     </div>
