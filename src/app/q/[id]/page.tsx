@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import DownloadPdfButton from "@/components/ui/DownloadPdfButton";
+import ImageWithFallback from "@/components/ui/ImageWithFallback";
 
 // Public quote page must always reflect the latest save — no Next.js
 // route caching. Without this, info-blocks added to a quote weren't
@@ -126,7 +127,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
         {b.photos?.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(b.photos.length, 4)}, 1fr)`, gap: 10 }}>
             {b.photos.map((url, pi) => (
-              <img key={pi} src={url} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 6, border: "1px solid #efe9df" }} />
+              <ImageWithFallback key={pi} src={url} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 6, border: "1px solid #efe9df" }} />
             ))}
           </div>
         )}
@@ -271,7 +272,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                                       {/* Main variant (with photo) */}
                                       {mainVariant && (
                                         <div style={{ padding: 10, background: "#f8f4fa", border: "1px solid #e1bee7", borderRadius: 6 }}>
-                                          <img src={mainVariant.image_url} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 4, background: "#fff", marginBottom: 8 }} />
+                                          <ImageWithFallback src={mainVariant.image_url} alt="" style={{ width: "100%", aspectRatio: "1 / 1", objectFit: "cover", borderRadius: 4, background: "#fff", marginBottom: 8 }} />
                                           <p style={{ fontSize: 13, fontWeight: 700, color: "#3d3325", textAlign: "center", marginBottom: 8 }}>{mainVariant.label}</p>
                                           {renderTiersOrPrice(mainVariant, false)}
                                         </div>
@@ -343,7 +344,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                                 // ═══ Обычная раскладка с большим фото слева ═══
                                 <div style={{ display: "flex", gap: 14 }}>
                                   {item.hide_photo ? null : item.image_url ? (
-                                    <img src={item.image_url} alt="" style={{ width: 140, height: 140, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                                    <ImageWithFallback src={item.image_url} alt="" style={{ width: 140, height: 140, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
                                   ) : (
                                     <div style={{ width: 140, height: 140, borderRadius: 6, background: "#efe9df", flexShrink: 0 }} />
                                   )}
