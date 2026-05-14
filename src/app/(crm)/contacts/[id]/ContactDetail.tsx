@@ -109,7 +109,18 @@ export default function ContactDetail({ contact: initialContact, communications:
         const parts: string[] = [];
         if (data.linked.telegram) parts.push("Telegram");
         if (data.linked.maks) parts.push("МАКС");
-        alert(parts.length ? `Привязано: ${parts.join(", ")}` : "Мессенджеры не найдены по номеру телефона");
+        if (parts.length) {
+          alert(`Привязано: ${parts.join(", ")}`);
+        } else {
+          // Backlog v6 §5.9 — distinguish «не найден» from «прокси не
+          // отвечает» so the operator stops thinking the button is
+          // broken when the underlying issue is a dead Telegram session
+          // or unconfigured MAX proxy.
+          const lines: string[] = ["Мессенджеры не найдены по номеру телефона."];
+          if (data.tg_errors?.length) lines.push("", "Telegram:", ...data.tg_errors);
+          if (data.max_errors?.length) lines.push("", "МАКС:", ...data.max_errors);
+          alert(lines.join("\n"));
+        }
       } else {
         alert(data.error || "Не удалось найти контакт в мессенджерах");
       }

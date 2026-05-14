@@ -52,6 +52,10 @@ export async function POST(req: NextRequest) {
   if (phones.length === 0 && !tgUsername) return NextResponse.json({ error: "У контакта нет ни телефона, ни Telegram username" }, { status: 400 });
 
   const results: { telegram?: { id: string; username?: string; name?: string }; maks?: { id: string; name?: string }; error?: string } = {};
+  // Track WHY each proxy didn't link, so the client can show
+  // «не найдено» vs «прокси не отвечает» (backlog v6 §5.9).
+  const tgErrors: string[] = [];
+  const maxErrors: string[] = [];
 
   // --- Telegram: try username first, then phone (direct to TG proxy) ---
   if (!contact.telegram_id) {
@@ -67,7 +71,7 @@ export async function POST(req: NextRequest) {
             name: `${data.user.firstName || ""} ${data.user.lastName || ""}`.trim() || undefined,
           };
         }
-      } catch { /* try phone next */ }
+      } catch (e) { tgErrors.push(`by username @${tgUsername}: ${String(e)}`); }
     }
     // 2. By phone
     if (!results.telegram) {
@@ -84,7 +88,7 @@ export async function POST(req: NextRequest) {
               };
               break;
             }
-          } catch { /* try next variant */ }
+          } catch (e) { tgErrors.push(`by phone ${phone}: ${String(e)}`); }
         }
         if (results.telegram) break;
       }
@@ -97,7 +101,9 @@ export async function POST(req: NextRequest) {
   if (!contact.maks_id) {
     const maxUrl = process.env.MAX_PROXY_URL;
     const maxKey = process.env.MAX_PROXY_KEY;
-    if (maxUrl && maxKey) {
+    if (!maxUrl || !maxKey) {
+      maxErrors.push("MAX proxy не настроен (MAX_PROXY_URL / MAX_PROXY_KEY)");
+    } else {
       for (const rawPhone of phones) {
         const variants = normalizePhone(rawPhone);
         for (const phone of variants) {
@@ -115,7 +121,8 @@ export async function POST(req: NextRequest) {
               };
               break;
             }
-          } catch { /* try next */ }
+            if (!data.ok && data.error) maxErrors.push(`${phone}: ${data.error}`);
+          } catch (e) { maxErrors.push(`${phone}: ${String(e)}`); }
         }
         if (results.maks) break;
       }
@@ -141,5 +148,10 @@ export async function POST(req: NextRequest) {
       maks: results.maks?.id ? true : false,
     },
     updates,
+    // Surface proxy/normalisation failures so the operator can see WHY
+    // a search came back empty (network, dead session, no number variant
+    // worked, etc) instead of just «Мессенджеры не найдены».
+    tg_errors: tgErrors.length > 0 && !results.telegram ? tgErrors.slice(-3) : undefined,
+    max_errors: maxErrors.length > 0 && !results.maks ? maxErrors.slice(-3) : undefined,
   });
 }
