@@ -414,6 +414,16 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
                 </select>
               </div>
             </div>
+            {/* Backlog v6 §4.1: E-mail and Phone are template placeholders
+                that were silently autofilled from the company card but
+                never editable here, so operators couldn't put a different
+                contact email on a specific contract (e.g. Соната просила
+                поставить майл и тел на последней странице). Surface
+                them as plain inputs. */}
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <div><label style={lblStyle}>E-mail покупателя</label><input value={form.buyer_email || ""} onChange={(e) => setForm({ ...form, buyer_email: e.target.value })} style={inputStyle} placeholder="contact@company.ru" /></div>
+              <div><label style={lblStyle}>Телефон покупателя</label><input value={form.buyer_phone || ""} onChange={(e) => setForm({ ...form, buyer_phone: e.target.value })} style={inputStyle} placeholder="+7..." /></div>
+            </div>
           </div>
 
           {/* Section: Specification items (only for new contracts) */}
