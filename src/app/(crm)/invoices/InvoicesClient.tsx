@@ -154,8 +154,19 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   async function importFromQuote(quoteId: string) {
     if (!quoteId) return;
     const supabase = createClient();
-    const { data: qItems } = await supabase.from("quote_items").select("*, products(sku, article)").eq("quote_id", quoteId).order("sort_order");
+    const { data: qItems } = await supabase.from("quote_items").select("*, products(sku, article, excluded_from_invoice)").eq("quote_id", quoteId).order("sort_order");
     if (!qItems?.length) { alert("В КП нет товаров"); return; }
+    // Backlog v6 §7.2: skip rows whose product is marked as a sample
+    // («пробник» — excluded_from_invoice=true on the catalog row). They
+    // are still tracked in КП/сделке for production, just not billed.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const billable = qItems.filter((qi: any) => !qi.products?.excluded_from_invoice);
+    const skipped = qItems.length - billable.length;
+    if (skipped > 0) {
+      // Informational — operators were caught off-guard when «10 позиций»
+      // landed in the invoice as 8 after sample exclusion.
+      console.log(`[invoices] skipped ${skipped} sample row(s) on import from quote`);
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const q = quotes.find((qq: any) => qq.id === quoteId);
     if (q?.company_id) selectBuyer(q.company_id);
@@ -168,10 +179,10 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       client_price: number;
       sum: number;
       variants?: V[] | null;
-      products?: { sku?: string; article?: string } | null;
+      products?: { sku?: string; article?: string; excluded_from_invoice?: boolean } | null;
     };
     const out: InvoiceItem[] = [];
-    for (const qi of qItems as QI[]) {
+    for (const qi of billable as QI[]) {
       // SKU/article must end up in the printed invoice line — operators
       // were complaining "не видно артикулов" 2026-05-07. Quotes carry
       // either an inline `article` (manual rows) or a sku via the
@@ -240,11 +251,18 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       base_price?: number;
       category?: string;
       subcategory?: string;
-      products?: { name?: string; sku?: string; category?: string; subcategory?: string; liters?: string; container?: string } | null;
+      products?: { name?: string; sku?: string; category?: string; subcategory?: string; liters?: string; container?: string; excluded_from_invoice?: boolean } | null;
     };
 
+    // Backlog v6 §7.2: skip sample rows (excluded_from_invoice).
+    const billableRows = (rows as Row[]).filter((r) => !r.products?.excluded_from_invoice);
+    if (billableRows.length === 0) {
+      alert("В заказе только пробники — они не выставляются в счёт");
+      return;
+    }
+
     const newItems: InvoiceItem[] = [];
-    for (const r of rows as Row[]) {
+    for (const r of billableRows) {
       const p = r.products ?? {};
       const litersPart = p.liters ? formatLiters(p.liters) : "";
       // deal_products has no own `name` — pull from joined products.

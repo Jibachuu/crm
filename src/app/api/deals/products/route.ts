@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   // 400 with "column deal_products.name does not exist" 2026-05-05.
   let q = admin
     .from("deal_products")
-    .select("id, quantity, unit_price, total_price, product_id, product_block, variants, base_price, category, subcategory, volume_ml, flavor, products(name, sku, category, subcategory, liters, container)")
+    .select("id, quantity, unit_price, total_price, product_id, product_block, variants, base_price, category, subcategory, volume_ml, flavor, products(name, sku, category, subcategory, liters, container, excluded_from_invoice)")
     .eq("deal_id", dealId);
   if (block) q = q.eq("product_block", block);
   const { data, error } = await q;

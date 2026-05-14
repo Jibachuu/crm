@@ -125,5 +125,44 @@ export async function PUT(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  // Backlog v6 §11.6: marking the contact as having passed the survey
+  // (survey_discount=true) auto-closes any open «Провести опрос» / «опрос»
+  // tasks on this contact or on deals/leads pointing to this contact.
+  // Without this auto-close, operators were left with stale tasks they
+  // had to manually delete («Грань, Елена прошла опрос?»).
+  if (body.survey_discount === true) {
+    try {
+      // Tasks attached directly to the contact.
+      await admin.from("tasks").update({ status: "done" })
+        .eq("entity_type", "contact").eq("entity_id", body.id)
+        .neq("status", "done")
+        .is("deleted_at", null)
+        .ilike("title", "%опрос%");
+
+      // Tasks attached to deals owned by this contact.
+      const { data: dealIds } = await admin.from("deals").select("id").eq("contact_id", body.id).is("deleted_at", null);
+      if (dealIds?.length) {
+        await admin.from("tasks").update({ status: "done" })
+          .eq("entity_type", "deal").in("entity_id", dealIds.map((d) => d.id))
+          .neq("status", "done")
+          .is("deleted_at", null)
+          .ilike("title", "%опрос%");
+      }
+
+      // Tasks attached to leads owned by this contact.
+      const { data: leadIds } = await admin.from("leads").select("id").eq("contact_id", body.id).is("deleted_at", null);
+      if (leadIds?.length) {
+        await admin.from("tasks").update({ status: "done" })
+          .eq("entity_type", "lead").in("entity_id", leadIds.map((l) => l.id))
+          .neq("status", "done")
+          .is("deleted_at", null)
+          .ilike("title", "%опрос%");
+      }
+    } catch (e) {
+      console.warn("[contacts] survey auto-close failed:", e);
+    }
+  }
+
   return NextResponse.json(data);
 }
