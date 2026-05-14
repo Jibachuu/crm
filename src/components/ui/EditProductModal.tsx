@@ -59,9 +59,9 @@ export default function EditProductModal({ open, onClose, entityType, item, onSa
   function addBottleVariants() {
     const bp = basePrice;
     setVariants([
-      { label: "Без УФ печати", price: bp, quantity: 1, sum: bp },
-      { label: "С УФ печатью", price: bp + 500, quantity: 1, sum: bp + 500 },
-      { label: "С УФ печатью и логотипом Havenberg", price: Math.round((bp + 500) * 0.6), quantity: 1, sum: Math.round((bp + 500) * 0.6) },
+      { label: "Без УФ-печати", price: bp, quantity: 1, sum: bp },
+      { label: "С УФ-печатью", price: bp + 500, quantity: 1, sum: bp + 500 },
+      { label: "С УФ-печатью и логотипом Havenberg", price: Math.round((bp + 500) * 0.6), quantity: 1, sum: Math.round((bp + 500) * 0.6) },
       { label: "С наклейкой", price: bp + 100, quantity: 1, sum: bp + 100 },
       { label: "С наклейкой и логотипом Havenberg", price: Math.round((bp + 100) * 0.6), quantity: 1, sum: Math.round((bp + 100) * 0.6) },
     ]);
@@ -203,7 +203,7 @@ export default function EditProductModal({ open, onClose, entityType, item, onSa
             <div>
               <p className="text-xs font-semibold" style={{ color: "#e65c00" }}>Варианты комплектации</p>
               <p className="text-xs" style={{ color: "#bf7600" }}>
-                {isBottle ? "Флакон: можно добавить УФ печать, наклейку, логотип и т.д." : "Добавьте опции — каждая со своей ценой и количеством"}
+                {isBottle ? "Флакон: можно добавить УФ-печать, наклейку, логотип и т.д." : "Добавьте опции — каждая со своей ценой и количеством"}
               </p>
             </div>
             <div className="flex gap-2">

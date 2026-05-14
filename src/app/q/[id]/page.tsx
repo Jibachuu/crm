@@ -221,7 +221,7 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
 
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>
                         {(catItems ?? []).map((item) => {
-                          const BOTTLE_LABELS: Record<string, string> = { uv: "С УФ печатью", uv_logo: "С УФ печатью и лого", sticker: "С наклейкой", sticker_logo: "С наклейкой и лого" };
+                          const BOTTLE_LABELS: Record<string, string> = { uv: "С УФ-печатью", uv_logo: "С УФ-печатью и лого", sticker: "С наклейкой", sticker_logo: "С наклейкой и лого" };
                           const bottleLabel = item.bottle_variant && item.bottle_variant !== "none" ? BOTTLE_LABELS[item.bottle_variant] : null;
                           const hasVariants = item.variants?.length > 0;
                           return (
