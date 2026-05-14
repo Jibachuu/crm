@@ -33,6 +33,15 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  // Backlog v6 §2.7 — mirror company onto the new lead's contact too.
+  if (insert.contact_id && insert.company_id) {
+    const { data: c } = await admin.from("contacts").select("company_id").eq("id", insert.contact_id).single();
+    if (c && !c.company_id) {
+      await admin.from("contacts").update({ company_id: insert.company_id }).eq("id", insert.contact_id);
+    }
+  }
+
   return NextResponse.json(data);
 }
 
@@ -73,5 +82,19 @@ export async function PUT(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  // Backlog v6 §2.7 — mirror company onto the contact when the lead links
+  // both, so the contact's card stops showing «без компании». Same
+  // null-safety as /api/deals (don't override an existing different
+  // company; operator has to do that explicitly).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const d = data as any;
+  if (d?.contact_id && d?.company_id) {
+    const { data: c } = await admin.from("contacts").select("company_id").eq("id", d.contact_id).single();
+    if (c && !c.company_id) {
+      await admin.from("contacts").update({ company_id: d.company_id }).eq("id", d.contact_id);
+    }
+  }
+
   return NextResponse.json(data);
 }

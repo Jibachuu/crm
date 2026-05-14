@@ -44,5 +44,23 @@ export async function PUT(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  // Backlog v6 §2.7 — when a deal has both a contact and a company set,
+  // mirror the company onto the contact so the contact's card also shows
+  // the company. Operators were ending up with «в компании указан, у
+  // контакта нет компании» asymmetry because the deal-side picker only
+  // wrote deal.contact_id / deal.company_id, never touching the
+  // contact.company_id back-reference. Don't override an existing,
+  // different company on the contact (that contact really does belong
+  // somewhere else — would surprise an operator if we silently moved it).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const d = data as any;
+  if (d?.contact_id && d?.company_id) {
+    const { data: c } = await admin.from("contacts").select("company_id").eq("id", d.contact_id).single();
+    if (c && !c.company_id) {
+      await admin.from("contacts").update({ company_id: d.company_id }).eq("id", d.contact_id);
+    }
+  }
+
   return NextResponse.json(data);
 }
