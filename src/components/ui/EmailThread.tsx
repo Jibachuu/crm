@@ -42,6 +42,11 @@ export default function EmailThread({ email, compact = false, entityType, entity
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeTo, setComposeTo] = useState(email);
+  // Reply-to context (backlog v6 §5.2). When non-null, the compose form
+  // mounts with a "Re: …" subject. We use this string as part of the key
+  // below so a second "Ответить" click on a different email re-primes
+  // EmailCompose instead of leaving the previous subject in place.
+  const [replySubject, setReplySubject] = useState<string | null>(null);
 
   // Build recipient list: primary email first, then any extras (e.g. company email).
   const recipients = [
@@ -155,14 +160,20 @@ export default function EmailThread({ email, compact = false, entityType, entity
 
       {composeOpen && (
         <div className="mb-3">
+          {/* `key` includes replySubject so clicking "Ответить" on a
+              different email remounts EmailCompose with the new "Re: …"
+              prefill instead of keeping whatever the user previously
+              typed. */}
           <EmailCompose
+            key={`${composeTo}::${replySubject ?? ""}`}
             to={composeTo}
             recipients={recipients}
             entityType={entityType}
             entityId={entityId}
+            defaultSubject={replySubject ?? undefined}
             compact
-            onClose={() => setComposeOpen(false)}
-            onSent={() => { setComposeOpen(false); loadEmails(); }}
+            onClose={() => { setComposeOpen(false); setReplySubject(null); }}
+            onSent={() => { setComposeOpen(false); setReplySubject(null); loadEmails(); }}
             onChangeTo={setComposeTo}
           />
         </div>
@@ -200,9 +211,39 @@ export default function EmailThread({ email, compact = false, entityType, entity
                     <p className="text-xs py-4 text-center" style={{ color: "#aaa" }}>Загрузка...</p>
                   ) : detail ? (
                     <div className="mt-3">
-                      <div className="text-xs mb-2 space-y-0.5" style={{ color: "#888" }}>
-                        <p>От: <strong style={{ color: "#333" }}>{detail.from}</strong></p>
-                        <p>Кому: {detail.to}</p>
+                      <div className="text-xs mb-2 space-y-0.5 flex items-start justify-between gap-3" style={{ color: "#888" }}>
+                        <div>
+                          <p>От: <strong style={{ color: "#333" }}>{detail.from}</strong></p>
+                          <p>Кому: {detail.to}</p>
+                        </div>
+                        {/* Backlog v6 §5.2 — operators wanted to reply
+                            directly to a received email instead of
+                            composing a fresh one from scratch. Pull the
+                            sender into `to` and prepend "Re: " to the
+                            subject; the compose modal opens already
+                            primed. */}
+                        {isIncoming && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const sender = (detail.from.match(/<([^>]+)>/)?.[1] ?? detail.from).trim();
+                              const baseSubj = (detail.subject || "").replace(/^\s*(re:\s*)+/i, "").trim();
+                              setComposeTo(sender);
+                              setReplySubject(`Re: ${baseSubj}`);
+                              setComposeOpen(true);
+                              // Scroll the compose box into view if the
+                              // user is deep in the thread.
+                              setTimeout(() => {
+                                window.scrollTo({ top: 0, behavior: "smooth" });
+                              }, 50);
+                            }}
+                            className="flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1 rounded transition-colors"
+                            style={{ border: "1px solid #0067a5", color: "#0067a5" }}
+                            title={`Ответить на «${detail.subject}»`}
+                          >
+                            <PenSquare size={11} /> Ответить
+                          </button>
+                        )}
                       </div>
                       {detail.html ? (
                         <div className="text-sm mt-2 p-3 rounded" style={{ background: "#fafafa", border: "1px solid #f0f0f0" }}
