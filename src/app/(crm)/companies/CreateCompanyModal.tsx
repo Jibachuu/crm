@@ -71,6 +71,7 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
       .from("companies")
       .insert({
         name: fd.get("name") as string,
+        brand_name: (fd.get("brand_name") as string) || null,
         inn: (fd.get("inn") as string) || null,
         ogrn: (fd.get("ogrn") as string) || null,
         kpp: (fd.get("kpp") as string) || null,
@@ -129,7 +130,11 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
           ]} placeholder="Выберите вид" />
         </div>
 
-        <Input label="Название" name="name" placeholder="ООО «Компания»" required />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Название (юр.)" name="name" placeholder="ООО «Компания»" required />
+          {/* Backlog v6 §11.2 */}
+          <Input label="Бренд / заведение" name="brand_name" placeholder="как известно клиентам" />
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <DirectorySelect table="venue_types" label="Тип заведения" name="venue_type_id" onChange={handleVenueTypeChange} />

@@ -98,6 +98,7 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
     const { data, error: err } = await apiPut<typeof company>("/api/companies", {
       id: company.id,
       name: fd.get("name") as string,
+      brand_name: (fd.get("brand_name") as string) || null,
       inn: (fd.get("inn") as string) || null,
       ogrn: (fd.get("ogrn") as string) || null,
       kpp: (fd.get("kpp") as string) || null,
@@ -174,7 +175,12 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
           ]} placeholder="Выберите вид" defaultValue={company?.company_type ?? ""} />
         </div>
 
-        <Input label="Название" name="name" defaultValue={company?.name} required />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Название (юр.)" name="name" defaultValue={company?.name} required />
+          {/* Backlog v6 §11.2 — brand / venue display name separate from
+              the legal entity name, used in mockups / samples / KP. */}
+          <Input label="Бренд / заведение" name="brand_name" defaultValue={company?.brand_name ?? ""} placeholder="как известно клиентам" />
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <DirectorySelect table="venue_types" label="Тип заведения" name="venue_type_id" defaultValue={company?.venue_type_id ?? null} onChange={handleVenueTypeChange} />

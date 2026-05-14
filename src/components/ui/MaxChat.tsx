@@ -395,7 +395,36 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
                       </span>
                     </div>
                   ) : (
-                    <p className="text-xs italic">📎 {a.type}: {a.name || "вложение"}</p>
+                    /* Backlog v6 §5.4: MAX sometimes sends attachments with
+                       a type our enum doesn't cover (often «UNSUPPORTED»
+                       for voice notes recorded by the iOS/Android client).
+                       Previously this rendered as «📎 UNSUPPORTED: вложение»
+                       — useless to the operator. If the message has a
+                       fileId or url, render a download link + inline
+                       <audio> player attempt, so at least the operator can
+                       hear voice messages even when the proxy mis-tags
+                       them. */
+                    (a.url || a.fileId) ? (
+                      <div className="flex flex-col gap-1">
+                        <audio
+                          controls
+                          src={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.url}
+                          className="w-full"
+                          style={{ maxWidth: 250, height: 36 }}
+                          onError={(e) => { (e.currentTarget.style as CSSStyleDeclaration).display = "none"; }}
+                        />
+                        <a
+                          href={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.url}
+                          download={a.name || `attachment_${msg.id}`}
+                          className="text-xs underline"
+                          style={{ color: msg.isMe ? "#fff" : "#0067a5" }}
+                        >
+                          📎 {a.name || `Вложение (${a.type})`} — скачать
+                        </a>
+                      </div>
+                    ) : (
+                      <p className="text-xs italic">📎 {a.type}: {a.name || "вложение"}</p>
+                    )
                   )}
                 </div>
                 );

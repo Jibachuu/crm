@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
       const { data: existingLead } = await admin.from("leads")
         .select("id, assigned_to")
         .eq("contact_id", contactId)
-        .not("status", "in", "(converted,rejected,won,lost)")
+        .not("status", "in", "(converted,rejected,won,lost,spam)")
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(1)

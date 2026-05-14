@@ -31,6 +31,11 @@ export const LEAD_STATUSES = [
   { key: "samples_shipped", label: "Пробники отгружены" },
   { key: "not_target", label: "Не ЦА" },
   { key: "rejected", label: "Отказ" },
+  // Backlog v6 «Дополнения» 14.05: separate «некачественный/спам»
+  // bucket so noisy leads (тильда-флуд, спам-боты, кейсы где номер
+  // принадлежит совсем другому контексту) можно вытаскивать из метрик
+  // и не мешать дедупу новых обращений.
+  { key: "spam", label: "Некачественный" },
 ];
 
 export const LEAD_STATUS_LABELS: Record<string, string> = Object.fromEntries(

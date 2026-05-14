@@ -43,7 +43,7 @@ export async function PUT(req: NextRequest) {
 
   // Plain string/text/null fields
   for (const f of [
-    "name", "inn", "ogrn", "kpp", "director", "city", "region",
+    "name", "brand_name", "inn", "ogrn", "kpp", "director", "city", "region",
     "legal_address", "actual_address", "delivery_address",
     "activity", "need", "company_type", "phone", "email", "website",
     "description", "assigned_to", "venue_type_id", "supplier_id",
