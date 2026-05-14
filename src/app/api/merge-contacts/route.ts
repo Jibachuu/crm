@@ -36,10 +36,15 @@ export async function POST(req: NextRequest) {
     const primary = group[0];
     const duplicates = group.slice(1);
 
-    // Merge data into primary
+    // Merge data into primary. Only adopt the duplicate's full_name when
+    // the primary's is genuinely junk (empty / all digits). Length is a
+    // bad proxy for "more complete" and the heuristic was clobbering
+    // hand-typed names with auto-generated longer ones (backlog v6 §2.10).
+    const isJunkName = (n: string | null | undefined) =>
+      !n || /^\d+$/.test(String(n).trim()) || String(n).trim().length < 2;
     const updates: Record<string, unknown> = {};
     for (const dup of duplicates) {
-      if (dup.full_name && (!primary.full_name || /^\d+$/.test(primary.full_name) || primary.full_name.length < (dup.full_name?.length ?? 0))) {
+      if (dup.full_name && isJunkName(primary.full_name) && !isJunkName(dup.full_name)) {
         updates.full_name = dup.full_name;
         primary.full_name = dup.full_name;
       }

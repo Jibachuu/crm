@@ -51,7 +51,13 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updates: any = {};
     if (phone && !existing.phone) updates.phone = phone;
-    if (cleanName && (isJunkName(existing.full_name) || existing.full_name.length < cleanName.length)) updates.full_name = cleanName;
+    // Only overwrite full_name when the stored one is genuinely junk
+    // (empty, just digits, or 1 character). The "longer wins" heuristic
+    // used to live here was clobbering names that operators had typed in
+    // by hand or stitched through a contact-merge — every fresh inbound
+    // MAX/Telegram message with a slightly different sender_name was
+    // replacing the real name (backlog v6 §2.10).
+    if (cleanName && isJunkName(existing.full_name)) updates.full_name = cleanName;
     if (telegram_id && !existing.telegram_id) updates.telegram_id = String(telegram_id);
     if (telegram_username && !existing.telegram_username) updates.telegram_username = telegram_username;
     if (maks_id && !existing.maks_id) updates.maks_id = String(maks_id);

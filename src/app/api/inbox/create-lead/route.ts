@@ -73,7 +73,11 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updates: any = {};
     if (phone && !existing.phone) updates.phone = phone;
-    if (cleanName && (isJunkName(existing.full_name) || (existing.full_name && existing.full_name.length < cleanName.length))) updates.full_name = cleanName;
+    // Only overwrite full_name when the stored one is genuinely junk —
+    // see /api/contacts/upsert-by-phone for context (backlog v6 §2.10:
+    // merged-then-renamed contacts kept getting clobbered by inbound MAX/
+    // Telegram messages whose sender_name happened to be a tad longer).
+    if (cleanName && isJunkName(existing.full_name)) updates.full_name = cleanName;
     if (telegram_id && !existing.telegram_id) updates.telegram_id = String(telegram_id);
     if (telegram_username && !existing.telegram_username) updates.telegram_username = telegram_username;
     if (maks_id && !existing.maks_id) updates.maks_id = String(maks_id);
