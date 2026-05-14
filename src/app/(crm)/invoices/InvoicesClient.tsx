@@ -73,6 +73,47 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   const [editingInvoice, setEditingInvoice] = useState(false);
   const [editItems, setEditItems] = useState<InvoiceItem[]>([]);
   const [qrDataUrl, setQrDataUrl] = useState("");
+  // Backlog v6 §3.3/§3.5: edit form must let the user change the invoice
+  // number, date, due date, linked deal, basis, comment — previously only
+  // items + total were editable, so adding a deal link or fixing a wrong
+  // number forced creating a fresh duplicate invoice.
+  const [editMeta, setEditMeta] = useState<{
+    invoice_number: string;
+    invoice_date: string;
+    payment_due: string;
+    deal_id: string;
+    basis: string;
+    comment: string;
+  }>({
+    invoice_number: "",
+    invoice_date: "",
+    payment_due: "",
+    deal_id: "",
+    basis: "",
+    comment: "",
+  });
+
+  // Backlog v6 §3.4: when arriving via /invoices?open=<id> (e.g. from a deal
+  // card), auto-open the preview for that invoice. Done once on mount —
+  // subsequent navigations within the page manage previewInvoice manually.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const id = new URLSearchParams(window.location.search).get("open");
+    if (!id) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const inv = (initialInvoices as any[]).find((x: { id: string }) => x.id === id);
+    if (!inv) return;
+    setPreviewInvoice(inv);
+    setPreviewItems([]);
+    createClient().from("invoice_items").select("*").eq("invoice_id", id).then(({ data }) => {
+      setPreviewItems(data ?? []);
+    });
+    // Strip the param so refresh / back-button doesn't keep retriggering.
+    const url = new URL(window.location.href);
+    url.searchParams.delete("open");
+    window.history.replaceState({}, "", url.toString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Pre-generate QR code when preview invoice changes
   useEffect(() => {
@@ -402,8 +443,49 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   }
 
   function startEditInvoice() {
+    if (!previewInvoice) return;
     setEditingInvoice(true);
     setEditItems(previewItems.map((i: InvoiceItem) => ({ ...i })));
+    setEditMeta({
+      invoice_number: String(previewInvoice.invoice_number ?? ""),
+      invoice_date: previewInvoice.invoice_date ? String(previewInvoice.invoice_date).slice(0, 10) : "",
+      payment_due: previewInvoice.payment_due ? String(previewInvoice.payment_due).slice(0, 10) : "",
+      deal_id: previewInvoice.deal_id ?? "",
+      basis: previewInvoice.basis ?? "",
+      comment: previewInvoice.comment ?? "",
+    });
+  }
+
+  // Backlog v6 §3.5: «Дублировать счёт» — open the create form pre-filled
+  // from the currently previewed invoice (same buyer, same deal, same
+  // items). The user then tweaks a date / qty and saves a fresh invoice
+  // with its own number. Avoids the «копипаст всех полей вручную» dance.
+  function duplicateInvoice() {
+    if (!previewInvoice) return;
+    setForm({
+      ...form,
+      buyer_company_id: previewInvoice.buyer_company_id ?? "",
+      buyer_name: previewInvoice.buyer_name ?? "",
+      buyer_inn: previewInvoice.buyer_inn ?? "",
+      buyer_kpp: previewInvoice.buyer_kpp ?? "",
+      buyer_address: previewInvoice.buyer_address ?? "",
+      basis: previewInvoice.basis ?? "Основной договор",
+      deal_id: previewInvoice.deal_id ?? "",
+      comment: previewInvoice.comment ?? "",
+      vat_included: !!previewInvoice.vat_included,
+    });
+    setItems(previewItems.map((i: InvoiceItem) => ({
+      product_id: i.product_id ?? "",
+      name: i.name,
+      quantity: i.quantity,
+      unit: i.unit,
+      price: i.price,
+      total: i.total,
+      price_tiers: i.price_tiers ?? undefined,
+    })));
+    setPreviewInvoice(null);
+    setEditingInvoice(false);
+    setCreateOpen(true);
   }
 
   function updateEditItem(i: number, field: string, val: string | number) {
@@ -462,8 +544,16 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     const supabase = createClient();
     const newTotal = editItems.reduce((s, i) => s + i.total, 0);
 
-    // Update invoice total
-    await supabase.from("invoices").update({ total_amount: newTotal }).eq("id", previewInvoice.id);
+    // Update invoice metadata + total (§3.3/§3.5 — number/date/deal/basis/comment).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const metaUpdate: Record<string, any> = { total_amount: newTotal };
+    if (editMeta.invoice_number) metaUpdate.invoice_number = editMeta.invoice_number;
+    if (editMeta.invoice_date) metaUpdate.invoice_date = editMeta.invoice_date;
+    metaUpdate.payment_due = editMeta.payment_due || null;
+    metaUpdate.deal_id = editMeta.deal_id || null;
+    metaUpdate.basis = editMeta.basis || null;
+    metaUpdate.comment = editMeta.comment || null;
+    await supabase.from("invoices").update(metaUpdate).eq("id", previewInvoice.id);
 
     // Delete old items and insert new
     await supabase.from("invoice_items").delete().eq("invoice_id", previewInvoice.id);
@@ -480,8 +570,10 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     );
 
     setPreviewItems(editItems);
-    setPreviewInvoice({ ...previewInvoice, total_amount: newTotal });
-    setInvoices(invoices.map((inv: { id: string }) => inv.id === previewInvoice.id ? { ...inv, total_amount: newTotal } : inv));
+    setPreviewInvoice({ ...previewInvoice, ...metaUpdate });
+    setInvoices(invoices.map((inv: { id: string }) =>
+      inv.id === previewInvoice.id ? { ...inv, ...metaUpdate } : inv
+    ));
     setEditingInvoice(false);
     setSaving(false);
   }
@@ -909,14 +1001,76 @@ function doPrint(){
                   <p><strong>Итого: {formatCurrency(previewInvoice.total_amount)}</strong></p>
                   <p className="text-xs italic" style={{ color: "#666" }}>{amountToWords(previewInvoice.total_amount)}</p>
                 </div>
-                <div className="flex gap-2 mt-4">
+                <div className="flex gap-2 mt-4 flex-wrap">
                   <Button size="sm" onClick={printInvoice}><FileDown size={13} /> Скачать PDF</Button>
                   <Button size="sm" variant="secondary" onClick={startEditInvoice}><Edit2 size={13} /> Редактировать</Button>
+                  <Button size="sm" variant="secondary" onClick={duplicateInvoice}><Plus size={13} /> Дублировать</Button>
                   <Button size="sm" variant="secondary" onClick={() => { setPreviewInvoice(null); setEditingInvoice(false); }}>Закрыть</Button>
                 </div>
               </>
             ) : (
               <>
+                {/* Backlog v6 §3.3/§3.5: metadata fields editable inline. */}
+                <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
+                  <label className="block">
+                    <span className="block text-slate-500 mb-0.5">Номер</span>
+                    <input
+                      value={editMeta.invoice_number}
+                      onChange={(e) => setEditMeta({ ...editMeta, invoice_number: e.target.value })}
+                      className="w-full px-2 py-1 rounded focus:outline-none"
+                      style={{ border: "1px solid #d0d0d0" }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-slate-500 mb-0.5">Дата</span>
+                    <input
+                      type="date"
+                      value={editMeta.invoice_date}
+                      onChange={(e) => setEditMeta({ ...editMeta, invoice_date: e.target.value })}
+                      className="w-full px-2 py-1 rounded focus:outline-none"
+                      style={{ border: "1px solid #d0d0d0" }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-slate-500 mb-0.5">Оплатить до</span>
+                    <input
+                      type="date"
+                      value={editMeta.payment_due}
+                      onChange={(e) => setEditMeta({ ...editMeta, payment_due: e.target.value })}
+                      className="w-full px-2 py-1 rounded focus:outline-none"
+                      style={{ border: "1px solid #d0d0d0" }}
+                    />
+                  </label>
+                  <label className="block col-span-3">
+                    <span className="block text-slate-500 mb-0.5">Сделка</span>
+                    <SearchableSelect
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      options={(deals as any[]).map((d: { id: string; title: string }) => ({ id: d.id, label: d.title }))}
+                      value={editMeta.deal_id}
+                      onChange={(id) => setEditMeta({ ...editMeta, deal_id: id })}
+                      placeholder="Привязать к сделке…"
+                      style={{ border: "1px solid #d0d0d0", borderRadius: 4, padding: "5px 8px", fontSize: 12, width: "100%", outline: "none" }}
+                    />
+                  </label>
+                  <label className="block col-span-2">
+                    <span className="block text-slate-500 mb-0.5">Основание</span>
+                    <input
+                      value={editMeta.basis}
+                      onChange={(e) => setEditMeta({ ...editMeta, basis: e.target.value })}
+                      className="w-full px-2 py-1 rounded focus:outline-none"
+                      style={{ border: "1px solid #d0d0d0" }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-slate-500 mb-0.5">Комментарий</span>
+                    <input
+                      value={editMeta.comment}
+                      onChange={(e) => setEditMeta({ ...editMeta, comment: e.target.value })}
+                      className="w-full px-2 py-1 rounded focus:outline-none"
+                      style={{ border: "1px solid #d0d0d0" }}
+                    />
+                  </label>
+                </div>
                 <table className="w-full text-xs mb-4" style={{ border: "1px solid #e4e4e4" }}>
                   <thead>
                     <tr style={{ background: "#fafafa" }}>

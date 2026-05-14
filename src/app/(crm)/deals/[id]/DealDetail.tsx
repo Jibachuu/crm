@@ -600,7 +600,10 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-sm font-semibold" style={{ color: "#2e7d32" }}>{formatCurrency(inv.total_amount)}</span>
-                        <Link href="/invoices" className="text-xs px-2 py-1 rounded hover:bg-blue-50" style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}>
+                        {/* Backlog v6 §3.4: deep-link straight into the preview
+                            so clicking «Открыть» shows this invoice instead of
+                            dumping the user back at the list. */}
+                        <Link href={`/invoices?open=${inv.id}`} className="text-xs px-2 py-1 rounded hover:bg-blue-50" style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}>
                           <FileDown size={12} className="inline mr-1" />Открыть
                         </Link>
                       </div>
