@@ -64,6 +64,16 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
         const form = document.querySelector("form[data-edit-company]") as HTMLFormElement;
         if (data.name) (form?.querySelector("[name=name]") as HTMLInputElement).value = data.name;
         if (data.address) (form?.querySelector("[name=legal_address]") as HTMLInputElement).value = data.address;
+        // Backlog v6 §3.1: pull KPP/OGRN as well (DaData returns them; we just
+        // weren't writing them).
+        if (data.kpp) {
+          const kppInput = form?.querySelector("[name=kpp]") as HTMLInputElement | null;
+          if (kppInput) kppInput.value = data.kpp;
+        }
+        if (data.ogrn) {
+          const ogrnInput = form?.querySelector("[name=ogrn]") as HTMLInputElement | null;
+          if (ogrnInput) ogrnInput.value = data.ogrn;
+        }
       }
     } catch { /* silent */ }
     setInnLoading(false);

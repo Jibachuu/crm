@@ -42,6 +42,17 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
         const form = document.querySelector("form[data-create-company]") as HTMLFormElement;
         if (data.name) (form?.querySelector("[name=name]") as HTMLInputElement).value = data.name;
         if (data.address) (form?.querySelector("[name=legal_address]") as HTMLInputElement).value = data.address;
+        // Backlog v6 §3.1: KPP/OGRN were dropped from DaData autofill — only
+        // name + address were piped through. Now bring them in too, so the
+        // operator doesn't have to re-type when issuing an invoice.
+        if (data.kpp) {
+          const kppInput = form?.querySelector("[name=kpp]") as HTMLInputElement | null;
+          if (kppInput) kppInput.value = data.kpp;
+        }
+        if (data.ogrn) {
+          const ogrnInput = form?.querySelector("[name=ogrn]") as HTMLInputElement | null;
+          if (ogrnInput) ogrnInput.value = data.ogrn;
+        }
       }
     } catch { /* silent */ }
     setInnLoading(false);

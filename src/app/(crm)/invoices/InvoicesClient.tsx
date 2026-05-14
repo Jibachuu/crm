@@ -842,7 +842,26 @@ function doPrint(){
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label style={lblStyle}>КПП покупателя <span style={{ color: "#888", fontWeight: 400 }}>(для ООО)</span></label><input value={form.buyer_kpp} onChange={(e) => setForm({ ...form, buyer_kpp: e.target.value })} style={inputStyle} /></div>
-            <div><label style={lblStyle}>Юридический адрес покупателя <span style={{ color: "#c62828" }}>*</span></label><input value={form.buyer_address} onChange={(e) => setForm({ ...form, buyer_address: e.target.value })} style={inputStyle} placeholder="Только юр. адрес — без склада / ТК / пометок" /></div>
+            <div>
+              <label style={lblStyle}>
+                Юридический адрес покупателя <span style={{ color: "#c62828" }}>*</span>
+                {form.buyer_company_id && (
+                  <span style={{ color: "#888", fontWeight: 400, marginLeft: 6 }}>— из карточки компании, редактируется там</span>
+                )}
+              </label>
+              {/* Backlog v6 §3.2: when a company is selected, the legal
+                  address must come from the company card. Editing it inline
+                  here was producing inconsistent invoices (Андрей Чурилов
+                  flagged 11.05). The field is read-only with the buyer
+                  picked — change the company itself to fix a bad address. */}
+              <input
+                value={form.buyer_address}
+                onChange={(e) => setForm({ ...form, buyer_address: e.target.value })}
+                readOnly={!!form.buyer_company_id}
+                style={{ ...inputStyle, background: form.buyer_company_id ? "#f5f5f5" : (inputStyle as React.CSSProperties).background, cursor: form.buyer_company_id ? "not-allowed" : "text" }}
+                placeholder="Только юр. адрес — без склада / ТК / пометок"
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label style={lblStyle}>Основание</label><input value={form.basis} onChange={(e) => setForm({ ...form, basis: e.target.value })} style={inputStyle} /></div>
