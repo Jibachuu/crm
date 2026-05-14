@@ -138,8 +138,23 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
                 <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: stage.color + "20", color: stage.color }}>{stageOrders.length}</span>
               </div>
 
-              {/* Cards */}
-              <div className="flex-1 space-y-2 p-2 rounded-b-lg overflow-y-auto" style={{ background: "#fafafa", minHeight: 200 }}>
+              {/* Cards — backlog v6 §7.3: drag&drop restored, columns accept
+                  dropped cards and trigger moveStage (which still shows the
+                  tracking/arrival prompt for `shipped`/`delivered`). */}
+              <div
+                className="flex-1 space-y-2 p-2 rounded-b-lg overflow-y-auto"
+                style={{ background: "#fafafa", minHeight: 200 }}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const orderId = e.dataTransfer.getData("text/order-id");
+                  if (!orderId) return;
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const o = (orders as any[]).find((x: { id: string }) => x.id === orderId);
+                  if (!o || o.stage === stage.key) return;
+                  moveStage(orderId, stage.key);
+                }}
+              >
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {stageOrders.map((order: any) => {
                   const products = (order.deals?.deal_products ?? []).filter((dp: { product_block?: string }) => dp.product_block === "order").map((dp: { quantity: number; products: { name: string } | { name: string }[] }) => {
@@ -151,6 +166,11 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
                   return (
                     <div key={order.id} className="rounded-lg p-3 bg-white cursor-pointer hover:shadow-md transition-shadow"
                       style={{ border: "1px solid #e4e4e4" }}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/order-id", order.id);
+                        e.dataTransfer.effectAllowed = "move";
+                      }}
                       onClick={() => setDetailOrder(order)}>
                       <p className="text-sm font-semibold mb-1" style={{ color: "#333" }}>{order.companies?.name ?? "—"}</p>
                       <p className="text-xs mb-1" style={{ color: "#0067a5" }}>{order.deals?.title ?? "—"}</p>
