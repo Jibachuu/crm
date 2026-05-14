@@ -24,6 +24,8 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [invoices, setInvoices] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [quotes, setQuotes] = useState<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [products, setProducts] = useState<any[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [pdfParsing, setPdfParsing] = useState(false);
@@ -53,6 +55,11 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
     supabase.from("companies").select("id, name, inn, kpp, ogrn, legal_address, director, phone, email").order("name").limit(2000).then(({ data }) => setCompanies(data ?? []));
     supabase.from("deals").select("id, title").order("created_at", { ascending: false }).limit(200).then(({ data }) => setDeals(data ?? []));
     supabase.from("invoices").select("id, invoice_number, buyer_name, total_amount").order("created_at", { ascending: false }).limit(100).then(({ data }) => setInvoices(data ?? []));
+    // Backlog v6 §4.2: also offer «Из КП» and «Из сделки» when filling a
+    // contract's specification. Quotes carry variants + tier-prices that
+    // map cleanly onto spec lines; deal order rows are likewise the
+    // ground truth for what's being shipped.
+    supabase.from("quotes").select("id, title, total, created_at").is("deleted_at", null).order("created_at", { ascending: false }).limit(100).then(({ data }) => setQuotes(data ?? []));
     supabase.from("products").select("id, name, sku, base_price, category, subcategory").eq("is_active", true).order("name").then(({ data }) => setProducts(data ?? []));
   }, []);
 
@@ -130,6 +137,72 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
         items: data.map((i) => ({ name: i.name, quantity: i.quantity, price: i.price, total: i.total, product_id: i.product_id })),
       }));
     }
+  }
+
+  // Backlog v6 §4.2: pull items from a КП. Quote rows carry variants
+  // (e.g. флакон с УФ-печатью) — flatten one spec line per variant so
+  // the printed спецификация matches the КП exactly.
+  async function loadQuoteItems(quoteId: string) {
+    const supabase = createClient();
+    const { data } = await supabase.from("quote_items").select("*, products(sku, article)").eq("quote_id", quoteId).order("sort_order");
+    if (!data?.length) { alert("В КП нет товаров"); return; }
+    type V = { label: string; price: number; quantity: number; sum?: number };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const out: any[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const qi of data as any[]) {
+      const sku = qi.article || qi.products?.article || qi.products?.sku || "";
+      const baseName = qi.name || "";
+      const withSku = sku && !baseName.toLowerCase().includes(sku.toLowerCase()) ? `${baseName} / арт. ${sku}` : baseName;
+      const variants: V[] = Array.isArray(qi.variants) ? qi.variants : [];
+      if (variants.length > 0) {
+        for (const v of variants) {
+          const qty = v.quantity || 1;
+          const price = v.price || 0;
+          out.push({ name: `${withSku} / ${v.label}`, quantity: qty, price, total: v.sum ?? price * qty, product_id: qi.product_id || null });
+        }
+      } else {
+        out.push({ name: withSku, quantity: qi.qty ?? 1, price: qi.client_price ?? 0, total: qi.sum ?? 0, product_id: qi.product_id || null });
+      }
+    }
+    setForm((f: typeof form) => ({ ...f, items: out }));
+  }
+
+  // Backlog v6 §4.2: pull «Заказ»-block items from a deal. Same flatten
+  // pattern as invoices/from-quote.
+  async function loadDealOrderItems(dId: string) {
+    const res = await fetch(`/api/deals/products?deal_id=${dId}&block=order`);
+    if (!res.ok) { alert("Не удалось загрузить товары сделки"); return; }
+    const { products: rows } = await res.json() as { products: unknown[] };
+    if (!rows?.length) { alert("В заказе сделки нет товаров"); return; }
+    type V = { label: string; price: number; quantity: number; sum?: number };
+    type Row = {
+      product_id: string | null;
+      quantity: number;
+      unit_price: number;
+      total_price: number;
+      variants: V[] | null;
+      products?: { name?: string; sku?: string; excluded_from_invoice?: boolean } | null;
+    };
+    const billable = (rows as Row[]).filter((r) => !r.products?.excluded_from_invoice);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const out: any[] = [];
+    for (const r of billable) {
+      const sku = r.products?.sku || "";
+      const baseName = r.products?.name || "";
+      const withSku = sku && !baseName.toLowerCase().includes(sku.toLowerCase()) ? `${baseName} / арт. ${sku}` : baseName;
+      const variants = Array.isArray(r.variants) ? r.variants : [];
+      if (variants.length > 0) {
+        for (const v of variants) {
+          const qty = v.quantity || 1;
+          const price = v.price || 0;
+          out.push({ name: `${withSku} / ${v.label}`, quantity: qty, price, total: v.sum ?? price * qty, product_id: r.product_id || null });
+        }
+      } else {
+        out.push({ name: withSku, quantity: r.quantity || 1, price: r.unit_price || 0, total: r.total_price || 0, product_id: r.product_id || null });
+      }
+    }
+    setForm((f: typeof form) => ({ ...f, items: out }));
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -437,6 +510,18 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
                   <option value="">Из счёта...</option>
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {invoices.map((inv: any) => <option key={inv.id} value={inv.id}>#{inv.invoice_number} · {inv.buyer_name}</option>)}
+                </select>
+                <select onChange={(e) => { if (e.target.value) loadDealOrderItems(e.target.value); e.target.value = ""; }}
+                  className="text-xs px-2 py-1 rounded" style={{ border: "1px solid #2e7d32", color: "#2e7d32", maxWidth: 200 }}>
+                  <option value="">Из сделки...</option>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {deals.map((d: any) => <option key={d.id} value={d.id}>{d.title}</option>)}
+                </select>
+                <select onChange={(e) => { if (e.target.value) loadQuoteItems(e.target.value); e.target.value = ""; }}
+                  className="text-xs px-2 py-1 rounded" style={{ border: "1px solid #7b1fa2", color: "#7b1fa2", maxWidth: 200 }}>
+                  <option value="">Из КП...</option>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {quotes.map((q: any) => <option key={q.id} value={q.id}>{q.title || `КП #${q.id.slice(0, 6)}`}</option>)}
                 </select>
                 <div className="relative">
                   <input value={productSearch} onChange={(e) => setProductSearch(e.target.value)}
