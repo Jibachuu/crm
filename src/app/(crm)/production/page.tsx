@@ -1,8 +1,12 @@
+import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import Header from "@/components/layout/Header";
 import ProductionKanban from "./ProductionKanban";
+
+// Backlog v6 §7.1 — give the page its own browser tab title.
+export const metadata: Metadata = { title: "Производство" };
 
 export default async function ProductionPage() {
   const supabase = await createClient();
