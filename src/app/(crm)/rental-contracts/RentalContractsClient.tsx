@@ -101,34 +101,52 @@ export default function RentalContractsClient({ companyId, dealId }: { companyId
     setPdfParsing(false);
   }
 
-  // Pull items from deal — split by kind (purchase vs rental) if the
-  // deal_products row carries a hint. Backlog v6 §4.6: Жиба хочет, чтобы
-  // в сделке было видно «kind = purchase | rental», но эта схема будет
-  // позже. Пока берём всё в «товары на покупку», менеджер сам перетаскивает.
+  // Pull items from deal and split by kind=purchase|rental.
+  // Backlog v6 §4.6 — менеджер ставит флаг прямо на карточке позиции в
+  // сделке (EditProductModal), а здесь мы автоматом разводим в две
+  // таблицы. Позиции без kind считаются «продажа».
   async function loadDealOrderItems(dId: string) {
     const res = await fetch(`/api/deals/products?deal_id=${dId}&block=order`);
     if (!res.ok) { alert("Не удалось загрузить товары сделки"); return; }
     const { products: rows } = await res.json() as { products: AnyRec[] };
     if (!rows?.length) { alert("В заказе сделки нет товаров"); return; }
     const billable = rows.filter((r) => !r.products?.excluded_from_invoice);
-    const out: PurchaseItem[] = [];
+    const purchase: PurchaseItem[] = [];
+    const equipment: EquipmentItem[] = [];
     for (const r of billable) {
       const sku = r.products?.sku || "";
       const baseName = r.products?.name || "";
       const withSku = sku && !baseName.toLowerCase().includes(sku.toLowerCase()) ? `${baseName} / арт. ${sku}` : baseName;
       const variants = Array.isArray(r.variants) ? r.variants : [];
+      const isRental = r.kind === "rental";
       if (variants.length > 0) {
         for (const v of variants) {
           const qty = v.quantity || 1;
           const price = v.price || 0;
-          out.push({ name: `${withSku} / ${v.label}`, quantity: qty, price, total: v.sum ?? price * qty, product_id: r.product_id || undefined });
+          if (isRental) {
+            equipment.push({ name: `${withSku} / ${v.label}`, quantity: qty, valuation: price, product_id: r.product_id || undefined });
+          } else {
+            purchase.push({ name: `${withSku} / ${v.label}`, quantity: qty, price, total: v.sum ?? price * qty, product_id: r.product_id || undefined });
+          }
         }
       } else {
-        out.push({ name: withSku, quantity: r.quantity || 1, price: r.unit_price || 0, total: r.total_price || 0, product_id: r.product_id || undefined });
+        if (isRental) {
+          equipment.push({ name: withSku, quantity: r.quantity || 1, valuation: r.unit_price || 0, product_id: r.product_id || undefined });
+        } else {
+          purchase.push({ name: withSku, quantity: r.quantity || 1, price: r.unit_price || 0, total: r.total_price || 0, product_id: r.product_id || undefined });
+        }
       }
     }
-    setForm((f: AnyRec) => ({ ...f, purchase_items: out }));
-    alert(`Подгружено ${out.length} позиций в «Товары на покупку». Если что-то надо перенести в «Оборудование в пользование» — добавьте в нижнюю таблицу вручную и удалите из верхней.`);
+    setForm((f: AnyRec) => ({ ...f, purchase_items: purchase, equipment_items: equipment }));
+    const summary = [
+      purchase.length > 0 ? `${purchase.length} позиций — на покупку (Спецификация)` : null,
+      equipment.length > 0 ? `${equipment.length} позиций — в аренду (Акт)` : null,
+    ].filter(Boolean).join(", ");
+    if (purchase.length === 0 && equipment.length === 0) {
+      alert("В сделке нет товаров для договора");
+    } else {
+      alert(`Подгружено: ${summary}. Поменять «Продажа ↔ Аренда» можно в карточке позиции сделки.`);
+    }
   }
 
   async function loadInvoiceItems(invoiceId: string) {

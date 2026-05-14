@@ -23,6 +23,9 @@ interface ExistingItem {
   lifecycle_days?: number | null;
   product_block?: "request" | "order";
   variants?: ItemVariant[] | null;
+  // backlog v6 §4.6 — для договоров аренды отличает товары на продажу
+  // от оборудования в пользование (попадает в Акт приёма-передачи).
+  kind?: "purchase" | "rental";
 }
 
 interface Props {
@@ -42,6 +45,7 @@ export default function EditProductModal({ open, onClose, entityType, item, onSa
   const [lifecycleDays, setLifecycleDays] = useState(0);
   const [loading, setLoading] = useState(false);
   const [variants, setVariants] = useState<ItemVariant[]>([]);
+  const [kind, setKind] = useState<"purchase" | "rental">("purchase");
 
   useEffect(() => {
     if (!item) return;
@@ -51,6 +55,7 @@ export default function EditProductModal({ open, onClose, entityType, item, onSa
     setDiscountPct(String(item.discount_percent ?? 0));
     setLifecycleDays(item.lifecycle_days ?? 0);
     setVariants(Array.isArray(item.variants) ? item.variants : []);
+    setKind(item.kind === "rental" ? "rental" : "purchase");
   }, [item]);
 
   const isBottle = (item?.category || "").toLowerCase().includes("флакон")
@@ -119,6 +124,10 @@ export default function EditProductModal({ open, onClose, entityType, item, onSa
       total_price: total,
       lifecycle_days: lifecycleDays > 0 ? lifecycleDays : null,
       variants: hasVariants ? variants : [],
+      // backlog v6 §4.6 — kind отправляется только для сделок; для лидов
+      // в /api/leads/products пока нет колонки kind, и сервер тихо
+      // игнорирует — это OK.
+      kind: entityType === "deal" ? kind : undefined,
     });
 
     if (!error && data?.product) {
@@ -251,6 +260,30 @@ export default function EditProductModal({ open, onClose, entityType, item, onSa
             <input type="number" min="0" value={lifecycleDays}
               onChange={(e) => setLifecycleDays(Number(e.target.value))}
               className="w-24 text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="90" />
+          </div>
+        )}
+
+        {/* backlog v6 §4.6 — для сделок отмечаем, идёт ли позиция на
+            продажу (Спецификация в счёте/договоре) или в пользование
+            (Акт приёма-передачи оборудования в договоре аренды). */}
+        {entityType === "deal" && (
+          <div className="rounded-lg p-3" style={{ background: "#f5f0ff", border: "1px solid #d8c8f0" }}>
+            <p className="text-xs font-semibold mb-2" style={{ color: "#6b3aa0" }}>Тип позиции (для договора аренды)</p>
+            <div className="flex gap-2">
+              <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer text-sm ${kind === "purchase" ? "bg-blue-50" : "bg-white"}`}
+                style={{ borderColor: kind === "purchase" ? "#0067a5" : "#ddd", color: kind === "purchase" ? "#0067a5" : "#666" }}>
+                <input type="radio" name="kind" value="purchase" checked={kind === "purchase"} onChange={() => setKind("purchase")} className="accent-blue-600" />
+                Продажа (в Спецификацию)
+              </label>
+              <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer text-sm ${kind === "rental" ? "bg-amber-50" : "bg-white"}`}
+                style={{ borderColor: kind === "rental" ? "#a05a00" : "#ddd", color: kind === "rental" ? "#a05a00" : "#666" }}>
+                <input type="radio" name="kind" value="rental" checked={kind === "rental"} onChange={() => setKind("rental")} className="accent-amber-600" />
+                Аренда (в Акт оборудования)
+              </label>
+            </div>
+            <p className="text-xs mt-2" style={{ color: "#888" }}>
+              По умолчанию — продажа. Поставьте «аренда» для флаконов / держателей, чтобы при создании договора аренды они автоматом попали в Приложение №3 (Акт), а не в счёт.
+            </p>
           </div>
         )}
 

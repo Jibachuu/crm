@@ -1,12 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-// Tilda webhook: receives form submissions, creates leads
+// Tilda webhook: receives form submissions, creates leads (and, for paid
+// orders, immediately creates a won deal so revenue dashboards include
+// the sale).
 // Configure in Tilda: Form → Data → Webhook URL:
-//   https://crm-six-teal.vercel.app/api/webhooks/tilda?key=YOUR_KEY
-// Set TILDA_WEBHOOK_KEY in Vercel env vars
+//   https://artevo-crm.ru/api/webhooks/tilda?key=YOUR_KEY
 
 const WEBHOOK_KEY = process.env.TILDA_WEBHOOK_KEY || "";
+
+const KNOWN_NAME_KEYS = ["Name", "name", "FIO", "fio", "Имя", "firstname", "Ваше имя", "Как вас зовут?"];
+const KNOWN_PHONE_KEYS = ["Phone", "phone", "Телефон", "tel", "Ваш телефон", "Номер телефона"];
+const KNOWN_EMAIL_KEYS = ["Email", "email", "Почта", "Ваш email", "E-mail"];
+const KNOWN_COMPANY_KEYS = ["Company", "company", "Компания", "Название компании", "organization"];
+const KNOWN_MESSAGE_KEYS = ["Message", "message", "Сообщение", "comment", "Комментарий", "comments"];
+const KNOWN_ADDRESS_KEYS = ["Address", "address", "Адрес", "delivery_address", "Адрес доставки", "payment[address]", "payment[delivery_address]"];
+const KNOWN_SYSTEM_KEYS = new Set([
+  ...KNOWN_NAME_KEYS, ...KNOWN_PHONE_KEYS, ...KNOWN_EMAIL_KEYS, ...KNOWN_COMPANY_KEYS,
+  ...KNOWN_MESSAGE_KEYS, ...KNOWN_ADDRESS_KEYS,
+  "formname", "formid", "form", "tranid", "page", "tildaspec",
+  "secret", "webhook_key", "tilda_key", "TILDA_WEBHOOK_KEY", "api_key",
+]);
+
+function pick(body: Record<string, string>, keys: string[]): string {
+  for (const k of keys) {
+    const v = body[k];
+    if (v && String(v).trim()) return String(v).trim();
+  }
+  return "";
+}
 
 export async function POST(req: NextRequest) {
   const admin = createAdminClient();
@@ -17,57 +39,37 @@ export async function POST(req: NextRequest) {
   if (contentType.includes("application/json")) {
     body = await req.json();
   } else {
-    // Tilda sends form-urlencoded
     const text = await req.text();
     body = Object.fromEntries(new URLSearchParams(text));
   }
 
-  // Auth: check key from query param, header, or POST body.
-  // Skip auth if TILDA_WEBHOOK_KEY env not set.
-  //
-  // Tilda passes form data as POST body — query strings in the webhook
-  // URL aren't reliably preserved across all Tilda integrations (Cart
-  // strips them, Forms keep them). The most reliable transport is a
-  // hidden form field with a stable name. Accept several aliases so the
-  // operator can use whichever Tilda allows in their form designer.
+  // Auth (unchanged from prior version) — supports query/header/body keys
   if (WEBHOOK_KEY) {
     const { searchParams } = new URL(req.url);
     const keyParam = searchParams.get("key") || "";
     const keyHeader = req.headers.get("x-webhook-key") || "";
-    const keyBody =
-      body["secret"] ||
-      body["webhook_key"] ||
-      body["tilda_key"] ||
-      body["TILDA_WEBHOOK_KEY"] ||
-      body["api_key"] ||
-      "";
-    if (
-      keyParam !== WEBHOOK_KEY &&
-      keyHeader !== WEBHOOK_KEY &&
-      keyBody !== WEBHOOK_KEY
-    ) {
-      console.warn("[TILDA] Rejected: key mismatch. Got bodyKeys:", Object.keys(body).filter((k) => /key|secret|api|tilda/i.test(k)));
+    const keyBody = body["secret"] || body["webhook_key"] || body["tilda_key"] || body["TILDA_WEBHOOK_KEY"] || body["api_key"] || "";
+    if (keyParam !== WEBHOOK_KEY && keyHeader !== WEBHOOK_KEY && keyBody !== WEBHOOK_KEY) {
+      console.warn("[TILDA] Rejected: key mismatch.");
       return NextResponse.json({ error: "Invalid webhook key" }, { status: 403 });
     }
   }
 
-  // Log all received fields for debugging — save to DB for inspection
   console.log("[TILDA] Received fields:", JSON.stringify(body));
-  // Store raw webhook data in lead description for debugging
-  const rawData = Object.entries(body).map(([k, v]) => `${k}: ${v}`).join("\n");
 
-  // Extract fields — Tilda uses various naming conventions
-  const name = body.Name || body.name || body.FIO || body.fio || body["Имя"] || body.firstname || body["Ваше имя"] || body["Как вас зовут?"] || "";
-  const phone = body.Phone || body.phone || body["Телефон"] || body.tel || body["Ваш телефон"] || body["Номер телефона"] || "";
-  const email = body.Email || body.email || body["Почта"] || body["Ваш email"] || body["E-mail"] || "";
-  const company = body.Company || body.company || body["Компания"] || body["Название компании"] || "";
-  const message = body.Message || body.message || body["Сообщение"] || body.comment || body["Комментарий"] || "";
-  const source = body.formname || body.formid || body.form || "tilda";
-  const pageUrl = body.tranid || body.page || "";
+  // Extract structured fields
+  const name = pick(body, KNOWN_NAME_KEYS);
+  const phone = pick(body, KNOWN_PHONE_KEYS);
+  const email = pick(body, KNOWN_EMAIL_KEYS);
+  const company = pick(body, KNOWN_COMPANY_KEYS);
+  const message = pick(body, KNOWN_MESSAGE_KEYS);
+  const address = pick(body, KNOWN_ADDRESS_KEYS);
+  const formName = body.formname || body.formid || body.form || "";
+  const pageUrl = body.tranid || body.page || body.referer || "";
 
-  // If no recognized fields, try to extract from any field that looks like contact data
+  // Fallback fishing for contact data in arbitrary fields
   const allValues = Object.values(body).filter((v) => typeof v === "string" && v.length > 1) as string[];
-  const anyPhone = allValues.find((v) => /^[\+\d\s\-\(\)]{7,}$/.test(v)) || "";
+  const anyPhone = allValues.find((v) => /^[+\d\s\-()]{7,}$/.test(v)) || "";
   const anyEmail = allValues.find((v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) || "";
   const anyName = !name && !anyPhone && !anyEmail ? allValues[0] || "" : "";
 
@@ -76,16 +78,34 @@ export async function POST(req: NextRequest) {
   const finalEmail = email || anyEmail;
 
   if (!finalName && !finalPhone && !finalEmail) {
-    // Return 200 even for empty data (Tilda test pings) — otherwise Tilda marks webhook as broken
     return NextResponse.json({ ok: true, skipped: true, reason: "No contact data", receivedFields: Object.keys(body) });
+  }
+
+  // Detect paid order — Tilda payment webhook posts payment[orderid] etc.
+  const orderId = body["payment[orderid]"] || body["payment[order]"] || "";
+  const paidAmountStr = body["payment[amount]"] || body["payment[sum]"] || body["amount"] || "";
+  const paidAmount = Number(String(paidAmountStr).replace(/[^\d.,]/g, "").replace(",", "."));
+  const paymentSys = body["payment[sys]"] || body["payment[system]"] || "";
+  const promocode = body["payment[promocode]"] || "";
+  const isPaidOrder = !!orderId || (Number.isFinite(paidAmount) && paidAmount > 0) || !!paymentSys;
+
+  // Parse products array from Tilda cart payload
+  type IncomingProduct = { name: string; quantity: number; price: number; amount: number };
+  const products: IncomingProduct[] = [];
+  for (let i = 0; i < 50; i++) {
+    const pName = body[`payment[products][${i}][name]`] || body[`products[${i}][name]`];
+    if (!pName) break;
+    const qty = Number(body[`payment[products][${i}][quantity]`] || body[`products[${i}][quantity]`] || 1);
+    const price = Number(body[`payment[products][${i}][price]`] || body[`products[${i}][price]`] || 0);
+    const amount = Number(body[`payment[products][${i}][amount]`] || body[`products[${i}][amount]`] || price * qty);
+    products.push({ name: String(pName), quantity: qty, price, amount });
   }
 
   // Get admin user for created_by
   const { data: adminUser } = await admin.from("users").select("id").eq("role", "admin").limit(1).single();
   const adminId = adminUser?.id;
 
-  // Find existing contact by UNIQUE identifiers (email, phone) — NOT by name!
-  // Name alone is not unique ("Анна" matches many contacts)
+  // Contact dedup by email → phone (suffix match), enrich-only never overwrite
   let contactId: string | null = null;
   if (finalEmail) {
     const { data } = await admin.from("contacts").select("id").ilike("email", finalEmail).limit(1).single();
@@ -95,7 +115,6 @@ export async function POST(req: NextRequest) {
     const cleanPhone = finalPhone.replace(/\D/g, "");
     const suffix = cleanPhone.slice(-10);
     if (suffix.length >= 7) {
-      // Use exact suffix match, not broad LIKE
       const { data } = await admin.from("contacts").select("id, phone")
         .or(`phone.ilike.%${suffix},phone_mobile.ilike.%${suffix}`)
         .limit(1).single();
@@ -103,12 +122,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Only create new contact if we have phone OR email — never match by name alone
   if (!contactId) {
-    if (!finalPhone && !finalEmail) {
-      // No unique identifier — create contact but log warning
-      console.warn("[TILDA] Creating contact without phone/email:", finalName);
-    }
     const { data: newContact } = await admin.from("contacts").insert({
       full_name: finalName || finalEmail || finalPhone,
       phone: finalPhone || null,
@@ -117,14 +131,11 @@ export async function POST(req: NextRequest) {
     }).select("id").single();
     contactId = newContact?.id ?? null;
   } else {
-    // Enrich existing contact — only fill MISSING fields, never overwrite
     const { data: existing } = await admin.from("contacts").select("full_name, phone, email").eq("id", contactId).single();
     if (existing) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const updates: any = {};
+      const updates: Record<string, string> = {};
       if (finalPhone && !existing.phone) updates.phone = finalPhone;
       if (finalEmail && !existing.email) updates.email = finalEmail;
-      // Only update name if current name is junk (numeric or empty)
       if (finalName && (!existing.full_name || /^\d+$/.test(existing.full_name.trim()))) updates.full_name = finalName;
       if (Object.keys(updates).length > 0) {
         await admin.from("contacts").update(updates).eq("id", contactId);
@@ -132,98 +143,198 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Create company if provided
+  // Company dedup
   let companyId: string | null = null;
   if (company) {
     const { data: existing } = await admin.from("companies").select("id").ilike("name", company).limit(1).single();
     if (existing) {
       companyId = existing.id;
     } else {
-      const { data: newCompany } = await admin.from("companies").insert({
-        name: company,
-        created_by: adminId,
-      }).select("id").single();
+      const { data: newCompany } = await admin.from("companies").insert({ name: company, created_by: adminId }).select("id").single();
       companyId = newCompany?.id ?? null;
     }
   }
 
-  // Get default funnel + first stage
-  const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
-  let stageId: string | null = null;
-  if (funnel) {
-    const { data: stage } = await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single();
-    stageId = stage?.id ?? null;
+  // Default lead funnel + first stage
+  const { data: leadFunnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
+  let leadStageId: string | null = null;
+  if (leadFunnel) {
+    const { data: stage } = await admin.from("funnel_stages").select("id").eq("funnel_id", leadFunnel.id).order("sort_order").limit(1).single();
+    leadStageId = stage?.id ?? null;
   }
 
-  // Detect a PAID order vs an ordinary form submission. Tilda's
-  // payment-system webhook posts a `payment[orderid]` and either
-  // `payment[amount]` or `payment[sys]`. Form-only submissions don't.
-  const orderId = body["payment[orderid]"] || body["payment[order]"] || "";
-  const paidAmountStr = body["payment[amount]"] || body["payment[sum]"] || body["amount"] || "";
-  const paidAmount = Number(String(paidAmountStr).replace(/[^\d.,]/g, "").replace(",", "."));
-  const paymentSys = body["payment[sys]"] || body["payment[system]"] || "";
-  const isPaidOrder = !!orderId || (Number.isFinite(paidAmount) && paidAmount > 0) || !!paymentSys;
+  // Build structured lead description — one section per type, blank line
+  // between sections. Backlog v6 §1.7 (new ask 14.05) — Рустем жаловался,
+  // что описание лида с Tilda превращается в неразборчивую простыню. Раньше
+  // в description сваливался комментарий + всё подряд + сырой dump. Теперь
+  // делаем секции и убираем raw-dump (его всё равно можно посмотреть в
+  // логах crm-app или в Tilda).
+  const sections: string[] = [];
+
+  const contactLines: string[] = [];
+  if (finalName) contactLines.push(`👤 ${finalName}`);
+  if (finalPhone) contactLines.push(`📞 ${finalPhone}`);
+  if (finalEmail) contactLines.push(`✉️ ${finalEmail}`);
+  if (company) contactLines.push(`🏢 ${company}`);
+  if (contactLines.length > 0) sections.push(`КОНТАКТ\n${contactLines.join("\n")}`);
+
+  if (address) sections.push(`АДРЕС ДОСТАВКИ\n${address}`);
+
+  if (message) sections.push(`КОММЕНТАРИЙ\n${message}`);
+
+  if (products.length > 0) {
+    const productLines = products.map((p, i) =>
+      `${i + 1}. ${p.name} — ${p.quantity} шт × ${p.price} ₽ = ${p.amount} ₽`
+    );
+    const total = products.reduce((s, p) => s + p.amount, 0);
+    sections.push(`ЗАКАЗ\n${productLines.join("\n")}\n────────\nИтого: ${total} ₽`);
+  }
+
+  if (isPaidOrder) {
+    const payLines: string[] = ["✅ ОПЛАЧЕНО"];
+    if (orderId) payLines.push(`Номер заказа: ${orderId}`);
+    if (Number.isFinite(paidAmount) && paidAmount > 0) payLines.push(`Сумма: ${paidAmount.toFixed(0)} ₽`);
+    if (paymentSys) payLines.push(`Платёжная система: ${paymentSys}`);
+    if (promocode) payLines.push(`Промокод: ${promocode}`);
+    sections.push(payLines.join("\n"));
+  }
+
+  const sourceLines: string[] = [];
+  if (formName) sourceLines.push(`Форма: ${formName}`);
+  if (pageUrl) sourceLines.push(`Страница: ${pageUrl}`);
+  if (sourceLines.length > 0) sections.push(`ИСТОЧНИК\n${sourceLines.join("\n")}`);
+
+  // Extra fields that aren't covered above — keep them visible but
+  // structured (one per line), not as a raw urlencoded dump.
+  const extraEntries = Object.entries(body)
+    .filter(([k]) =>
+      !KNOWN_SYSTEM_KEYS.has(k) &&
+      !k.startsWith("payment[") &&
+      !k.startsWith("products[") &&
+      !/^utm_/.test(k) &&
+      !/^cookies/i.test(k) &&
+      !/^trantoken|tildaspec/i.test(k)
+    );
+  if (extraEntries.length > 0) {
+    const extraLines = extraEntries.map(([k, v]) => `${k}: ${v}`);
+    sections.push(`ДОПОЛНИТЕЛЬНО\n${extraLines.join("\n")}`);
+  }
+
+  const description = sections.join("\n\n");
 
   const leadTitle = isPaidOrder
-    ? `Оплачено: ${finalName || finalEmail || finalPhone}${orderId ? ` (заказ ${orderId})` : ""}${Number.isFinite(paidAmount) && paidAmount > 0 ? ` — ${paidAmount.toFixed(0)} ₽` : ""}`
+    ? `Оплачено: ${finalName || finalEmail || finalPhone}${orderId ? ` (№${orderId})` : ""}${Number.isFinite(paidAmount) && paidAmount > 0 ? ` — ${paidAmount.toFixed(0)} ₽` : ""}`
     : `Заявка с сайта: ${finalName || finalEmail || finalPhone}`;
 
-  const { data: lead, error } = await admin.from("leads").insert({
+  // Create lead. Paid orders skip qualification and go straight to
+  // 'converted' (with a deal attached below). Form-only stays 'new'.
+  const { data: lead, error: leadErr } = await admin.from("leads").insert({
     title: leadTitle,
     source: isPaidOrder ? "tilda_paid" : "website",
-    // Paid orders skip "новый/первый контакт" — they're already past
-    // qualification. Use "samples" stage if it exists in the funnel,
-    // otherwise leave default.
-    status: isPaidOrder ? "samples_shipped" : "new",
-    description: [
-      message,
-      pageUrl ? `Страница: ${pageUrl}` : "",
-      `Форма: ${source}`,
-      isPaidOrder ? `Платёжная система: ${paymentSys || "—"}` : "",
-      isPaidOrder && Number.isFinite(paidAmount) && paidAmount > 0 ? `Сумма: ${paidAmount} ₽` : "",
-      `\n--- Сырые данные ---\n${rawData}`,
-    ].filter(Boolean).join("\n"),
+    status: isPaidOrder ? "converted" : "new",
+    description,
     contact_id: contactId,
     company_id: companyId,
-    funnel_id: funnel?.id ?? null,
-    stage_id: stageId,
+    funnel_id: leadFunnel?.id ?? null,
+    stage_id: leadStageId,
     created_by: adminId,
   }).select("id").single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (leadErr) {
+    return NextResponse.json({ error: leadErr.message }, { status: 500 });
   }
 
-  // Parse Tilda products/cart data and add to lead_products
-  // Tilda sends: payment[products][0][name], payment[products][0][quantity], payment[products][0][price], payment[products][0][amount]
-  if (lead?.id) {
-    const products: { name: string; quantity: number; price: number }[] = [];
-    // Try array format
-    for (let i = 0; i < 20; i++) {
-      const pName = body[`payment[products][${i}][name]`] || body[`products[${i}][name]`];
-      if (!pName) break;
-      const qty = Number(body[`payment[products][${i}][quantity]`] || body[`products[${i}][quantity]`] || 1);
-      const price = Number(body[`payment[products][${i}][price]`] || body[`products[${i}][price]`] || 0);
-      products.push({ name: pName, quantity: qty, price });
-    }
-
+  // Persist products to lead_products so the lead detail page shows them
+  if (lead?.id && products.length > 0) {
     for (const p of products) {
-      // Try to find product in DB by name
+      // Try resolve to a catalog product by fuzzy name match
       const { data: dbProduct } = await admin.from("products").select("id").ilike("name", `%${p.name}%`).limit(1).single();
       await admin.from("lead_products").insert({
         lead_id: lead.id,
         product_id: dbProduct?.id ?? null,
         quantity: p.quantity || 1,
         unit_price: p.price,
-        total_price: p.price * (p.quantity || 1),
+        total_price: p.amount,
         product_block: "request",
       });
+    }
+  }
+
+  // For PAID orders — also create a won deal so revenue dashboards and
+  // sales reports include the sale immediately. Don't wait for someone
+  // to manually "конвертировать" the lead.
+  let dealId: string | null = null;
+  if (isPaidOrder && lead?.id) {
+    const { data: dealFunnel } = await admin.from("funnels").select("id").eq("type", "deal").eq("is_default", true).maybeSingle();
+    let dealFunnelId: string | null = dealFunnel?.id ?? null;
+    if (!dealFunnelId) {
+      const { data: anyFunnel } = await admin.from("funnels").select("id").eq("type", "deal").order("created_at", { ascending: true }).limit(1).maybeSingle();
+      dealFunnelId = anyFunnel?.id ?? null;
+    }
+    let wonStageId: string | null = null;
+    if (dealFunnelId) {
+      // Pick the success stage (is_success=true) — usually "Выиграна".
+      // Fallback: by slug or by last sort_order.
+      const { data: wonStage } = await admin.from("funnel_stages")
+        .select("id")
+        .eq("funnel_id", dealFunnelId)
+        .eq("is_success", true)
+        .limit(1).maybeSingle();
+      if (wonStage) wonStageId = wonStage.id;
+      else {
+        const { data: bySlug } = await admin.from("funnel_stages")
+          .select("id")
+          .eq("funnel_id", dealFunnelId)
+          .eq("slug", "won")
+          .limit(1).maybeSingle();
+        wonStageId = bySlug?.id ?? null;
+      }
+    }
+
+    const { data: deal, error: dealErr } = await admin.from("deals").insert({
+      title: leadTitle,
+      contact_id: contactId,
+      company_id: companyId,
+      source: "tilda_paid",
+      stage: "won",
+      stage_id: wonStageId,
+      funnel_id: dealFunnelId,
+      amount: Number.isFinite(paidAmount) && paidAmount > 0 ? paidAmount : null,
+      description,
+      created_by: adminId,
+      closed_at: new Date().toISOString(),
+    }).select("id").single();
+
+    if (!dealErr && deal) {
+      dealId = deal.id;
+      // Copy products from lead_products → deal_products so the won deal
+      // carries the same line items (and shows up in revenue per product
+      // reports). Resolve product_id where possible.
+      if (products.length > 0) {
+        for (const p of products) {
+          const { data: dbProduct } = await admin.from("products").select("id").ilike("name", `%${p.name}%`).limit(1).single();
+          // deal_products.product_id is NOT NULL — only insert if matched.
+          if (dbProduct?.id) {
+            await admin.from("deal_products").insert({
+              deal_id: deal.id,
+              product_id: dbProduct.id,
+              quantity: p.quantity || 1,
+              unit_price: p.price,
+              total_price: p.amount,
+              product_block: "order",
+            });
+          }
+        }
+      }
+    } else if (dealErr) {
+      console.error("[TILDA] Failed to create won deal:", dealErr.message);
     }
   }
 
   return NextResponse.json({
     ok: true,
     lead_id: lead?.id,
+    deal_id: dealId,
     contact_id: contactId,
     paid_order: isPaidOrder,
     order_id: orderId || null,
@@ -231,7 +342,7 @@ export async function POST(req: NextRequest) {
   });
 }
 
-// Also accept GET for Tilda test pings
+// Accept GET for Tilda test pings
 export async function GET() {
   return NextResponse.json({ status: "ok", webhook: "tilda" });
 }

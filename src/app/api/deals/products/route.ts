@@ -26,14 +26,22 @@ export async function GET(req: NextRequest) {
   // deal_products has no `name` column — name lives on the joined
   // products row. Including a non-existent column made the whole query
   // 400 with "column deal_products.name does not exist" 2026-05-05.
-  let q = admin
-    .from("deal_products")
-    .select("id, quantity, unit_price, total_price, product_id, product_block, variants, base_price, category, subcategory, volume_ml, flavor, products(name, sku, category, subcategory, liters, container, excluded_from_invoice)")
-    .eq("deal_id", dealId);
-  if (block) q = q.eq("product_block", block);
-  const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ products: data ?? [] });
+  async function run(withKind: boolean) {
+    const cols = withKind
+      ? "id, quantity, unit_price, total_price, product_id, product_block, variants, base_price, category, subcategory, volume_ml, flavor, kind, products(name, sku, category, subcategory, liters, container, excluded_from_invoice)"
+      : "id, quantity, unit_price, total_price, product_id, product_block, variants, base_price, category, subcategory, volume_ml, flavor, products(name, sku, category, subcategory, liters, container, excluded_from_invoice)";
+    let q = admin.from("deal_products").select(cols).eq("deal_id", dealId);
+    if (block) q = q.eq("product_block", block);
+    return q;
+  }
+
+  // Try with kind; if migration v82 not applied, fall back without it.
+  let r = await run(true);
+  if (r.error && /column.*kind.*does not exist|42703/i.test(r.error.message || "")) {
+    r = await run(false);
+  }
+  if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
+  return NextResponse.json({ products: r.data ?? [] });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -68,6 +76,9 @@ export async function PATCH(req: NextRequest) {
   for (const k of [
     "quantity", "unit_price", "base_price", "discount_percent", "total_price",
     "lifecycle_days", "variants", "product_block",
+    // backlog v6 §4.6 — kind разделяет товары на «продажа» и «аренда»;
+    // ContractsClient автоматом разводит их по Спецификации и Акту.
+    "kind",
   ]) {
     if (body[k] !== undefined) updates[k] = body[k];
   }
@@ -76,9 +87,17 @@ export async function PATCH(req: NextRequest) {
   }
 
   const admin = createAdminClient();
-  const { data, error } = await admin.from("deal_products")
+  let r = await admin.from("deal_products")
     .update(updates).eq("id", body.id)
     .select("*, products(name, sku, image_url)").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ product: data });
+  if (r.error && /column.*kind.*does not exist|42703/i.test(r.error.message || "")) {
+    // Pre-v82 schema — drop `kind` and retry so the rest of the update
+    // still goes through.
+    delete (updates as Record<string, unknown>).kind;
+    r = await admin.from("deal_products")
+      .update(updates).eq("id", body.id)
+      .select("*, products(name, sku, image_url)").single();
+  }
+  if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
+  return NextResponse.json({ product: r.data });
 }
