@@ -257,11 +257,25 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
         });
         session.on("peerconnection", (data: any) => {
           console.log("[WebPhone] peerconnection created");
-          data.peerconnection.addEventListener("iceconnectionstatechange", () => {
-            console.log("[WebPhone] ICE state:", data.peerconnection.iceConnectionState);
+          const pc: RTCPeerConnection = data.peerconnection;
+          pc.addEventListener("iceconnectionstatechange", () => {
+            console.log("[WebPhone] ICE state:", pc.iceConnectionState);
           });
-          data.peerconnection.addEventListener("icegatheringstatechange", () => {
-            console.log("[WebPhone] ICE gathering:", data.peerconnection.iceGatheringState);
+          pc.addEventListener("icegatheringstatechange", () => {
+            console.log("[WebPhone] ICE gathering:", pc.iceGatheringState);
+          });
+          // Attach the inbound audio NOW — track events sometimes fire
+          // before the SIP `accepted` event, and previously
+          // attachAudio() was only called on `accepted`, so the very
+          // first audio frames were silently dropped (backlog v6 §1.1).
+          pc.addEventListener("track", (e: RTCTrackEvent) => {
+            console.log("[WebPhone] remote track received:", e.track.kind);
+            if (audioRef.current && e.streams?.[0]) {
+              audioRef.current.srcObject = e.streams[0];
+              audioRef.current.play().catch((err) => {
+                console.warn("[WebPhone] audio.play() rejected:", err?.name, err?.message);
+              });
+            }
           });
         });
 
