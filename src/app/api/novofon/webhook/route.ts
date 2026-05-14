@@ -132,16 +132,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Skip duplicate auto-lead creation if there's already an active lead for
-    // this contact (created in the last 30 days, not converted/rejected).
-    // Backlog v5 §1.3.4: two calls from one client created two duplicate leads.
+    // this contact (not converted, not rejected, not soft-deleted). Backlog
+    // v6 §10.1 — Алина's repeat calls were still spawning fresh leads
+    // because the previous 30-day cutoff bypassed her existing
+    // months-old lead. Recurring B2B contacts often have a "lead" in
+    // active state for >30 days; treating it as expired and creating a
+    // duplicate is exactly the spam pattern Рустем reported. Dedup by
+    // status, not by age.
     let assignee: string | null = null;
     if (contactId) {
-      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const { data: existingLead } = await admin.from("leads")
         .select("id, assigned_to")
         .eq("contact_id", contactId)
-        .gt("created_at", since)
-        .not("status", "in", "(converted,rejected)")
+        .not("status", "in", "(converted,rejected,won,lost)")
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(1)
