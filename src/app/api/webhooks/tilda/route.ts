@@ -55,6 +55,8 @@ type TildaParsed = {
   paymentId?: string;
   formName?: string;
   products?: Array<{ name: string; quantity: number; price: number; amount: number; sku?: string; attributes?: string }>;
+  deliveryMethod?: string;
+  deliveryCost?: number;
 };
 function parseTildaBlob(text: string): TildaParsed | null {
   const t = (text || "").replace(/\s+/g, " ").trim();
@@ -94,6 +96,16 @@ function parseTildaBlob(text: string): TildaParsed | null {
   if (amount) {
     const n = Number(amount.replace(/\s/g, "").replace(",", "."));
     if (Number.isFinite(n)) out.paymentAmount = n;
+  }
+  // «Доставка СДЭК до пункта выдачи: 772.50» → method + cost. Жиба
+  // 15.05: «пусть цены товаров и доставки тоже приходили». Раньше эта
+  // строка проглатывалась как разделитель в productRe lookahead и
+  // нигде не сохранялась.
+  const delivMatch = t.match(/Доставка\s+([^:]+?):\s*([\d.,]+)/i);
+  if (delivMatch) {
+    out.deliveryMethod = delivMatch[1].trim();
+    const dc = Number(delivMatch[2].replace(/\s/g, "").replace(",", "."));
+    if (Number.isFinite(dc)) out.deliveryCost = dc;
   }
   const payId = grab(/Payment\s+ID\s*:/i, STOPS);
   if (payId) out.paymentId = payId;
@@ -181,6 +193,8 @@ export async function POST(req: NextRequest) {
   let blobPaymentId = "";
   let blobIsPaid = false;
   let blobProducts: Array<{ name: string; quantity: number; price: number; amount: number; sku?: string; attributes?: string }> = [];
+  let blobDeliveryMethod = "";
+  let blobDeliveryCost = 0;
   let cleanMessage = messageRaw;
   // Иногда блоб не в message — пробуем все длинные значения
   const blobCandidates = [messageRaw, ...Object.values(body).filter((v) => typeof v === "string" && v.length > 80)];
@@ -192,6 +206,8 @@ export async function POST(req: NextRequest) {
       blobAmount = parsed.paymentAmount || 0;
       blobPaymentId = parsed.paymentId || "";
       blobProducts = parsed.products || [];
+      blobDeliveryMethod = parsed.deliveryMethod || "";
+      blobDeliveryCost = parsed.deliveryCost || 0;
       if (parsed.shippingAddress && !address) address = parsed.shippingAddress;
       // Full name из блоба всегда побеждает короткое Name из формы —
       // Tilda Cart шлёт в Purchaser information только имя клиента
@@ -264,6 +280,24 @@ export async function POST(req: NextRequest) {
   }
   if (products.length === 0 && blobProducts.length > 0) {
     products.push(...blobProducts);
+  }
+  // Доставка — синтетическая позиция в конце списка. Без SKU и без
+  // привязки к каталогу (для deal_products будет skip с ⚠️ кроме
+  // случая когда есть товар «Доставка» в /products — тогда подцепит).
+  // В description ЗАКАЗ-секции отрисуется отдельной строкой.
+  const deliveryMethodFromPayment = body["payment[delivery]"] || body["payment[delivery_method]"] || "";
+  const deliveryMethod = blobDeliveryMethod || deliveryMethodFromPayment || "";
+  const deliveryCostFromPayment = Number(String(body["payment[delivery_amount]"] || body["payment[delivery_price]"] || body["payment[delivery_cost]"] || "").replace(/[^\d.,]/g, "").replace(",", "."));
+  const deliveryCost = Number.isFinite(deliveryCostFromPayment) && deliveryCostFromPayment > 0
+    ? deliveryCostFromPayment
+    : blobDeliveryCost;
+  if (deliveryCost > 0) {
+    products.push({
+      name: deliveryMethod ? `Доставка ${deliveryMethod}` : "Доставка",
+      quantity: 1,
+      price: deliveryCost,
+      amount: deliveryCost,
+    });
   }
 
   // Get admin user for created_by
@@ -388,7 +422,13 @@ export async function POST(req: NextRequest) {
     }
     resolved.push({ p, productId });
   }
-  const unmatched = resolved.filter((r) => !r.productId);
+  // Доставка не считается «не найденной в каталоге» — это сервис, а не
+  // товар. Помечаем её отдельным флагом, чтобы и в ⚠️-предупреждении не
+  // фигурировала, и в ЗАКАЗ-секции рисовалась без значка ⚠️.
+  function isDelivery(name: string): boolean {
+    return /^\s*Доставка\b/i.test(name || "");
+  }
+  const unmatched = resolved.filter((r) => !r.productId && !isDelivery(r.p.name));
 
   // Build structured lead description — one section per type, blank line
   // between sections. Backlog v6 §1.7 (new ask 14.05) — Рустем жаловался,
@@ -433,7 +473,7 @@ export async function POST(req: NextRequest) {
       return pairs.join(" · ");
     }
     const productLines = resolved.map((r, i) => {
-      const mark = r.productId ? "" : " ⚠️ нет в каталоге";
+      const mark = (r.productId || isDelivery(r.p.name)) ? "" : " ⚠️ нет в каталоге";
       const header = `${i + 1}. ${r.p.name}${r.p.sku ? ` (арт. ${r.p.sku})` : ""}${mark} — ${r.p.quantity} шт × ${r.p.price} ₽ = ${r.p.amount} ₽`;
       const attrs = r.p.attributes ? parseAttrPairs(r.p.attributes) : "";
       return attrs ? `${header}\n   ${attrs}` : header;
