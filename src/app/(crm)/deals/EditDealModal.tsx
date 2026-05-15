@@ -32,7 +32,7 @@ const SOURCE_OPTIONS = [
 export default function EditDealModal({ open, onClose, deal, onSaved }: { open: boolean; onClose: () => void; deal: any; onSaved: (deal: any) => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [contacts, setContacts] = useState<{ id: string; full_name: string }[]>([]);
+  const [contacts, setContacts] = useState<{ id: string; full_name: string; phone?: string | null; phone_mobile?: string | null; email?: string | null; companies?: { name: string } | { name: string }[] | null }[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [users, setUsers] = useState<{ id: string; full_name: string }[]>([]);
   // Delivery address picker (backlog v5 §3) — backed by /api/addresses so
@@ -52,8 +52,8 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
     // fetchAll for contacts/companies — production has >1000 rows, default
     // Supabase select() truncates and freshly created entities don't appear.
     Promise.all([
-      fetchAll<{ id: string; full_name: string; companies?: { name: string } | { name: string }[] | null }>(
-        supabase, "contacts", "id, full_name, companies(name)", { order: { column: "full_name" } }
+      fetchAll<{ id: string; full_name: string; phone?: string | null; phone_mobile?: string | null; email?: string | null; companies?: { name: string } | { name: string }[] | null }>(
+        supabase, "contacts", "id, full_name, phone, phone_mobile, email, companies(name)", { order: { column: "full_name" } }
       ),
       fetchAll<{ id: string; name: string }>(supabase, "companies", "id, name", { order: { column: "name" } }),
       supabase.from("users").select("id, full_name").eq("is_active", true),
@@ -153,9 +153,14 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
             label="Контакт"
             name="contact_id"
             entityType="contact"
-            options={contacts.map((c: { id: string; full_name: string; companies?: { name: string } | { name: string }[] | null }) => {
+            options={contacts.map((c) => {
               const coName = Array.isArray(c.companies) ? c.companies[0]?.name : c.companies?.name;
-              return { value: c.id, label: c.full_name + (coName ? ` · ${coName}` : "") };
+              const parts: string[] = [c.full_name || "(без имени)"];
+              if (coName) parts.push(coName);
+              const ph = c.phone_mobile || c.phone;
+              if (ph) parts.push(ph);
+              if (c.email) parts.push(c.email);
+              return { value: c.id, label: parts.join(" · ") };
             })}
             placeholder="Выберите контакт"
             defaultValue={deal?.contact_id ?? ""}

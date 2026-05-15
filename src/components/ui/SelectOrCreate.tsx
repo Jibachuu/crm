@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Plus, X, Search } from "lucide-react";
 import Button from "./Button";
 import Input from "./Input";
@@ -28,10 +28,15 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
 
   const [searchResults, setSearchResults] = useState<{ value: string; label: string }[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
-  // Server-side search when query is typed (handles 1000+ records)
+  // Server-side search when query is typed (handles 1000+ records).
+  // Жиба 15.05: «компания мерцает и пропадает» — пользовалась тем что
+  // поиск стартовал только с 2 символов, и в момент перехода 1→2
+  // символа popover перерисовывался из local options в server-results
+  // и моргало. Триггерим уже с 1 символа.
   useEffect(() => {
-    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+    if (!searchQuery.trim()) {
       setSearchResults(null);
       return;
     }
@@ -47,9 +52,25 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
         }
       } catch { /* */ }
       setSearching(false);
-    }, 300);
+    }, 250);
     return () => clearTimeout(timeout);
   }, [searchQuery, entityType]);
+
+  // Click outside — заменили старый `fixed inset-0` backdrop (он
+  // перехватывал клики на пункты popover в ряде позиций stacking-context,
+  // отсюда «мерцает и пропадает»). mousedown срабатывает раньше клика,
+  // поэтому если мышь внутри rootRef — popover не закрывается.
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    function onDown(e: MouseEvent) {
+      if (!rootRef.current) return;
+      if (rootRef.current.contains(e.target as Node)) return;
+      setDropdownOpen(false);
+      setSearchQuery("");
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [dropdownOpen]);
 
   const filtered = searchResults ?? (searchQuery.trim()
     ? options.filter((o) => o.label.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -126,7 +147,7 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <div className="flex items-center justify-between mb-1">
         <label className="text-sm font-medium text-slate-700">{label}</label>
         <button
@@ -194,7 +215,7 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
             {searching && (
               <p className="text-xs text-center py-3" style={{ color: "#aaa" }}>Поиск...</p>
             )}
-            {!searching && filtered.length === 0 && searchQuery.trim().length >= 2 && (
+            {!searching && filtered.length === 0 && searchQuery.trim().length >= 1 && (
               <p className="text-xs text-center py-3" style={{ color: "#aaa" }}>Не найдено</p>
             )}
           </div>
@@ -202,11 +223,6 @@ export default function SelectOrCreate({ label, name, options, defaultValue, pla
       )}
 
       <input type="hidden" name={name} value={selectedValue} />
-
-      {/* Close dropdown on outside click */}
-      {dropdownOpen && (
-        <div className="fixed inset-0 z-40" onClick={() => { setDropdownOpen(false); setSearchQuery(""); }} />
-      )}
     </div>
   );
 }

@@ -30,6 +30,99 @@ function pick(body: Record<string, string>, keys: string[]): string {
   return "";
 }
 
+// Tilda Cart (and «Form Name: Cart») сваливает оплаченный заказ ОДНИМ
+// большим текстом в одно поле (часто `Comments`, `Comment`, `Cart`, или
+// сразу как тело payment[products][0][name] длинной строкой). Формат
+// выглядит так:
+//   Order #123456 1. Набор: 2490 (1 x 2490) SKU1, Объём: 300мл …
+//   2. Жидкое мыло: 800 (1 x 800) SKU2, … The order is paid for.
+//   Shipping address: RU: Point: пр-т Северный … Full name: Иванов И.И.
+//   Payment Amount: 3290 RUB Payment ID: Tinkoff Payment: 8498…
+//   Name: Анна Email: foo@bar.ru Phone: +79… Form Name: Cart …
+//
+// Без парсинга это попадало в `КОММЕНТАРИЙ` одной простынёй (см. жалобу
+// Жибы 15.05). Парсим по якорным словам и возвращаем сразу набор
+// структурированных полей.
+type TildaParsed = {
+  orderId?: string;
+  isPaid?: boolean;
+  shippingAddress?: string;
+  fullName?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  paymentAmount?: number;
+  paymentId?: string;
+  formName?: string;
+  products?: Array<{ name: string; quantity: number; price: number; amount: number; sku?: string; attributes?: string }>;
+};
+function parseTildaBlob(text: string): TildaParsed | null {
+  const t = (text || "").replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  // Маркеры — без хотя бы одного парсить не пытаемся.
+  const hasOrder = /Order\s*#\s*\d+/i.test(t);
+  const hasPayment = /Payment\s*(Amount|ID)\s*:/i.test(t);
+  const hasFullName = /Full\s*name\s*:/i.test(t);
+  if (!hasOrder && !hasPayment && !hasFullName) return null;
+
+  const out: TildaParsed = {};
+
+  const mOrder = t.match(/Order\s*#\s*(\d+)/i);
+  if (mOrder) out.orderId = mOrder[1];
+
+  out.isPaid = /The order is paid for\./i.test(t) || /paid for\b/i.test(t);
+
+  const grab = (label: RegExp, stopWords: string[]): string => {
+    const stops = stopWords.map((s) => s.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")).join("|");
+    const re = new RegExp(label.source + "\\s*(.+?)(?=\\s+(?:" + stops + ")\\s*:|$)", "i");
+    const m = t.match(re);
+    return m ? m[1].trim().replace(/[\s-]+$/, "") : "";
+  };
+  const STOPS = ["Order #", "Full name", "Payment Amount", "Payment ID", "Purchaser information", "Additional information", "Block ID", "Transaction ID", "Form Name", "Name", "Email", "Phone", "Shipping address", "The order"];
+
+  const shipping = grab(/Shipping\s+address\s*:/i, STOPS);
+  if (shipping) out.shippingAddress = shipping;
+  const fullName = grab(/Full\s+name\s*:/i, STOPS);
+  if (fullName) out.fullName = fullName;
+  const name = grab(/(?<!Full\s)Name\s*:/i, STOPS);
+  if (name) out.name = name;
+  const email = (t.match(/Email\s*:\s*(\S+@\S+\.[A-Za-z0-9]+)/i) || [])[1] || "";
+  if (email) out.email = email;
+  const phone = (t.match(/Phone\s*:\s*(\+?[\d\s\-()]{7,})/i) || [])[1]?.trim() || "";
+  if (phone) out.phone = phone;
+  const amount = (t.match(/Payment\s+Amount\s*:\s*([\d\s.,]+)\s*([A-Za-zА-Яа-я]+)?/i) || [])[1];
+  if (amount) {
+    const n = Number(amount.replace(/\s/g, "").replace(",", "."));
+    if (Number.isFinite(n)) out.paymentAmount = n;
+  }
+  const payId = grab(/Payment\s+ID\s*:/i, STOPS);
+  if (payId) out.paymentId = payId;
+  const formName = grab(/Form\s+Name\s*:/i, STOPS);
+  if (formName) out.formName = formName.replace(/-+$/, "").trim();
+
+  // Парсинг товаров: «1. Имя: 2490 (1 x 2490) SKU, доп. атрибуты»
+  // Граница между позициями — следующее «N. » или ключевое слово.
+  const productRe = /(\d+)\.\s+(.+?):\s*([\d\s.,]+)\s*\((\d+)\s*x\s*([\d\s.,]+)\)\s*([A-Za-z0-9_\-/]+)?(?:,\s*([^]*?))?(?=\s+\d+\.\s|\s+(?:The order|Shipping address|Full name|Payment|Purchaser|Additional|Block|Transaction|Form Name)\s*:|$)/g;
+  const products: TildaParsed["products"] = [];
+  let m: RegExpExecArray | null;
+  while ((m = productRe.exec(t)) !== null) {
+    const total = Number(m[3].replace(/\s/g, "").replace(",", "."));
+    const qty = Number(m[4]);
+    const price = Number(m[5].replace(/\s/g, "").replace(",", "."));
+    products.push({
+      name: m[2].trim(),
+      quantity: Number.isFinite(qty) ? qty : 1,
+      price: Number.isFinite(price) ? price : 0,
+      amount: Number.isFinite(total) ? total : price * qty,
+      sku: m[6]?.trim() || undefined,
+      attributes: m[7]?.trim() || undefined,
+    });
+  }
+  if (products.length > 0) out.products = products;
+
+  return out;
+}
+
 export async function POST(req: NextRequest) {
   const admin = createAdminClient();
 
@@ -58,14 +151,46 @@ export async function POST(req: NextRequest) {
   console.log("[TILDA] Received fields:", JSON.stringify(body));
 
   // Extract structured fields
-  const name = pick(body, KNOWN_NAME_KEYS);
-  const phone = pick(body, KNOWN_PHONE_KEYS);
-  const email = pick(body, KNOWN_EMAIL_KEYS);
+  let name = pick(body, KNOWN_NAME_KEYS);
+  let phone = pick(body, KNOWN_PHONE_KEYS);
+  let email = pick(body, KNOWN_EMAIL_KEYS);
   const company = pick(body, KNOWN_COMPANY_KEYS);
-  const message = pick(body, KNOWN_MESSAGE_KEYS);
-  const address = pick(body, KNOWN_ADDRESS_KEYS);
-  const formName = body.formname || body.formid || body.form || "";
+  const messageRaw = pick(body, KNOWN_MESSAGE_KEYS);
+  let address = pick(body, KNOWN_ADDRESS_KEYS);
+  let formName = body.formname || body.formid || body.form || "";
   const pageUrl = body.tranid || body.page || body.referer || "";
+
+  // Tilda Cart часто сваливает всю информацию о заказе одной строкой в
+  // поле комментария. Пытаемся распарсить её на структурные поля и
+  // подкрутить КОНТАКТ/АДРЕС/ОПЛАТА секции этими данными.
+  let blobOrderId = "";
+  let blobAmount = 0;
+  let blobPaymentId = "";
+  let blobIsPaid = false;
+  let blobProducts: Array<{ name: string; quantity: number; price: number; amount: number; sku?: string; attributes?: string }> = [];
+  let cleanMessage = messageRaw;
+  // Иногда блоб не в message — пробуем все длинные значения
+  const blobCandidates = [messageRaw, ...Object.values(body).filter((v) => typeof v === "string" && v.length > 80)];
+  for (const candidate of blobCandidates) {
+    const parsed = parseTildaBlob(candidate);
+    if (parsed) {
+      blobOrderId = parsed.orderId || "";
+      blobIsPaid = !!parsed.isPaid;
+      blobAmount = parsed.paymentAmount || 0;
+      blobPaymentId = parsed.paymentId || "";
+      blobProducts = parsed.products || [];
+      if (parsed.shippingAddress && !address) address = parsed.shippingAddress;
+      if (parsed.fullName && !name) name = parsed.fullName;
+      else if (parsed.name && !name) name = parsed.name;
+      if (parsed.email && !email) email = parsed.email;
+      if (parsed.phone && !phone) phone = parsed.phone;
+      if (parsed.formName && !formName) formName = parsed.formName;
+      // Если из блоба удалось извлечь основные поля — НЕ кидаем оригинал
+      // в КОММЕНТАРИЙ, чтобы не дублировать.
+      if (candidate === messageRaw) cleanMessage = "";
+      break;
+    }
+  }
 
   // Fallback fishing for contact data in arbitrary fields
   const allValues = Object.values(body).filter((v) => typeof v === "string" && v.length > 1) as string[];
@@ -81,16 +206,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true, reason: "No contact data", receivedFields: Object.keys(body) });
   }
 
-  // Detect paid order — Tilda payment webhook posts payment[orderid] etc.
-  const orderId = body["payment[orderid]"] || body["payment[order]"] || "";
+  // Detect paid order — Tilda payment webhook posts payment[orderid] etc.,
+  // плюс если блоб сказал «The order is paid for.» — тоже считаем.
+  const orderId = body["payment[orderid]"] || body["payment[order]"] || blobOrderId || "";
   const paidAmountStr = body["payment[amount]"] || body["payment[sum]"] || body["amount"] || "";
-  const paidAmount = Number(String(paidAmountStr).replace(/[^\d.,]/g, "").replace(",", "."));
+  const paidAmountFields = Number(String(paidAmountStr).replace(/[^\d.,]/g, "").replace(",", "."));
+  const paidAmount = Number.isFinite(paidAmountFields) && paidAmountFields > 0 ? paidAmountFields : blobAmount;
   const paymentSys = body["payment[sys]"] || body["payment[system]"] || "";
   const promocode = body["payment[promocode]"] || "";
-  const isPaidOrder = !!orderId || (Number.isFinite(paidAmount) && paidAmount > 0) || !!paymentSys;
+  const isPaidOrder = !!orderId || (Number.isFinite(paidAmount) && paidAmount > 0) || !!paymentSys || blobIsPaid;
 
-  // Parse products array from Tilda cart payload
-  type IncomingProduct = { name: string; quantity: number; price: number; amount: number };
+  // Parse products array from Tilda cart payload — сперва берём
+  // структурированные payment[products][N], если их нет — используем
+  // продукты из распарсенного блоба (Cart-форма).
+  type IncomingProduct = { name: string; quantity: number; price: number; amount: number; sku?: string; attributes?: string };
   const products: IncomingProduct[] = [];
   for (let i = 0; i < 50; i++) {
     const pName = body[`payment[products][${i}][name]`] || body[`products[${i}][name]`];
@@ -99,6 +228,9 @@ export async function POST(req: NextRequest) {
     const price = Number(body[`payment[products][${i}][price]`] || body[`products[${i}][price]`] || 0);
     const amount = Number(body[`payment[products][${i}][amount]`] || body[`products[${i}][amount]`] || price * qty);
     products.push({ name: String(pName), quantity: qty, price, amount });
+  }
+  if (products.length === 0 && blobProducts.length > 0) {
+    products.push(...blobProducts);
   }
 
   // Get admin user for created_by
@@ -180,12 +312,13 @@ export async function POST(req: NextRequest) {
 
   if (address) sections.push(`АДРЕС ДОСТАВКИ\n${address}`);
 
-  if (message) sections.push(`КОММЕНТАРИЙ\n${message}`);
+  if (cleanMessage) sections.push(`КОММЕНТАРИЙ\n${cleanMessage}`);
 
   if (products.length > 0) {
-    const productLines = products.map((p, i) =>
-      `${i + 1}. ${p.name} — ${p.quantity} шт × ${p.price} ₽ = ${p.amount} ₽`
-    );
+    const productLines = products.map((p, i) => {
+      const header = `${i + 1}. ${p.name}${p.sku ? ` (арт. ${p.sku})` : ""} — ${p.quantity} шт × ${p.price} ₽ = ${p.amount} ₽`;
+      return p.attributes ? `${header}\n   ${p.attributes}` : header;
+    });
     const total = products.reduce((s, p) => s + p.amount, 0);
     sections.push(`ЗАКАЗ\n${productLines.join("\n")}\n────────\nИтого: ${total} ₽`);
   }
@@ -195,6 +328,7 @@ export async function POST(req: NextRequest) {
     if (orderId) payLines.push(`Номер заказа: ${orderId}`);
     if (Number.isFinite(paidAmount) && paidAmount > 0) payLines.push(`Сумма: ${paidAmount.toFixed(0)} ₽`);
     if (paymentSys) payLines.push(`Платёжная система: ${paymentSys}`);
+    if (blobPaymentId) payLines.push(`Payment ID: ${blobPaymentId}`);
     if (promocode) payLines.push(`Промокод: ${promocode}`);
     sections.push(payLines.join("\n"));
   }

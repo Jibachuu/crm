@@ -30,7 +30,14 @@ const SOURCE_OPTIONS = [
   { value: "other", label: "Другое" },
 ];
 
-type ContactRow = { id: string; full_name: string; companies?: { name: string } | { name: string }[] | null };
+type ContactRow = {
+  id: string;
+  full_name: string;
+  phone?: string | null;
+  phone_mobile?: string | null;
+  email?: string | null;
+  companies?: { name: string } | { name: string }[] | null;
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: boolean; onClose: () => void; lead: any; onSaved: (lead: any) => void }) {
@@ -49,7 +56,7 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
     // and the default Supabase select() caps at 1000, so freshly created
     // contacts (e.g. "Игорь") never appear in the dropdown otherwise.
     Promise.all([
-      fetchAll<ContactRow>(supabase, "contacts", "id, full_name, companies(name)", { order: { column: "full_name" } }),
+      fetchAll<ContactRow>(supabase, "contacts", "id, full_name, phone, phone_mobile, email, companies(name)", { order: { column: "full_name" } }),
       fetchAll<{ id: string; name: string }>(supabase, "companies", "id, name", { order: { column: "name" } }),
       supabase.from("users").select("id, full_name").eq("is_active", true),
     ]).then(([c, co, u]) => {
@@ -102,7 +109,14 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
             entityType="contact"
             options={contacts.map((c) => {
               const coName = Array.isArray(c.companies) ? c.companies[0]?.name : c.companies?.name;
-              return { value: c.id, label: c.full_name + (coName ? ` · ${coName}` : "") };
+              // Богатый лейбл: ФИО · Компания · телефон · email — менеджер
+              // понимает, какой именно «Анна» из четырёх он выбирает.
+              const parts: string[] = [c.full_name || "(без имени)"];
+              if (coName) parts.push(coName);
+              const ph = c.phone_mobile || c.phone;
+              if (ph) parts.push(ph);
+              if (c.email) parts.push(c.email);
+              return { value: c.id, label: parts.join(" · ") };
             })}
             placeholder="Выберите контакт"
             defaultValue={lead?.contact_id ?? ""}
