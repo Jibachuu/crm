@@ -227,7 +227,15 @@ export async function POST(req: NextRequest) {
     const qty = Number(body[`payment[products][${i}][quantity]`] || body[`products[${i}][quantity]`] || 1);
     const price = Number(body[`payment[products][${i}][price]`] || body[`products[${i}][price]`] || 0);
     const amount = Number(body[`payment[products][${i}][amount]`] || body[`products[${i}][amount]`] || price * qty);
-    products.push({ name: String(pName), quantity: qty, price, amount });
+    // Tilda иногда даёт sku/external_id в товаре. Названия мусорные у
+    // длинных позиций («Набор из жидкого мыла и крема»), а артикул
+    // (NKS3001) — стабильный, поэтому матчим в первую очередь по нему.
+    const sku = body[`payment[products][${i}][sku]`]
+      || body[`payment[products][${i}][external_id]`]
+      || body[`products[${i}][sku]`]
+      || body[`products[${i}][external_id]`]
+      || "";
+    products.push({ name: String(pName), quantity: qty, price, amount, sku: sku || undefined });
   }
   if (products.length === 0 && blobProducts.length > 0) {
     products.push(...blobProducts);
@@ -295,6 +303,25 @@ export async function POST(req: NextRequest) {
     leadStageId = stage?.id ?? null;
   }
 
+  // Сопоставляем товары с каталогом ДО построения описания, чтобы
+  // отметить непривязанные позиции значком ⚠️ в секции ЗАКАЗ — менеджер
+  // сразу видит, что нужно добавить руками. SKU > имя > ничего.
+  type Resolved = { p: IncomingProduct; productId: string | null };
+  const resolved: Resolved[] = [];
+  for (const p of products) {
+    let productId: string | null = null;
+    if (p.sku) {
+      const { data } = await admin.from("products").select("id").eq("sku", p.sku).maybeSingle();
+      productId = data?.id ?? null;
+    }
+    if (!productId && p.name) {
+      const { data } = await admin.from("products").select("id").ilike("name", `%${p.name}%`).limit(1).maybeSingle();
+      productId = data?.id ?? null;
+    }
+    resolved.push({ p, productId });
+  }
+  const unmatched = resolved.filter((r) => !r.productId);
+
   // Build structured lead description — one section per type, blank line
   // between sections. Backlog v6 §1.7 (new ask 14.05) — Рустем жаловался,
   // что описание лида с Tilda превращается в неразборчивую простыню. Раньше
@@ -314,13 +341,17 @@ export async function POST(req: NextRequest) {
 
   if (cleanMessage) sections.push(`КОММЕНТАРИЙ\n${cleanMessage}`);
 
-  if (products.length > 0) {
-    const productLines = products.map((p, i) => {
-      const header = `${i + 1}. ${p.name}${p.sku ? ` (арт. ${p.sku})` : ""} — ${p.quantity} шт × ${p.price} ₽ = ${p.amount} ₽`;
-      return p.attributes ? `${header}\n   ${p.attributes}` : header;
+  if (resolved.length > 0) {
+    const productLines = resolved.map((r, i) => {
+      const mark = r.productId ? "" : " ⚠️ нет в каталоге";
+      const header = `${i + 1}. ${r.p.name}${r.p.sku ? ` (арт. ${r.p.sku})` : ""}${mark} — ${r.p.quantity} шт × ${r.p.price} ₽ = ${r.p.amount} ₽`;
+      return r.p.attributes ? `${header}\n   ${r.p.attributes}` : header;
     });
-    const total = products.reduce((s, p) => s + p.amount, 0);
-    sections.push(`ЗАКАЗ\n${productLines.join("\n")}\n────────\nИтого: ${total} ₽`);
+    const total = resolved.reduce((s, r) => s + r.p.amount, 0);
+    const footer = unmatched.length > 0
+      ? `────────\nИтого: ${total} ₽\n\n⚠️ ${unmatched.length} позиц${unmatched.length === 1 ? "ия" : "ий"} не нашлись в каталоге — добавьте товары в /products чтобы они автоматом подцеплялись в будущем.`
+      : `────────\nИтого: ${total} ₽`;
+    sections.push(`ЗАКАЗ\n${productLines.join("\n")}\n${footer}`);
   }
 
   if (isPaidOrder) {
@@ -378,17 +409,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: leadErr.message }, { status: 500 });
   }
 
-  // Persist products to lead_products so the lead detail page shows them
-  if (lead?.id && products.length > 0) {
-    for (const p of products) {
-      // Try resolve to a catalog product by fuzzy name match
-      const { data: dbProduct } = await admin.from("products").select("id").ilike("name", `%${p.name}%`).limit(1).single();
+  // lead_products принимает NULL product_id (см. existing schema), так что
+  // непривязанные позиции тоже сохраняются как пользовательский ввод.
+  if (lead?.id && resolved.length > 0) {
+    for (const r of resolved) {
       await admin.from("lead_products").insert({
         lead_id: lead.id,
-        product_id: dbProduct?.id ?? null,
-        quantity: p.quantity || 1,
-        unit_price: p.price,
-        total_price: p.amount,
+        product_id: r.productId,
+        quantity: r.p.quantity || 1,
+        unit_price: r.p.price,
+        total_price: r.p.amount,
         product_block: "request",
       });
     }
@@ -441,24 +471,27 @@ export async function POST(req: NextRequest) {
 
     if (!dealErr && deal) {
       dealId = deal.id;
-      // Copy products from lead_products → deal_products so the won deal
-      // carries the same line items (and shows up in revenue per product
-      // reports). Resolve product_id where possible.
-      if (products.length > 0) {
-        for (const p of products) {
-          const { data: dbProduct } = await admin.from("products").select("id").ilike("name", `%${p.name}%`).limit(1).single();
-          // deal_products.product_id is NOT NULL — only insert if matched.
-          if (dbProduct?.id) {
-            await admin.from("deal_products").insert({
-              deal_id: deal.id,
-              product_id: dbProduct.id,
-              quantity: p.quantity || 1,
-              unit_price: p.price,
-              total_price: p.amount,
-              product_block: "order",
-            });
-          }
-        }
+      // deal_products.product_id is NOT NULL — кладём только те позиции
+      // что удалось привязать к каталогу. Несопоставимые остаются в
+      // lead_products + видны в секции «ЗАКАЗ» описания.
+      const insertable = resolved.filter((r) => r.productId);
+      if (insertable.length > 0) {
+        // kind не передаём — у колонки DEFAULT 'purchase' (миграция v82),
+        // а если v82 ещё не накатили — колонки нет и любое значение
+        // вызовет 42703.
+        await admin.from("deal_products").insert(
+          insertable.map((r) => ({
+            deal_id: deal.id,
+            product_id: r.productId as string,
+            quantity: r.p.quantity || 1,
+            unit_price: r.p.price,
+            total_price: r.p.amount,
+            product_block: "order",
+          }))
+        );
+      }
+      if (unmatched.length > 0) {
+        console.warn(`[TILDA] ${unmatched.length} позиций не привязаны к каталогу:`, unmatched.map((u) => u.p.sku || u.p.name).join(", "));
       }
     } else if (dealErr) {
       console.error("[TILDA] Failed to create won deal:", dealErr.message);
