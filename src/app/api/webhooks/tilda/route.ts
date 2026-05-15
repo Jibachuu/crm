@@ -193,7 +193,12 @@ export async function POST(req: NextRequest) {
       blobPaymentId = parsed.paymentId || "";
       blobProducts = parsed.products || [];
       if (parsed.shippingAddress && !address) address = parsed.shippingAddress;
-      if (parsed.fullName && !name) name = parsed.fullName;
+      // Full name из блоба всегда побеждает короткое Name из формы —
+      // Tilda Cart шлёт в Purchaser information только имя клиента
+      // («Анна»), а полное ФИО («Бойко Наталия Ивановна») — в Full
+      // name перед адресом доставки. Жиба 15.05: полное ФИО должно
+      // попадать в контакт.
+      if (parsed.fullName) name = parsed.fullName;
       else if (parsed.name && !name) name = parsed.name;
       if (parsed.email && !email) email = parsed.email;
       if (parsed.phone && !phone) phone = parsed.phone;
@@ -296,7 +301,19 @@ export async function POST(req: NextRequest) {
       const updates: Record<string, string> = {};
       if (finalPhone && !existing.phone) updates.phone = finalPhone;
       if (finalEmail && !existing.email) updates.email = finalEmail;
-      if (finalName && (!existing.full_name || /^\d+$/.test(existing.full_name.trim()))) updates.full_name = finalName;
+      // Имя обновляем если: текущее пустое/мусор ИЛИ новое содержит
+      // больше слов (Surname + Имя + Отчество > просто «Анна»). Жиба
+      // 15.05: «у тильды в заказе есть ФИО, но в контакт не
+      // добавляется» — раньше я только заполнял пустое поле, теперь
+      // улучшаю короткое до полного.
+      const oldName = (existing.full_name || "").trim();
+      const oldWords = oldName ? oldName.split(/\s+/).length : 0;
+      const newName = (finalName || "").trim();
+      const newWords = newName ? newName.split(/\s+/).length : 0;
+      const oldIsJunk = !oldName || /^\d+$/.test(oldName);
+      if (newName && (oldIsJunk || newWords > oldWords)) {
+        updates.full_name = newName;
+      }
       if (Object.keys(updates).length > 0) {
         await admin.from("contacts").update(updates).eq("id", contactId);
       }
