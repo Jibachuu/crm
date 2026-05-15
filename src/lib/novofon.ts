@@ -35,7 +35,19 @@ export async function novofonApi(method: string, params: Record<string, string> 
   const res = await fetch(url, {
     headers: { Authorization: `${userKey}:${signature}` },
   });
-  return res.json();
+  // Логирование raw-ответа — Novofon отдаёт «Internal Server Error» при
+  // неверной подписи / неподходящем from-номере, без причины. Жиба
+  // 15.05: «не идёт звонок даже без VPN» — без сырого тела не
+  // дебагнуть. Маскируем userKey/signature чтобы не светить в журнале.
+  const text = await res.text();
+  if (!res.ok || /\"status\":\s*\"error\"/.test(text)) {
+    console.warn(`[novofon] ${method} -> HTTP ${res.status}; url=${API_BASE}${method}/?[${queryString.length}b]; body=${text.slice(0, 500)}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { status: "error", message: `Non-JSON response: ${text.slice(0, 200)}` };
+  }
 }
 
 // Initiate callback: Novofon first calls the operator SIP, then dials the client
