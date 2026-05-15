@@ -332,12 +332,43 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Default lead funnel + first stage
+  // Default lead funnel + stage:
+  //   • для обычной заявки — первая стадия («Новый / первый контакт»)
+  //   • для оплаченного заказа — success-стадия («Конвертирован», slug
+  //     `converted`, is_success=true). Жиба 15.05: «лид должен быть
+  //     на стадии Конвертирован», иначе в канбане он висит в «Новый»
+  //     рядом с won-сделкой.
   const { data: leadFunnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
   let leadStageId: string | null = null;
   if (leadFunnel) {
-    const { data: stage } = await admin.from("funnel_stages").select("id").eq("funnel_id", leadFunnel.id).order("sort_order").limit(1).single();
-    leadStageId = stage?.id ?? null;
+    if (isPaidOrder) {
+      const { data: successStage } = await admin.from("funnel_stages")
+        .select("id")
+        .eq("funnel_id", leadFunnel.id)
+        .eq("is_success", true)
+        .order("sort_order")
+        .limit(1)
+        .maybeSingle();
+      if (successStage) leadStageId = successStage.id;
+      else {
+        // Fallback: по slug 'converted'
+        const { data: bySlug } = await admin.from("funnel_stages")
+          .select("id")
+          .eq("funnel_id", leadFunnel.id)
+          .eq("slug", "converted")
+          .limit(1).maybeSingle();
+        leadStageId = bySlug?.id ?? null;
+      }
+    }
+    if (!leadStageId) {
+      const { data: firstStage } = await admin.from("funnel_stages")
+        .select("id")
+        .eq("funnel_id", leadFunnel.id)
+        .order("sort_order")
+        .limit(1)
+        .single();
+      leadStageId = firstStage?.id ?? null;
+    }
   }
 
   // Сопоставляем товары с каталогом ДО построения описания, чтобы
