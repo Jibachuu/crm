@@ -475,43 +475,56 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
             )}
 
             {activeTab === "email" && (
-              deal.contacts?.email ? (
-                <EmailThread
-                  email={deal.contacts.email}
-                  compact
-                  entityType="deal"
-                  entityId={deal.id}
-                  extraRecipients={[
-                    deal.contacts.email_other ? { label: `${deal.contacts.email_other} (доп.)`, value: deal.contacts.email_other } : null,
-                    deal.companies?.email ? { label: `${deal.companies.email} (компания)`, value: deal.companies.email } : null,
-                  ].filter(Boolean) as { label: string; value: string }[]}
-                />
-              ) : (
-                <div className="text-center py-8"><p className="text-sm" style={{ color: "#aaa" }}>{deal.contacts ? "У контакта не указан email" : "Привяжите контакт с email"}</p></div>
-              )
+              (() => {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const emailFromExtra = extraContacts.map((dc: any) => dc.contacts).find((c: any) => c?.email)?.email as string | undefined;
+                const primaryEmail = deal.contacts?.email || emailFromExtra || null;
+                return primaryEmail ? (
+                  <EmailThread
+                    email={primaryEmail}
+                    compact
+                    entityType="deal"
+                    entityId={deal.id}
+                    extraRecipients={[
+                      deal.contacts?.email_other ? { label: `${deal.contacts.email_other} (доп.)`, value: deal.contacts.email_other } : null,
+                      deal.companies?.email ? { label: `${deal.companies.email} (компания)`, value: deal.companies.email } : null,
+                    ].filter(Boolean) as { label: string; value: string }[]}
+                  />
+                ) : (
+                  <div className="text-center py-8"><p className="text-sm" style={{ color: "#aaa" }}>{deal.contacts || extraContacts.length > 0 ? "Ни у одного контакта не указан email" : "Привяжите контакт с email"}</p></div>
+                );
+              })()
             )}
 
-            {activeTab === "telegram" && (
-              deal.contacts?.telegram_id ? (
+            {activeTab === "telegram" && (() => {
+              // Fallback: если у основного контакта нет Telegram, ищем у
+              // дополнительных (mirror фикса в LeadDetail, 15.05).
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const tgFromExtra = extraContacts.map((dc: any) => dc.contacts).find((c: any) => c?.telegram_id);
+              const tg = deal.contacts?.telegram_id ? deal.contacts : tgFromExtra;
+              return tg?.telegram_id ? (
                 <div>
-                  <p className="text-xs mb-2" style={{ color: "#888" }}>Переписка с <strong>{deal.contacts.full_name}</strong>{deal.contacts.telegram_username ? ` (@${deal.contacts.telegram_username})` : ""}</p>
-                  <TelegramChat peer={deal.contacts.telegram_username || deal.contacts.phone || deal.contacts.telegram_id} compact entityType="deal" entityId={deal.id} phone={deal.contacts.phone || undefined} />
+                  <p className="text-xs mb-2" style={{ color: "#888" }}>Переписка с <strong>{tg.full_name}</strong>{tg.telegram_username ? ` (@${tg.telegram_username})` : ""}</p>
+                  <TelegramChat peer={tg.telegram_username || tg.phone || tg.telegram_id} compact entityType="deal" entityId={deal.id} phone={tg.phone || undefined} />
                 </div>
               ) : (
-                <div className="text-center py-8"><p className="text-sm" style={{ color: "#aaa" }}>{deal.contacts ? "У контакта не указан Telegram" : "Привяжите контакт с Telegram"}</p></div>
-              )
-            )}
+                <div className="text-center py-8"><p className="text-sm" style={{ color: "#aaa" }}>{deal.contacts || extraContacts.length > 0 ? "Ни у одного контакта не указан Telegram" : "Привяжите контакт с Telegram"}</p></div>
+              );
+            })()}
 
-            {activeTab === "maks" && (
-              deal.contacts?.maks_id ? (
+            {activeTab === "maks" && (() => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const maksFromExtra = extraContacts.map((dc: any) => dc.contacts).find((c: any) => c?.maks_id);
+              const m = deal.contacts?.maks_id ? deal.contacts : maksFromExtra;
+              return m?.maks_id ? (
                 <div>
-                  <p className="text-xs mb-2" style={{ color: "#888" }}>МАКС: <strong>{deal.contacts.full_name}</strong></p>
-                  <MaxChat chatId={deal.contacts.maks_id} compact entityType="deal" entityId={deal.id} />
+                  <p className="text-xs mb-2" style={{ color: "#888" }}>МАКС: <strong>{m.full_name}</strong></p>
+                  <MaxChat chatId={m.maks_id} compact entityType="deal" entityId={deal.id} />
                 </div>
               ) : (
-                <div className="text-center py-8"><p className="text-sm" style={{ color: "#aaa" }}>{deal.contacts ? "У контакта не указан МАКС" : "Привяжите контакт с МАКС"}</p></div>
-              )
-            )}
+                <div className="text-center py-8"><p className="text-sm" style={{ color: "#aaa" }}>{deal.contacts || extraContacts.length > 0 ? "Ни у одного контакта не указан МАКС" : "Привяжите контакт с МАКС"}</p></div>
+              );
+            })()}
 
             {activeTab === "production" && (
               <DealProduction dealId={deal.id} dealStage={deal.stage} />

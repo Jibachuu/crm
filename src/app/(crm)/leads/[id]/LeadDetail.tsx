@@ -233,8 +233,20 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
   const totalRequest = requestProducts.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
   const totalOrder = orderProducts.reduce((s: number, p: { total_price: number }) => s + (p.total_price ?? 0), 0);
 
+  // Backlog: «на странице лида не виден МАКС, а у привязанного контакта
+  // он есть». Раньше вкладки Telegram/MAX/Email брали ID только с
+  // основного контакта (lead.contacts). Если мессенджер привязан к
+  // ДОП-контакту (lead_contacts.is_primary=false) — fallback на него.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type AnyContact = { id?: string; full_name?: string; phone?: string | null; email?: string | null; telegram_id?: string | null; telegram_username?: string | null; maks_id?: string | null; email_other?: string | null };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const extraContactObjs: AnyContact[] = extraContacts.map((ec: any) => ec.contacts).filter(Boolean);
+  const tgContact: AnyContact | undefined = lead.contacts?.telegram_id ? lead.contacts : extraContactObjs.find((c) => c.telegram_id);
+  const maksContact: AnyContact | undefined = lead.contacts?.maks_id ? lead.contacts : extraContactObjs.find((c) => c.maks_id);
+  const emailFromExtra: string | null = lead.contacts?.email ? null : (extraContactObjs.find((c) => c.email)?.email ?? null);
+
   // Extract email from any available source: contact, company, or lead title (e.g. "Email: Name <email@x.com>")
-  const contactEmail = lead.contacts?.email || null;
+  const contactEmail = lead.contacts?.email || emailFromExtra || null;
   const companyEmail = lead.companies?.email || null;
   const leadEmailFromTitle = (() => {
     if (lead.source === "email" || (lead.title && /email/i.test(lead.title))) {
@@ -584,34 +596,34 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
             )}
 
             {activeTab === "telegram" && (
-              lead.contacts?.telegram_id ? (
+              tgContact?.telegram_id ? (
                 <div>
                   <p className="text-xs mb-2" style={{ color: "#888" }}>
-                    Переписка с <strong>{lead.contacts.full_name}</strong>
-                    {lead.contacts.telegram_username && <> · <span style={{ color: "#0067a5" }}>@{lead.contacts.telegram_username}</span></>}
+                    Переписка с <strong>{tgContact.full_name}</strong>
+                    {tgContact.telegram_username && <> · <span style={{ color: "#0067a5" }}>@{tgContact.telegram_username}</span></>}
                   </p>
-                  <TelegramChat peer={lead.contacts.telegram_username || lead.contacts.phone || lead.contacts.telegram_id} compact entityType="lead" entityId={lead.id} phone={lead.contacts.phone || undefined} />
+                  <TelegramChat peer={tgContact.telegram_username || tgContact.phone || tgContact.telegram_id || ""} compact entityType="lead" entityId={lead.id} phone={tgContact.phone || undefined} />
                 </div>
               ) : (
                 <div className="text-center py-8">
                   <MessageSquare size={24} className="mx-auto mb-2" style={{ color: "#ddd" }} />
-                  <p className="text-sm" style={{ color: "#aaa" }}>{lead.contacts ? "У контакта не указан Telegram" : "Привяжите контакт с Telegram"}</p>
+                  <p className="text-sm" style={{ color: "#aaa" }}>{lead.contacts || extraContactObjs.length > 0 ? "Ни у одного контакта не указан Telegram" : "Привяжите контакт с Telegram"}</p>
                 </div>
               )
             )}
 
             {activeTab === "maks" && (
-              lead.contacts?.maks_id ? (
+              maksContact?.maks_id ? (
                 <div>
                   <p className="text-xs mb-2" style={{ color: "#888" }}>
-                    МАКС: <strong>{lead.contacts.full_name}</strong>
+                    МАКС: <strong>{maksContact.full_name}</strong>
                   </p>
-                  <MaxChat chatId={lead.contacts.maks_id} compact entityType="lead" entityId={lead.id} />
+                  <MaxChat chatId={maksContact.maks_id} compact entityType="lead" entityId={lead.id} />
                 </div>
               ) : (
                 <div className="text-center py-8">
                   <MessageSquare size={24} className="mx-auto mb-2" style={{ color: "#ddd" }} />
-                  <p className="text-sm" style={{ color: "#aaa" }}>{lead.contacts ? "У контакта не указан МАКС" : "Привяжите контакт с МАКС"}</p>
+                  <p className="text-sm" style={{ color: "#aaa" }}>{lead.contacts || extraContactObjs.length > 0 ? "Ни у одного контакта не указан МАКС" : "Привяжите контакт с МАКС"}</p>
                 </div>
               )
             )}
