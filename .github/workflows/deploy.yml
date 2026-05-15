@@ -18,12 +18,20 @@ jobs:
           username: root
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
-          command_timeout: 10m
+          command_timeout: 15m
           script: |
+            set -euo pipefail
+            # Без set -e bash продолжает на следующую строку при ошибке —
+            # 15.05.2026 это привело к loop из 93 рестартов crm-app:
+            # next build упал (OOM на 1024 MB heap), .next/BUILD_ID не
+            # появился, а systemctl restart crm-app всё равно отработал
+            # → сайт лёг с 502 Bad Gateway.
             cd /opt/crm-app
             git fetch origin main
             git reset --hard origin/main
             npm install
-            NODE_OPTIONS="--max-old-space-size=1024" npx next build
+            NODE_OPTIONS="--max-old-space-size=1536" npx next build
+            # Двойная защита: рестартим только если билд реально на диске.
+            test -f .next/BUILD_ID
             systemctl restart crm-app
             echo "Deploy complete!"
