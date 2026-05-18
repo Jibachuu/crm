@@ -75,29 +75,34 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Не удалось создать сделку: " + dealError?.message }, { status: 500 });
   }
 
-  // Copy lead_products (block=request) to deal_products
-  const requestProducts = (lead.lead_products ?? []).filter(
-    (lp: { product_block: string }) => lp.product_block !== "order"
-  );
+  // Copy lead_products → deal_products, сохраняя блок (Запрос/Заказ).
+  // Жиба 18.05: «при конвертации лида копировать товары и из заказа,
+  // а не только из запроса». Раньше order-блок терялся, менеджер
+  // перебивал руками. Позиции с product_id=NULL (например, доставка
+  // из Tilda-блоба) пропускаем — у deal_products колонка NOT NULL.
+  type LeadProduct = {
+    product_id: string | null;
+    variant_id: string | null;
+    quantity: number;
+    unit_price: number;
+    discount_percent: number;
+    total_price: number;
+    product_block: string;
+  };
+  const allProducts: LeadProduct[] = (lead.lead_products ?? []).filter((lp: LeadProduct) => !!lp.product_id);
 
-  if (requestProducts.length > 0) {
+  if (allProducts.length > 0) {
     await supabase.from("deal_products").insert(
-      requestProducts.map((lp: {
-        product_id: string;
-        variant_id: string | null;
-        quantity: number;
-        unit_price: number;
-        discount_percent: number;
-        total_price: number;
-      }) => ({
+      allProducts.map((lp) => ({
         deal_id: deal.id,
-        product_id: lp.product_id,
+        product_id: lp.product_id as string,
         variant_id: lp.variant_id,
         quantity: lp.quantity,
         unit_price: lp.unit_price,
         discount_percent: lp.discount_percent,
         total_price: lp.total_price,
-        product_block: "request",
+        // Нормализуем блок: всё что не «order» — считаем «request».
+        product_block: lp.product_block === "order" ? "order" : "request",
       }))
     );
   }
