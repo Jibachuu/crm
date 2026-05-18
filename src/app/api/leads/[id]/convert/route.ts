@@ -107,6 +107,26 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     );
   }
 
+  // Привязать коммуникации/заметки лида к сделке. Жиба 18.05:
+  // «не работает копирование заметок из коммуникации автоматическое
+  // при создании сделки из лида». Не дублируем строки — ставим
+  // deal_id у существующих lead-коммуникаций. Таймлайн CommunicationsTimeline
+  // ищет по `deal_id.eq.X OR (entity_type='deal' AND entity_id=X)`,
+  // поэтому достаточно проставить FK, чтобы они отрисовались в
+  // таймлайне сделки. На лиде они остаются видны через entity_type/
+  // entity_id и lead_id.
+  await supabase.from("communications")
+    .update({ deal_id: deal.id })
+    .eq("lead_id", leadId)
+    .is("deal_id", null);
+  // Подстраховка: старые записи могут не иметь lead_id (до миграции
+  // v77 backfill), но иметь legacy entity_type/entity_id.
+  await supabase.from("communications")
+    .update({ deal_id: deal.id })
+    .eq("entity_type", "lead")
+    .eq("entity_id", leadId)
+    .is("deal_id", null);
+
   // Mark lead as converted
   await supabase.from("leads").update({ status: "converted" }).eq("id", leadId);
 
