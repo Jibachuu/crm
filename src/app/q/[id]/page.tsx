@@ -18,7 +18,11 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
 
   const [{ data: quote }, { data: items }, { data: supplier }, { data: catDescs }] = await Promise.all([
     admin.from("quotes").select("*, companies(name, inn), contacts(full_name, phone, email), users!quotes_manager_id_fkey(id, full_name, email, phone)").eq("id", id).single(),
-    admin.from("quote_items").select("*").eq("quote_id", id).order("sort_order"),
+    // JOIN products чтобы взять volume_ml + flavor по косметике —
+    // Жиба 19.05: «в КП не показывается аромат и объёмы». В quote_items
+    // эти колонки не дублируются, тянем из исходного товара по
+    // product_id.
+    admin.from("quote_items").select("*, products(volume_ml, flavor, category, subcategory)").eq("quote_id", id).order("sort_order"),
     admin.from("supplier_settings").select("*").limit(1).single(),
     admin.from("category_descriptions").select("*").order("sort_order"),
   ]);
@@ -266,6 +270,13 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                                     <div style={{ marginBottom: 14 }}>
                                       <p style={{ fontSize: 16, fontWeight: 700, color: "#3d3325", marginBottom: 2 }}>{item.name.split(" / ").pop()}</p>
                                       {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
+                                      {(() => {
+                                        const p = (item.products as { volume_ml?: number | null; flavor?: string | null } | null) ?? null;
+                                        const parts: string[] = [];
+                                        if (p?.volume_ml) parts.push(`Объём: ${p.volume_ml} мл`);
+                                        if (p?.flavor) parts.push(`Аромат: ${p.flavor}`);
+                                        return parts.length > 0 ? <p style={{ fontSize: 12, color: "#7b1fa2", marginTop: 2, fontWeight: 500 }}>{parts.join(" · ")}</p> : null;
+                                      })()}
                                       {item.description && <p style={{ fontSize: 12, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
                                     </div>
                                     <div style={{ display: "grid", gridTemplateColumns: mainVariant ? "minmax(180px, 260px) 1fr" : "1fr", gap: 16 }} className="kp-variants-grid">
@@ -352,6 +363,13 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
                                     <p style={{ fontSize: 14, fontWeight: 600, color: "#3d3325", marginBottom: 2 }}>{item.name.split(" / ").pop()}</p>
                                     {item.article && <p style={{ fontSize: 11, color: "#b3a894" }}>Арт. {item.article}</p>}
                                     {bottleLabel && <p style={{ fontSize: 11, color: "#7b1fa2", fontWeight: 600, marginTop: 2 }}>{bottleLabel}</p>}
+                                    {(() => {
+                                      const p = (item.products as { volume_ml?: number | null; flavor?: string | null } | null) ?? null;
+                                      const parts: string[] = [];
+                                      if (p?.volume_ml) parts.push(`Объём: ${p.volume_ml} мл`);
+                                      if (p?.flavor) parts.push(`Аромат: ${p.flavor}`);
+                                      return parts.length > 0 ? <p style={{ fontSize: 11, color: "#7b1fa2", marginTop: 2, fontWeight: 500 }}>{parts.join(" · ")}</p> : null;
+                                    })()}
                                     {item.description && <p style={{ fontSize: 11, color: "#8c7e6a", marginTop: 4 }}>{item.description}</p>}
                                 {item.price_tiers?.length ? (
                                   <div style={{ marginTop: 8 }}>
