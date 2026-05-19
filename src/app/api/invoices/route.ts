@@ -59,32 +59,26 @@ export async function POST(req: NextRequest) {
   const items: Array<{ name: string; quantity: number; price: number; total: number; product_id?: string; unit?: string }> = Array.isArray(body.items) ? body.items : [];
   const totalAmount = body.total_amount ?? items.reduce((s, i) => s + (Number(i.total) || 0), 0);
 
+  // ВАЖНО: схема invoices содержит только базовые поля (migration_v16).
+  // Bank/director/ogrn/email/phone живут на contracts, НЕ на invoices.
+  // 19.05.2026 incident: первая версия POST падала «Could not find the
+  // 'buyer_account' column of 'invoices' in the schema cache».
   const insert: Record<string, unknown> = {
     invoice_number: nextNum,
     invoice_date: body.invoice_date || new Date().toISOString().slice(0, 10),
-    valid_until: body.valid_until || null,
+    payment_due: body.payment_due || null,
     buyer_company_id: body.buyer_company_id || null,
     buyer_name: body.buyer_name || null,
     buyer_inn: body.buyer_inn || null,
     buyer_kpp: body.buyer_kpp || null,
-    buyer_ogrn: body.buyer_ogrn || null,
     buyer_address: body.buyer_address || null,
-    buyer_director_name: body.buyer_director_name || null,
-    buyer_director_title: body.buyer_director_title || null,
-    buyer_director_basis: body.buyer_director_basis || null,
-    buyer_bank_name: body.buyer_bank_name || null,
-    buyer_account: body.buyer_account || null,
-    buyer_bik: body.buyer_bik || null,
-    buyer_corr_account: body.buyer_corr_account || null,
-    buyer_email: body.buyer_email || null,
-    buyer_phone: body.buyer_phone || null,
-    status: body.status || "draft",
+    basis: body.basis || "Основной договор",
+    status: body.status || "issued",
     total_amount: totalAmount,
     vat_included: body.vat_included ?? false,
+    hide_total: body.hide_total ?? false,
     comment: body.comment || null,
-    shipping_memo: body.shipping_memo || null,
     deal_id: body.deal_id || null,
-    quote_id: body.quote_id || null,
     created_by: user.id,
   };
 
@@ -101,6 +95,8 @@ export async function POST(req: NextRequest) {
         unit: i.unit || "шт",
         price: i.price || 0,
         total: i.total || 0,
+        price_tiers: (i as { price_tiers?: unknown[] }).price_tiers?.length ? (i as { price_tiers?: unknown[] }).price_tiers : null,
+        bottle_variant: (i as { bottle_variant?: string }).bottle_variant || null,
       }))
     );
   }
@@ -117,15 +113,13 @@ export async function PUT(req: NextRequest) {
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
   const admin = createAdminClient();
+  // Whitelist строго по реальной схеме invoices (см. migration_v16).
   const updates: Record<string, unknown> = {};
   for (const f of [
-    "invoice_number", "invoice_date", "valid_until",
-    "buyer_company_id", "buyer_name", "buyer_inn", "buyer_kpp", "buyer_ogrn", "buyer_address",
-    "buyer_director_name", "buyer_director_title", "buyer_director_basis",
-    "buyer_bank_name", "buyer_account", "buyer_bik", "buyer_corr_account",
-    "buyer_email", "buyer_phone",
-    "status", "total_amount", "vat_included", "comment", "shipping_memo",
-    "deal_id", "quote_id",
+    "invoice_number", "invoice_date", "payment_due",
+    "buyer_company_id", "buyer_name", "buyer_inn", "buyer_kpp", "buyer_address",
+    "basis", "status", "total_amount", "vat_included", "hide_total",
+    "comment", "deal_id",
   ]) {
     if (body[f] !== undefined) updates[f] = body[f];
   }
@@ -139,7 +133,7 @@ export async function PUT(req: NextRequest) {
     await admin.from("invoice_items").delete().eq("invoice_id", body.id);
     if (body.items.length > 0) {
       await admin.from("invoice_items").insert(
-        body.items.map((i: { name: string; quantity: number; price: number; total: number; product_id?: string; unit?: string }) => ({
+        body.items.map((i: { name: string; quantity: number; price: number; total: number; product_id?: string; unit?: string; price_tiers?: unknown[]; bottle_variant?: string }) => ({
           invoice_id: body.id,
           product_id: i.product_id || null,
           name: i.name,
@@ -147,6 +141,8 @@ export async function PUT(req: NextRequest) {
           unit: i.unit || "шт",
           price: i.price || 0,
           total: i.total || 0,
+          price_tiers: i.price_tiers?.length ? i.price_tiers : null,
+          bottle_variant: i.bottle_variant || null,
         }))
       );
     }
