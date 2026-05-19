@@ -44,12 +44,15 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
 
   useEffect(() => {
     if (!open) return;
-    createClient()
-      .from("products")
-      .select("*")
-      .eq("is_active", true)
-      .order("name")
-      .then(({ data }) => setProducts(data ?? []));
+    // Раньше тут был прямой `supabase.from("products")` из браузера —
+    // Supabase живёт на AWS, российские провайдеры регулярно режут AWS
+    // IPv4 без VPN, поэтому каталог не подгружался. Жиба 19.05:
+    // «товары в сделке ищутся только с VPN». Ходим через VPS-API,
+    // у которого RU-IP и чистый путь до Supabase.
+    fetch("/api/products?active=true")
+      .then((r) => r.ok ? r.json() : { products: [] })
+      .then((d) => setProducts(d.products ?? []))
+      .catch(() => setProducts([]));
   }, [open]);
 
   function selectProduct(p: Product) {

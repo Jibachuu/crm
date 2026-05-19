@@ -9,6 +9,35 @@ import { createAdminClient } from "@/lib/supabase/admin";
 //
 // Backlog v5 §1.2.2: manager Рустем got "new row violates row-level
 // security policy for table products" trying to add a new product.
+//
+// GET добавлен 19.05: некоторые модалки (AddProductModal в сделке)
+// дёргали supabase из браузера напрямую — Supabase на AWS, российские
+// провайдеры блочат AWS IP без VPN, поэтому товары не подгружались
+// до включения VPN. Теперь идём через VPS (RU IP, чистый путь).
+
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const onlyActive = searchParams.get("active") !== "false";
+  const q = (searchParams.get("q") || "").trim();
+  const limit = Math.min(Number(searchParams.get("limit") || "2000"), 5000);
+
+  const admin = createAdminClient();
+  let query = admin.from("products").select("*").order("name").limit(limit);
+  if (onlyActive) query = query.eq("is_active", true);
+  if (q) {
+    // OR по name/sku — для AddProductModal поиск идёт локально по
+    // подгруженному списку, но возможность сузить через ?q= есть на
+    // случай очень больших каталогов.
+    query = query.or(`name.ilike.%${q}%,sku.ilike.%${q}%`);
+  }
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ products: data ?? [] });
+}
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
