@@ -60,12 +60,16 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
     fetch("/api/deals?limit=200&fields=" + encodeURIComponent("id, title"))
       .then((r) => r.ok ? r.json() : { deals: [] })
       .then((d) => setDeals(d.deals ?? []));
-    supabase.from("invoices").select("id, invoice_number, buyer_name, total_amount").order("created_at", { ascending: false }).limit(100).then(({ data }) => setInvoices(data ?? []));
+    fetch("/api/invoices?limit=100")
+      .then((r) => r.ok ? r.json() : { invoices: [] })
+      .then((d) => setInvoices(d.invoices ?? []));
     // Backlog v6 §4.2: also offer «Из КП» and «Из сделки» when filling a
     // contract's specification. Quotes carry variants + tier-prices that
     // map cleanly onto spec lines; deal order rows are likewise the
     // ground truth for what's being shipped.
-    supabase.from("quotes").select("id, title, total, created_at").is("deleted_at", null).order("created_at", { ascending: false }).limit(100).then(({ data }) => setQuotes(data ?? []));
+    fetch("/api/quotes?limit=100")
+      .then((r) => r.ok ? r.json() : { quotes: [] })
+      .then((d) => setQuotes(d.quotes ?? []));
     fetch("/api/products?active=true")
       .then((r) => r.ok ? r.json() : { products: [] })
       .then((d) => setProducts(d.products ?? []));
@@ -138,11 +142,12 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
 
   async function loadInvoiceItems(invoiceId: string) {
     const supabase = createClient();
-    const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", invoiceId).order("id");
+    const res = await fetch(`/api/invoices?id=${invoiceId}&items=1`);
+    const { items: data } = res.ok ? await res.json() : { items: [] };
     if (data?.length) {
       setForm((f: typeof form) => ({
         ...f, invoice_id: invoiceId,
-        items: data.map((i) => ({ name: i.name, quantity: i.quantity, price: i.price, total: i.total, product_id: i.product_id })),
+        items: data.map((i: { name: string; quantity: number; price: number; total: number; product_id?: string }) => ({ name: i.name, quantity: i.quantity, price: i.price, total: i.total, product_id: i.product_id })),
       }));
     }
   }
@@ -152,7 +157,9 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
   // the printed спецификация matches the КП exactly.
   async function loadQuoteItems(quoteId: string) {
     const supabase = createClient();
-    const { data } = await supabase.from("quote_items").select("*, products(sku, article)").eq("quote_id", quoteId).order("sort_order");
+    // 19.05.2026 — миграция browser→VPS, этап 2.
+    const res = await fetch(`/api/quotes?items_for=${quoteId}`);
+    const { items: data } = res.ok ? await res.json() : { items: [] };
     if (!data?.length) { alert("В КП нет товаров"); return; }
     type V = { label: string; price: number; quantity: number; sum?: number };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -246,9 +253,9 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function openEditSpec(contractId: string, spec: any) {
     setEditingSpec({ ...spec, contract_id: contractId });
-    const supabase = createClient();
-    const { data: items } = await supabase.from("specification_items").select("*").eq("specification_id", spec.id).order("sort_order");
-    const { data: specData } = await supabase.from("specifications").select("*").eq("id", spec.id).single();
+    // 19.05.2026 — миграция browser→VPS, этап 4.
+    const res = await fetch(`/api/specifications?id=${spec.id}&items=1`);
+    const { spec: specData, items } = res.ok ? await res.json() : { spec: null, items: [] };
     setSpecForm({
       delivery_method: specData?.delivery_method || "СДЭК",
       payment_terms: specData?.payment_terms || "предоплата 100%",

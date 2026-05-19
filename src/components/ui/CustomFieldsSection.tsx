@@ -32,11 +32,9 @@ export default function CustomFieldsSection({ entityType, entityId }: Props) {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
-    const supabase = createClient();
-    const [{ data: fieldsData }, { data: valuesData }] = await Promise.all([
-      supabase.from("custom_fields").select("*").eq("entity_type", entityType).order("sort_order"),
-      supabase.from("custom_field_values").select("*").eq("entity_type", entityType).eq("entity_id", entityId),
-    ]);
+    // 19.05.2026 — миграция browser→VPS, этап 3.
+    const res = await fetch(`/api/custom-fields?entity_type=${entityType}&entity_id=${entityId}`);
+    const { fields: fieldsData, values: valuesData } = res.ok ? await res.json() : { fields: [], values: [] };
     setFields(fieldsData ?? []);
     const map: Record<string, CustomFieldValue> = {};
     for (const v of valuesData ?? []) {
@@ -49,7 +47,6 @@ export default function CustomFieldsSection({ entityType, entityId }: Props) {
 
   async function saveValue(field: CustomField, rawValue: string) {
     setSaving((p) => ({ ...p, [field.id]: true }));
-    const supabase = createClient();
 
     const payload: Record<string, unknown> = {
       field_id: field.id,
@@ -66,8 +63,11 @@ export default function CustomFieldsSection({ entityType, entityId }: Props) {
     else if (field.field_type === "date") payload.value_date = rawValue || null;
     else if (field.field_type === "boolean") payload.value_boolean = rawValue === "true";
 
-    await supabase.from("custom_field_values").upsert(payload, {
-      onConflict: "field_id,entity_id",
+    // 19.05.2026 — миграция browser→VPS, этап 3.
+    await fetch("/api/custom-fields", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "upsert_value", ...payload }),
     });
 
     setValues((p) => ({ ...p, [field.id]: payload as unknown as CustomFieldValue }));

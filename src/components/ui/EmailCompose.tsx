@@ -57,12 +57,13 @@ export default function EmailCompose({ to, recipients, entityType, entityId, def
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
+    // 19.05.2026 — миграция browser→VPS, этап 3.
     Promise.all([
-      supabase.from("email_templates").select("*").order("name"),
-      supabase.from("email_signatures").select("*, users(full_name)").order("created_at"),
-    ]).then(([{ data: t }, { data: s }]) => {
-      setTemplates(t ?? []);
-      setSignatures(s ?? []);
+      fetch("/api/email-templates").then((r) => r.ok ? r.json() : { templates: [] }),
+      fetch("/api/email-signatures").then((r) => r.ok ? r.json() : { signatures: [] }),
+    ]).then(([t, s]) => {
+      setTemplates(t.templates ?? []);
+      setSignatures(s.signatures ?? []);
     });
   }, []);
 

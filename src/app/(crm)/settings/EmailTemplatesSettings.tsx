@@ -45,13 +45,13 @@ export default function EmailTemplatesSettings() {
 
   async function load() {
     setLoading(true);
-    const supabase = createClient();
-    const [{ data: t }, { data: s }] = await Promise.all([
-      supabase.from("email_templates").select("*").order("created_at", { ascending: false }),
-      supabase.from("email_signatures").select("*, users(full_name)").order("created_at", { ascending: false }),
+    // 19.05.2026 — миграция browser→VPS, этап 3.
+    const [t, s] = await Promise.all([
+      fetch("/api/email-templates").then((r) => r.ok ? r.json() : { templates: [] }),
+      fetch("/api/email-signatures").then((r) => r.ok ? r.json() : { signatures: [] }),
     ]);
-    setTemplates(t ?? []);
-    setSignatures(s ?? []);
+    setTemplates(t.templates ?? []);
+    setSignatures(s.signatures ?? []);
     setLoading(false);
   }
 
@@ -71,11 +71,10 @@ export default function EmailTemplatesSettings() {
   async function saveTemplate() {
     if (!tName.trim()) return;
     setSaving(true);
-    const supabase = createClient();
     if (editT) {
-      await supabase.from("email_templates").update({ name: tName, subject: tSubject, body: tBody }).eq("id", editT.id);
+      await fetch("/api/email-templates", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editT.id, name: tName, subject: tSubject, body: tBody }) });
     } else {
-      await supabase.from("email_templates").insert({ name: tName, subject: tSubject, body: tBody, created_by: (await supabase.auth.getUser()).data.user?.id });
+      await fetch("/api/email-templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: tName, subject: tSubject, body: tBody }) });
     }
     setEditT(null); setNewT(false);
     setSaving(false);
@@ -84,8 +83,7 @@ export default function EmailTemplatesSettings() {
 
   async function deleteTemplate(id: string) {
     if (!confirm("Удалить шаблон?")) return;
-    const supabase = createClient();
-    await supabase.from("email_templates").delete().eq("id", id);
+    await fetch(`/api/email-templates?id=${id}`, { method: "DELETE" });
     load();
   }
 
@@ -94,7 +92,7 @@ export default function EmailTemplatesSettings() {
   const [allUsers, setAllUsers] = useState<{ id: string; full_name: string }[]>([]);
 
   useEffect(() => {
-    createClient().from("users").select("id, full_name").eq("is_active", true).order("full_name").then(({ data }) => setAllUsers(data ?? []));
+    fetch("/api/users").then((r) => r.ok ? r.json() : { users: [] }).then((d) => setAllUsers(d.users ?? []));
   }, []);
 
   function startNewSignature() {
@@ -110,11 +108,10 @@ export default function EmailTemplatesSettings() {
   async function saveSignature() {
     if (!sName.trim()) return;
     setSaving(true);
-    const supabase = createClient();
     if (editS) {
-      await supabase.from("email_signatures").update({ name: sName, body: sBody, user_id: sUserId || null }).eq("id", editS.id);
+      await fetch("/api/email-signatures", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editS.id, name: sName, body: sBody, user_id: sUserId || null }) });
     } else {
-      await supabase.from("email_signatures").insert({ name: sName, body: sBody, user_id: sUserId || null, created_by: (await supabase.auth.getUser()).data.user?.id });
+      await fetch("/api/email-signatures", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: sName, body: sBody, user_id: sUserId || null }) });
     }
     setEditS(null); setNewS(false);
     setSaving(false);
@@ -123,17 +120,13 @@ export default function EmailTemplatesSettings() {
 
   async function deleteSignature(id: string) {
     if (!confirm("Удалить подпись?")) return;
-    const supabase = createClient();
-    await supabase.from("email_signatures").delete().eq("id", id);
+    await fetch(`/api/email-signatures?id=${id}`, { method: "DELETE" });
     load();
   }
 
   async function setDefaultSignature(id: string) {
-    const supabase = createClient();
-    // Remove default from all
-    await supabase.from("email_signatures").update({ is_default: false }).neq("id", "00000000-0000-0000-0000-000000000000");
-    // Set new default
-    await supabase.from("email_signatures").update({ is_default: true }).eq("id", id);
+    // PUT с is_default=true сам сбросит остальные на сервере.
+    await fetch("/api/email-signatures", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, is_default: true }) });
     load();
   }
 

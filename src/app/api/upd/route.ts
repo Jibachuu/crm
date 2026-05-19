@@ -2,6 +2,43 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// GET добавлен 19.05 для миграции browser→VPS этап 2.
+// ?id=<upd_id> + ?items=1 — отдаёт upd + upd_items.
+// ?upd_id=<upd_id>&items_only=1 — отдаёт только upd_items.
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  const updId = searchParams.get("upd_id");
+  const itemsOnly = searchParams.get("items_only") === "1";
+  const withItems = searchParams.get("items") === "1";
+
+  const admin = createAdminClient();
+
+  if (itemsOnly && updId) {
+    const { data } = await admin.from("upd_items").select("*").eq("upd_id", updId).order("sort_order");
+    return NextResponse.json({ items: data ?? [] });
+  }
+
+  if (id) {
+    const { data: upd } = await admin.from("upd").select("*").eq("id", id).single();
+    if (!upd) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    let items = null;
+    if (withItems) {
+      const { data } = await admin.from("upd_items").select("*").eq("upd_id", id).order("sort_order");
+      items = data ?? [];
+    }
+    return NextResponse.json({ upd, items });
+  }
+
+  const { data, error } = await admin.from("upd").select("*").order("created_at", { ascending: false });
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ upd: data ?? [] });
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

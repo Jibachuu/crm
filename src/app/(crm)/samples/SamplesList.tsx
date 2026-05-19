@@ -47,8 +47,8 @@ export default function SamplesList({ initialSamples, companies, contacts, users
   }
 
   async function moveSampleStatus(id: string, newStatus: string) {
-    const supabase = createClient();
-    await supabase.from("samples").update({ status: newStatus }).eq("id", id);
+    // 19.05.2026 — миграция browser→VPS, этап 3.
+    await fetch("/api/samples", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status: newStatus }) });
     setSamples((prev: { id: string; status: string }[]) =>
       prev.map((s) => (s.id === id ? { ...s, status: newStatus } : s))
     );
@@ -119,43 +119,34 @@ export default function SamplesList({ initialSamples, companies, contacts, users
       deal_id: form.deal_id || null,
     };
 
+    // 19.05.2026 — миграция browser→VPS, этап 3.
     if (editing) {
       const oldTrack = editing.track_number;
-      const { error } = await supabase.from("samples").update(payload).eq("id", editing.id);
-      if (error) { alert(error.message); setSaving(false); return; }
+      const res = await fetch("/api/samples", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: editing.id, ...payload }) });
+      if (!res.ok) { const d = await res.json(); alert(d.error ?? "Ошибка"); setSaving(false); return; }
 
       // Workflow: track number added → notify MOP
       if (!oldTrack && payload.track_number && payload.assigned_to) {
         const companyName = companies.find((c: { id: string }) => c.id === payload.company_id)?.name ?? "";
-        await supabase.from("tasks").insert({
+        await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
           title: `Трек-номер добавлен для ${companyName}: ${payload.track_number}. Отправь клиенту!`,
-          entity_type: "sample",
-          entity_id: editing.id,
-          assigned_to: payload.assigned_to,
-          created_by: user?.id,
-          status: "pending",
-          priority: "high",
-        });
+          entity_type: "sample", entity_id: editing.id,
+          assigned_to: payload.assigned_to, status: "pending", priority: "high",
+        }) });
       }
     } else {
-      const { data: created, error } = await supabase.from("samples")
-        .insert({ ...payload, created_by: user?.id })
-        .select("*")
-        .single();
-      if (error) { alert(error.message); setSaving(false); return; }
+      const res = await fetch("/api/samples", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!res.ok) { const d = await res.json(); alert(d.error ?? "Ошибка"); setSaving(false); return; }
+      const created = await res.json();
 
       // Workflow: new sample → create task for logist
-      if (payload.logist_id && created) {
+      if (payload.logist_id && created?.id) {
         const companyName = companies.find((c: { id: string }) => c.id === payload.company_id)?.name ?? "";
-        await supabase.from("tasks").insert({
+        await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
           title: `Новый пробник: ${companyName}, нужно оформить доставку`,
-          entity_type: "sample",
-          entity_id: created.id,
-          assigned_to: payload.logist_id,
-          created_by: user?.id,
-          status: "pending",
-          priority: "high",
-        });
+          entity_type: "sample", entity_id: created.id,
+          assigned_to: payload.logist_id, status: "pending", priority: "high",
+        }) });
       }
     }
 
@@ -180,14 +171,12 @@ export default function SamplesList({ initialSamples, companies, contacts, users
 
   async function deleteSample(id: string) {
     if (!confirm("Удалить пробник?")) return;
-    const supabase = createClient();
-    await supabase.from("samples").delete().eq("id", id);
+    await fetch(`/api/samples?id=${id}`, { method: "DELETE" });
     setSamples((p: { id: string }[]) => p.filter((s) => s.id !== id));
   }
 
   async function markClientNotified(id: string) {
-    const supabase = createClient();
-    await supabase.from("samples").update({ status: "in_transit", client_notified: true }).eq("id", id);
+    await fetch("/api/samples", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status: "in_transit", client_notified: true }) });
     window.location.reload();
   }
 

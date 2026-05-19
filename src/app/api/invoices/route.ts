@@ -1,0 +1,171 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+// /api/invoices — GET (list), POST (create with items), PUT (update + replace items),
+// DELETE. Этап 2 миграции browser→VPS (19.05.2026). Раньше InvoicesClient
+// дёргал supabase.from("invoices"|"invoice_items") напрямую — Supabase на AWS
+// блочится российскими ISP без VPN.
+
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  const withItems = searchParams.get("items") === "1";
+  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? "1000"), 1), 5000);
+
+  const admin = createAdminClient();
+
+  if (id) {
+    const { data: invoice } = await admin
+      .from("invoices")
+      .select("*, companies:buyer_company_id(id, name, inn, kpp, legal_address)")
+      .eq("id", id).single();
+    if (!invoice) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    let items = null;
+    if (withItems) {
+      const { data } = await admin.from("invoice_items").select("*").eq("invoice_id", id).order("id");
+      items = data ?? [];
+    }
+    return NextResponse.json({ invoice, items });
+  }
+
+  const { data, error } = await admin
+    .from("invoices")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ invoices: data ?? [] });
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  const admin = createAdminClient();
+
+  // Next invoice_number — простой автоинкремент.
+  const { data: maxInv } = await admin.from("invoices")
+    .select("invoice_number").order("invoice_number", { ascending: false }).limit(1);
+  const lastNum = maxInv?.[0]?.invoice_number ? Number(maxInv[0].invoice_number) : 0;
+  const nextNum = body.invoice_number || String(Number.isFinite(lastNum) ? lastNum + 1 : 1);
+
+  const items: Array<{ name: string; quantity: number; price: number; total: number; product_id?: string; unit?: string }> = Array.isArray(body.items) ? body.items : [];
+  const totalAmount = body.total_amount ?? items.reduce((s, i) => s + (Number(i.total) || 0), 0);
+
+  const insert: Record<string, unknown> = {
+    invoice_number: nextNum,
+    invoice_date: body.invoice_date || new Date().toISOString().slice(0, 10),
+    valid_until: body.valid_until || null,
+    buyer_company_id: body.buyer_company_id || null,
+    buyer_name: body.buyer_name || null,
+    buyer_inn: body.buyer_inn || null,
+    buyer_kpp: body.buyer_kpp || null,
+    buyer_ogrn: body.buyer_ogrn || null,
+    buyer_address: body.buyer_address || null,
+    buyer_director_name: body.buyer_director_name || null,
+    buyer_director_title: body.buyer_director_title || null,
+    buyer_director_basis: body.buyer_director_basis || null,
+    buyer_bank_name: body.buyer_bank_name || null,
+    buyer_account: body.buyer_account || null,
+    buyer_bik: body.buyer_bik || null,
+    buyer_corr_account: body.buyer_corr_account || null,
+    buyer_email: body.buyer_email || null,
+    buyer_phone: body.buyer_phone || null,
+    status: body.status || "draft",
+    total_amount: totalAmount,
+    vat_included: body.vat_included ?? false,
+    comment: body.comment || null,
+    shipping_memo: body.shipping_memo || null,
+    deal_id: body.deal_id || null,
+    quote_id: body.quote_id || null,
+    created_by: user.id,
+  };
+
+  const { data: invoice, error } = await admin.from("invoices").insert(insert).select("*").single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (items.length > 0) {
+    await admin.from("invoice_items").insert(
+      items.map((i) => ({
+        invoice_id: invoice.id,
+        product_id: i.product_id || null,
+        name: i.name,
+        quantity: i.quantity || 1,
+        unit: i.unit || "шт",
+        price: i.price || 0,
+        total: i.total || 0,
+      }))
+    );
+  }
+
+  return NextResponse.json(invoice);
+}
+
+export async function PUT(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
+
+  const admin = createAdminClient();
+  const updates: Record<string, unknown> = {};
+  for (const f of [
+    "invoice_number", "invoice_date", "valid_until",
+    "buyer_company_id", "buyer_name", "buyer_inn", "buyer_kpp", "buyer_ogrn", "buyer_address",
+    "buyer_director_name", "buyer_director_title", "buyer_director_basis",
+    "buyer_bank_name", "buyer_account", "buyer_bik", "buyer_corr_account",
+    "buyer_email", "buyer_phone",
+    "status", "total_amount", "vat_included", "comment", "shipping_memo",
+    "deal_id", "quote_id",
+  ]) {
+    if (body[f] !== undefined) updates[f] = body[f];
+  }
+  if (Object.keys(updates).length > 0) {
+    const { error } = await admin.from("invoices").update(updates).eq("id", body.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  // Replace items если переданы.
+  if (Array.isArray(body.items)) {
+    await admin.from("invoice_items").delete().eq("invoice_id", body.id);
+    if (body.items.length > 0) {
+      await admin.from("invoice_items").insert(
+        body.items.map((i: { name: string; quantity: number; price: number; total: number; product_id?: string; unit?: string }) => ({
+          invoice_id: body.id,
+          product_id: i.product_id || null,
+          name: i.name,
+          quantity: i.quantity || 1,
+          unit: i.unit || "шт",
+          price: i.price || 0,
+          total: i.total || 0,
+        }))
+      );
+    }
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+
+  const admin = createAdminClient();
+  await admin.from("invoice_items").delete().eq("invoice_id", id);
+  await admin.from("invoices").delete().eq("id", id);
+  return NextResponse.json({ ok: true });
+}

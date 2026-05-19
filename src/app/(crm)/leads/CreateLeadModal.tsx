@@ -38,20 +38,19 @@ export default function CreateLeadModal({ open, onClose, users, onCreated }: Cre
 
   useEffect(() => {
     if (!open) return;
-    const supabase = createClient();
-    supabase.from("funnels").select("id, name, is_default").eq("type", "lead").order("is_default", { ascending: false }).then(({ data }) => {
-      const f = data ?? [];
+    // 19.05.2026 — миграция browser→VPS, этап 4.
+    fetch("/api/funnels?type=lead").then((r) => r.ok ? r.json() : { funnels: [] }).then((d) => {
+      const f = d.funnels ?? [];
       setFunnels(f);
-      const def = f.find((x) => x.is_default) ?? f[0];
+      const def = f.find((x: { is_default?: boolean }) => x.is_default) ?? f[0];
       if (def) setSelectedFunnel(def.id);
     });
   }, [open]);
 
   useEffect(() => {
     if (!selectedFunnel) return;
-    const supabase = createClient();
-    supabase.from("funnel_stages").select("id, funnel_id, name, slug, sort_order").eq("funnel_id", selectedFunnel).order("sort_order").then(({ data }) => {
-      setStages(data ?? []);
+    fetch(`/api/funnel-stages?funnel_id=${selectedFunnel}`).then((r) => r.ok ? r.json() : { stages: [] }).then((d) => {
+      setStages(d.stages ?? []);
     });
   }, [selectedFunnel]);
 

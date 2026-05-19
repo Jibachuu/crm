@@ -23,26 +23,24 @@ export default function SupplierSettings() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.from("supplier_settings").select("*").limit(1).single().then(({ data }) => {
-      if (data) setForm(data);
+    // 19.05.2026 — миграция browser→VPS, этап 3.
+    fetch("/api/supplier-settings").then((r) => r.ok ? r.json() : { supplier: null }).then((d) => {
+      if (d.supplier) setForm(d.supplier);
       setLoading(false);
     });
   }, []);
 
   async function save() {
     setSaving(true);
-    const supabase = createClient();
     if (form.id) {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { id, ...payload } = form;
-      await supabase.from("supplier_settings").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", form.id);
+      const res = await fetch("/api/supplier-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, updated_at: new Date().toISOString() }) });
+      if (!res.ok) { const d = await res.json(); alert("Ошибка: " + (d.error ?? res.status)); }
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { id, ...payload } = form;
-      const { data, error } = await supabase.from("supplier_settings").insert(payload).select("*").single();
-      if (data) setForm(data);
-      if (error) alert("Ошибка: " + error.message);
+      const res = await fetch("/api/supplier-settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      if (res.ok) {
+        const data = await res.json();
+        if (data) setForm(data);
+      } else { const d = await res.json(); alert("Ошибка: " + (d.error ?? res.status)); }
     }
     setSaving(false);
   }

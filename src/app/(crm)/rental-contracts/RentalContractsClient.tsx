@@ -62,8 +62,12 @@ export default function RentalContractsClient({ companyId, dealId }: { companyId
     fetch("/api/deals?limit=200&fields=" + encodeURIComponent("id, title"))
       .then((r) => r.ok ? r.json() : { deals: [] })
       .then((d) => setDeals(d.deals ?? []));
-    supabase.from("invoices").select("id, invoice_number, buyer_name, total_amount").order("created_at", { ascending: false }).limit(100).then(({ data }) => setInvoices(data ?? []));
-    supabase.from("quotes").select("id, title, total, created_at").is("deleted_at", null).order("created_at", { ascending: false }).limit(100).then(({ data }) => setQuotes(data ?? []));
+    fetch("/api/invoices?limit=100")
+      .then((r) => r.ok ? r.json() : { invoices: [] })
+      .then((d) => setInvoices(d.invoices ?? []));
+    fetch("/api/quotes?limit=100")
+      .then((r) => r.ok ? r.json() : { quotes: [] })
+      .then((d) => setQuotes(d.quotes ?? []));
     fetch("/api/products?active=true")
       .then((r) => r.ok ? r.json() : { products: [] })
       .then((d) => setProducts(d.products ?? []));
@@ -158,17 +162,19 @@ export default function RentalContractsClient({ companyId, dealId }: { companyId
 
   async function loadInvoiceItems(invoiceId: string) {
     const supabase = createClient();
-    const { data } = await supabase.from("invoice_items").select("*").eq("invoice_id", invoiceId).order("id");
+    const res = await fetch(`/api/invoices?id=${invoiceId}&items=1`);
+    const { items: data } = res.ok ? await res.json() : { items: [] };
     if (data?.length) {
       setForm((f: AnyRec) => ({
-        ...f, purchase_items: data.map((i) => ({ name: i.name, quantity: i.quantity, price: i.price, total: i.total, product_id: i.product_id })) as PurchaseItem[],
+        ...f, purchase_items: data.map((i: AnyRec) => ({ name: i.name, quantity: i.quantity, price: i.price, total: i.total, product_id: i.product_id })) as PurchaseItem[],
       }));
     }
   }
 
   async function loadQuoteItems(quoteId: string) {
     const supabase = createClient();
-    const { data } = await supabase.from("quote_items").select("*, products(sku, article)").eq("quote_id", quoteId).order("sort_order");
+    const res = await fetch(`/api/quotes?items_for=${quoteId}`);
+    const { items: data } = res.ok ? await res.json() : { items: [] };
     if (!data?.length) { alert("В КП нет товаров"); return; }
     type V = { label: string; price: number; quantity: number; sum?: number };
     const out: PurchaseItem[] = [];

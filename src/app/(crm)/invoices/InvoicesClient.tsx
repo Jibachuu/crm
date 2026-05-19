@@ -105,8 +105,9 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     if (!inv) return;
     setPreviewInvoice(inv);
     setPreviewItems([]);
-    createClient().from("invoice_items").select("*").eq("invoice_id", id).then(({ data }) => {
-      setPreviewItems(data ?? []);
+    // 19.05.2026 — миграция browser→VPS, этап 2.
+    fetch(`/api/invoices?id=${id}&items=1`).then((r) => r.ok ? r.json() : { items: [] }).then((d) => {
+      setPreviewItems(d.items ?? []);
     });
     // Strip the param so refresh / back-button doesn't keep retriggering.
     const url = new URL(window.location.href);
@@ -159,8 +160,9 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
 
   async function importFromQuote(quoteId: string) {
     if (!quoteId) return;
-    const supabase = createClient();
-    const { data: qItems } = await supabase.from("quote_items").select("*, products(sku, article, excluded_from_invoice)").eq("quote_id", quoteId).order("sort_order");
+    // 19.05.2026 — миграция browser→VPS, этап 2.
+    const res = await fetch(`/api/quotes?items_for=${quoteId}`);
+    const { items: qItems } = res.ok ? await res.json() : { items: [] };
     if (!qItems?.length) { alert("В КП нет товаров"); return; }
     // Backlog v6 §7.2: skip rows whose product is marked as a sample
     // («пробник» — excluded_from_invoice=true on the catalog row). They
@@ -420,32 +422,39 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       return;
     }
     setSaving(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    // 19.05.2026 — миграция browser→VPS, этап 2. Создание счёта + items
+    // в одном запросе. invoice_number и created_by заполняются на сервере.
+    const itemsBody = items.filter((i) => i.name).map((i) => ({
+      product_id: i.product_id || null,
+      name: i.name,
+      quantity: i.quantity,
+      unit: i.unit,
+      price: i.price,
+      total: i.total,
+      price_tiers: i.price_tiers?.length ? i.price_tiers : null,
+    }));
 
-    // Get next invoice number
-    const { data: maxInv } = await supabase.from("invoices").select("invoice_number").order("invoice_number", { ascending: false }).limit(1);
-    const nextNum = ((maxInv?.[0]?.invoice_number ?? 0) as number) + 1;
-
-    const { data: invoice, error } = await supabase.from("invoices").insert({
-      invoice_number: nextNum,
-      invoice_date: form.invoice_date,
-      payment_due: form.payment_due,
-      buyer_company_id: form.buyer_company_id || null,
-      buyer_name: form.buyer_name,
-      buyer_inn: form.buyer_inn || null,
-      buyer_kpp: form.buyer_kpp || null,
-      buyer_address: form.buyer_address || null,
-      basis: form.basis,
-      deal_id: form.deal_id || null,
-      comment: form.comment || null,
-      vat_included: form.vat_included,
-      hide_total: (form as { hide_total?: boolean }).hide_total ?? false,
-      total_amount: totalAmount,
-      created_by: user?.id,
-    }).select("*").single();
-
-    if (error || !invoice) { alert(error?.message ?? "Ошибка"); setSaving(false); return; }
+    const res = await fetch("/api/invoices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        invoice_date: form.invoice_date,
+        payment_due: form.payment_due,
+        buyer_company_id: form.buyer_company_id || null,
+        buyer_name: form.buyer_name,
+        buyer_inn: form.buyer_inn || null,
+        buyer_kpp: form.buyer_kpp || null,
+        buyer_address: form.buyer_address || null,
+        basis: form.basis,
+        deal_id: form.deal_id || null,
+        comment: form.comment || null,
+        vat_included: form.vat_included,
+        hide_total: (form as { hide_total?: boolean }).hide_total ?? false,
+        total_amount: totalAmount,
+        items: itemsBody,
+      }),
+    });
+    if (!res.ok) { const d = await res.json(); alert(d.error || "Ошибка"); setSaving(false); return; }
 
     // Save buyer requisites back to company via API (RLS blocks managers
     // from updating companies directly; admin endpoint is the only path).
@@ -461,20 +470,6 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       }).catch(() => {});
     }
 
-    // Insert items
-    await supabase.from("invoice_items").insert(
-      items.filter((i) => i.name).map((i) => ({
-        invoice_id: invoice.id,
-        product_id: i.product_id || null,
-        name: i.name,
-        quantity: i.quantity,
-        unit: i.unit,
-        price: i.price,
-        total: i.total,
-        price_tiers: i.price_tiers?.length ? i.price_tiers : null,
-      }))
-    );
-
     setSaving(false);
     setCreateOpen(false);
     window.location.reload();
@@ -483,21 +478,23 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   async function openPreview(inv: { id: string }) {
     setPreviewInvoice(inv);
     setPreviewItems([]);
-    const supabase = createClient();
-    const { data: loadedItems } = await supabase.from("invoice_items").select("*").eq("invoice_id", inv.id);
-    setPreviewItems(loadedItems ?? []);
+    const res = await fetch(`/api/invoices?id=${inv.id}&items=1`);
+    const d = res.ok ? await res.json() : { items: [] };
+    setPreviewItems(d.items ?? []);
   }
 
   async function updateStatus(id: string, status: string) {
-    const supabase = createClient();
-    await supabase.from("invoices").update({ status }).eq("id", id);
+    await fetch("/api/invoices", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status }),
+    });
     setInvoices(invoices.map((inv: { id: string }) => inv.id === id ? { ...inv, status } : inv));
   }
 
   async function deleteInvoice(id: string) {
     if (!confirm("Удалить счёт?")) return;
-    const supabase = createClient();
-    await supabase.from("invoices").delete().eq("id", id);
+    await fetch(`/api/invoices?id=${id}`, { method: "DELETE" });
     setInvoices(invoices.filter((inv: { id: string }) => inv.id !== id));
   }
 
@@ -600,7 +597,6 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   async function saveEditInvoice() {
     if (!previewInvoice) return;
     setSaving(true);
-    const supabase = createClient();
     const newTotal = editItems.reduce((s, i) => s + i.total, 0);
 
     // Update invoice metadata + total (§3.3/§3.5 — number/date/deal/basis/comment).
@@ -612,21 +608,25 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     metaUpdate.deal_id = editMeta.deal_id || null;
     metaUpdate.basis = editMeta.basis || null;
     metaUpdate.comment = editMeta.comment || null;
-    await supabase.from("invoices").update(metaUpdate).eq("id", previewInvoice.id);
 
-    // Delete old items and insert new
-    await supabase.from("invoice_items").delete().eq("invoice_id", previewInvoice.id);
-    await supabase.from("invoice_items").insert(
-      editItems.filter((i) => i.name).map((i) => ({
-        invoice_id: previewInvoice.id,
-        product_id: i.product_id || null,
-        name: i.name,
-        quantity: i.quantity,
-        unit: i.unit,
-        price: i.price,
-        total: i.total,
-      }))
-    );
+    // 19.05.2026 — миграция browser→VPS, этап 2. Один PUT обновляет
+    // мету и сразу заменяет items.
+    await fetch("/api/invoices", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: previewInvoice.id,
+        ...metaUpdate,
+        items: editItems.filter((i) => i.name).map((i) => ({
+          product_id: i.product_id || null,
+          name: i.name,
+          quantity: i.quantity,
+          unit: i.unit,
+          price: i.price,
+          total: i.total,
+        })),
+      }),
+    });
 
     setPreviewItems(editItems);
     setPreviewInvoice({ ...previewInvoice, ...metaUpdate });

@@ -25,12 +25,12 @@ export default function CreateDealModal({ open, onClose, users, onCreated }: any
 
   useEffect(() => {
     if (!open) return;
-    const supabase = createClient();
-    supabase.from("funnels").select("id").eq("type", "deal").eq("is_default", true).single().then(({ data: funnel }) => {
-      if (funnel) {
-        supabase.from("funnel_stages").select("id, slug, name, sort_order").eq("funnel_id", funnel.id).order("sort_order").then(({ data: stages }) => {
-          setDealFunnel({ id: funnel.id, stages: stages ?? [] });
-        });
+    // 19.05.2026 — миграция browser→VPS, этап 4.
+    fetch("/api/funnels?type=deal&with_stages=1").then((r) => r.ok ? r.json() : { funnels: [], stages: [] }).then((d) => {
+      const def = (d.funnels ?? []).find((f: { is_default?: boolean }) => f.is_default) ?? d.funnels?.[0];
+      if (def) {
+        const stages = (d.stages ?? []).filter((s: { funnel_id: string }) => s.funnel_id === def.id);
+        setDealFunnel({ id: def.id, stages });
       }
     });
   }, [open]);

@@ -61,8 +61,8 @@ export default function CustomFieldsSettings({ customFields: initial }: { custom
 
   async function deleteField(id: string) {
     if (!confirm("Удалить поле? Все значения будут удалены.")) return;
-    const supabase = createClient();
-    await supabase.from("custom_fields").delete().eq("id", id);
+    // 19.05.2026 — миграция browser→VPS, этап 3.
+    await fetch(`/api/custom-fields?id=${id}`, { method: "DELETE" });
     setFields((p) => p.filter((f) => f.id !== id));
   }
 

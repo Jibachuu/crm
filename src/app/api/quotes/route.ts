@@ -2,6 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// GET — list quotes (для дропдаунов в contract clients), либо
+// items по quote_id (для импорта позиций КП в спецификацию). Этап 2
+// миграции browser→VPS.
+//   ?items_for=<quote_id>  → отдаёт quote_items с JOIN products
+//   иначе                  → список (q/limit, исключая deleted_at)
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const itemsFor = searchParams.get("items_for");
+  const admin = createAdminClient();
+
+  if (itemsFor) {
+    const { data } = await admin.from("quote_items")
+      .select("*, products(sku, article, excluded_from_invoice)")
+      .eq("quote_id", itemsFor).order("sort_order");
+    return NextResponse.json({ items: data ?? [] });
+  }
+
+  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? "200"), 1), 1000);
+  const { data, error } = await admin.from("quotes")
+    .select("id, title, total, created_at, status, company_id, contact_id")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ quotes: data ?? [] });
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

@@ -77,18 +77,22 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
     if (!u) return;
     setEditing(u);
     setForm({ upd_date: u.upd_date ?? new Date().toISOString().slice(0, 10), invoice_id: u.invoice_id ?? "", buyer_company_id: u.buyer_company_id ?? "", buyer_name: u.buyer_name ?? "", buyer_inn: u.buyer_inn ?? "", buyer_kpp: u.buyer_kpp ?? "", buyer_address: u.buyer_address ?? "", basis: u.basis ?? "Основной договор", vat_included: u.vat_included ?? false, comment: u.comment ?? "", status_code: (u.status_code === 1 ? 1 : 2) });
-    const supabase = createClient();
-    const { data } = await supabase.from("upd_items").select("*").eq("upd_id", updId).order("sort_order");
+    // 19.05.2026 — миграция browser→VPS, этап 2.
+    const res = await fetch(`/api/upd?upd_id=${updId}&items_only=1`);
+    const d = res.ok ? await res.json() : { items: [] };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setItems((data ?? []).map((i: any) => ({ product_id: i.product_id ?? "", name: i.name, quantity: i.quantity, unit: i.unit, price: i.price, total: i.total })));
+    setItems((d.items ?? []).map((i: any) => ({ product_id: i.product_id ?? "", name: i.name, quantity: i.quantity, unit: i.unit, price: i.price, total: i.total })));
     setEditorOpen(true);
   }
 
   // Import from invoice
   async function importFromInvoice(invoiceId: string) {
     if (!invoiceId) return;
-    const supabase = createClient();
-    const { data: inv } = await supabase.from("invoices").select("*, companies:buyer_company_id(id, name, inn, kpp, legal_address)").eq("id", invoiceId).single();
+    // 19.05.2026 — миграция browser→VPS, этап 2. /api/invoices?id=&items=1
+    // отдаёт счёт + items + JOIN companies.
+    const res = await fetch(`/api/invoices?id=${invoiceId}&items=1`);
+    if (!res.ok) return;
+    const { invoice: inv, items: invItems } = await res.json();
     if (!inv) return;
     // Fill buyer data from invoice
     setForm((prev) => ({
@@ -103,7 +107,6 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
       vat_included: inv.vat_included ?? false,
     }));
     // Load invoice items
-    const { data: invItems } = await supabase.from("invoice_items").select("*").eq("invoice_id", invoiceId);
     if (invItems?.length) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setItems(invItems.map((i: any) => ({ product_id: i.product_id ?? "", name: i.name, quantity: i.quantity ?? 1, unit: i.unit ?? "шт", price: i.price ?? 0, total: i.total ?? 0 })));
@@ -205,11 +208,12 @@ export default function UpdClient({ initialUpd, companies, products, supplier, i
   }
 
   async function openPreview(updId: string) {
-    const supabase = createClient();
     const u = updList.find((x: { id: string }) => x.id === updId);
     setPreviewUpd(u);
-    const { data } = await supabase.from("upd_items").select("*").eq("upd_id", updId).order("sort_order");
-    setPreviewItems(data ?? []);
+    // 19.05.2026 — миграция browser→VPS, этап 2.
+    const res = await fetch(`/api/upd?upd_id=${updId}&items_only=1`);
+    const d = res.ok ? await res.json() : { items: [] };
+    setPreviewItems(d.items ?? []);
   }
 
   const filteredProducts = products.filter((p: { name: string; sku: string; category?: string; subcategory?: string; liters?: string; container?: string }) => {
