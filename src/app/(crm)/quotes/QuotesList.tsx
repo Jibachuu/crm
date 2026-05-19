@@ -120,11 +120,16 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
   async function createCompanyInline() {
     const name = prompt("Название компании:");
     if (!name) return;
-    const supabase = (await import("@/lib/supabase/client")).createClient();
-    const { data, error } = await supabase.from("companies").insert({ name, created_by: currentUserId }).select("id, name, inn").single();
-    if (error) { alert("Ошибка: " + error.message); return; }
-    if (data) {
-      setCompaniesList([...companiesList, data]);
+    // 19.05.2026 — через VPS-API, не из браузера в supabase. Этап 1.
+    const res = await fetch("/api/companies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) { const d = await res.json(); alert("Ошибка: " + (d.error ?? res.status)); return; }
+    const data = await res.json();
+    if (data?.id) {
+      setCompaniesList([...companiesList, { id: data.id, name: data.name, inn: null }]);
       setForm({ ...form, company_id: data.id, contact_id: "", custom_recipient: "" });
     }
   }
@@ -133,11 +138,15 @@ export default function QuotesList({ initialQuotes, companies, contacts, product
     if (!form.company_id) { alert("Сначала выберите компанию"); return; }
     const name = prompt("ФИО контакта:");
     if (!name) return;
-    const supabase = (await import("@/lib/supabase/client")).createClient();
-    const { data, error } = await supabase.from("contacts").insert({ full_name: name, company_id: form.company_id, created_by: currentUserId }).select("id, full_name, phone, email, company_id").single();
-    if (error) { alert("Ошибка: " + error.message); return; }
-    if (data) {
-      setContactsList([...contactsList, data]);
+    const res = await fetch("/api/contacts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ full_name: name, company_id: form.company_id }),
+    });
+    if (!res.ok) { const d = await res.json(); alert("Ошибка: " + (d.error ?? res.status)); return; }
+    const data = await res.json();
+    if (data?.id) {
+      setContactsList([...contactsList, { id: data.id, full_name: data.full_name, phone: data.phone, email: data.email, company_id: data.company_id }]);
       setForm({ ...form, contact_id: data.id });
     }
   }

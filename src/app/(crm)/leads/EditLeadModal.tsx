@@ -51,18 +51,17 @@ export default function EditLeadModal({ open, onClose, lead, onSaved }: { open: 
 
   useEffect(() => {
     if (!open) { setDataReady(false); return; }
-    const supabase = createClient();
-    // fetchAll for contacts/companies — there are >1000 rows in production
-    // and the default Supabase select() caps at 1000, so freshly created
-    // contacts (e.g. "Игорь") never appear in the dropdown otherwise.
+    // 19.05.2026 — миграция browser→VPS, этап 1: контакты/компании/юзеры
+    // грузим через VPS-API. Раньше fetchAll() ходил в Supabase напрямую,
+    // а россйский ISP периодически режет AWS-IP без VPN.
     Promise.all([
-      fetchAll<ContactRow>(supabase, "contacts", "id, full_name, phone, phone_mobile, email, companies(name)", { order: { column: "full_name" } }),
-      fetchAll<{ id: string; name: string }>(supabase, "companies", "id, name", { order: { column: "name" } }),
-      supabase.from("users").select("id, full_name").eq("is_active", true),
+      fetch("/api/contacts?limit=5000").then((r) => r.ok ? r.json() : { contacts: [] }),
+      fetch("/api/companies?limit=5000").then((r) => r.ok ? r.json() : { companies: [] }),
+      fetch("/api/users").then((r) => r.ok ? r.json() : { users: [] }),
     ]).then(([c, co, u]) => {
-      setContacts(c);
-      setCompanies(co);
-      setUsers(u.data ?? []);
+      setContacts(c.contacts ?? []);
+      setCompanies(co.companies ?? []);
+      setUsers(u.users ?? []);
       setDataReady(true);
     }).catch(() => setDataReady(true));
   }, [open]);

@@ -15,12 +15,18 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get("q") ?? "").trim();
   const onlyOrphans = searchParams.get("only_orphans") === "1";
-  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? "20"), 1), 100);
+  // Раньше потолок был 100 — но Edit/Create*Modal грузят весь каталог
+  // контактов для дропдаунов (>1000 строк) через `fetchAll(supabase)`.
+  // Переключаем эти модалки на /api/contacts, нужен высокий limit.
+  // 19.05.2026 — миграция browser→VPS этап 1.
+  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? "20"), 1), 10000);
 
   const admin = createAdminClient();
+  // Доп. поля (telegram_id, telegram_username, maks_id) для дропдаунов
+  // лидов/сделок — там Telegram/MAX-вкладки fallback-ятся на эти ID.
   let query = admin
     .from("contacts")
-    .select("id, full_name, phone, phone_mobile, email, company_id, companies(id, name)")
+    .select("id, full_name, phone, phone_mobile, email, company_id, telegram_id, telegram_username, maks_id, companies(id, name)")
     .is("deleted_at", null)
     .order("full_name");
   if (onlyOrphans) query = query.is("company_id", null);
@@ -68,26 +74,26 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const admin = createAdminClient();
 
+  const insert: Record<string, unknown> = {
+    full_name: body.full_name,
+    created_by: user.id,
+  };
+  // Whitelist расширен 19.05.2026 (миграция browser→VPS) — теперь ColdCalls
+  // создаёт контакт через POST и шлёт additional_phone_*/email_*.
+  for (const f of [
+    "last_name", "middle_name", "position",
+    "phone", "phone_mobile", "phone_other",
+    "email", "email_other",
+    "telegram_id", "telegram_username", "maks_id",
+    "company_id", "assigned_to", "description",
+    "additional_phone_1", "additional_phone_2", "additional_phone_3",
+    "additional_email_1", "additional_email_2", "additional_email_3",
+  ]) {
+    if (body[f] !== undefined) insert[f] = body[f] || null;
+  }
   const { data, error } = await admin
     .from("contacts")
-    .insert({
-      full_name: body.full_name,
-      last_name: body.last_name || null,
-      middle_name: body.middle_name || null,
-      position: body.position || null,
-      phone: body.phone || null,
-      phone_mobile: body.phone_mobile || null,
-      phone_other: body.phone_other || null,
-      email: body.email || null,
-      email_other: body.email_other || null,
-      telegram_id: body.telegram_id || null,
-      telegram_username: body.telegram_username || null,
-      maks_id: body.maks_id || null,
-      company_id: body.company_id || null,
-      assigned_to: body.assigned_to || null,
-      description: body.description || null,
-      created_by: user.id,
-    })
+    .insert(insert)
     .select("*, companies(id, name), users!contacts_assigned_to_fkey(id, full_name)")
     .single();
 

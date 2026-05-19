@@ -48,19 +48,15 @@ export default function EditDealModal({ open, onClose, deal, onSaved }: { open: 
 
   useEffect(() => {
     if (!open) { setDataReady(false); return; }
-    const supabase = createClient();
-    // fetchAll for contacts/companies — production has >1000 rows, default
-    // Supabase select() truncates and freshly created entities don't appear.
+    // 19.05.2026 — миграция browser→VPS, этап 1.
     Promise.all([
-      fetchAll<{ id: string; full_name: string; phone?: string | null; phone_mobile?: string | null; email?: string | null; companies?: { name: string } | { name: string }[] | null }>(
-        supabase, "contacts", "id, full_name, phone, phone_mobile, email, companies(name)", { order: { column: "full_name" } }
-      ),
-      fetchAll<{ id: string; name: string }>(supabase, "companies", "id, name", { order: { column: "name" } }),
-      supabase.from("users").select("id, full_name").eq("is_active", true),
+      fetch("/api/contacts?limit=5000").then((r) => r.ok ? r.json() : { contacts: [] }),
+      fetch("/api/companies?limit=5000").then((r) => r.ok ? r.json() : { companies: [] }),
+      fetch("/api/users").then((r) => r.ok ? r.json() : { users: [] }),
     ]).then(([c, co, u]) => {
-      setContacts(c);
-      setCompanies(co);
-      setUsers(u.data ?? []);
+      setContacts(c.contacts ?? []);
+      setCompanies(co.companies ?? []);
+      setUsers(u.users ?? []);
       setDataReady(true);
     }).catch(() => setDataReady(true));
     // Seed delivery address state from the deal we're editing.

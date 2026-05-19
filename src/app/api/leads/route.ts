@@ -2,6 +2,44 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// GET добавлен 19.05 для миграции «browser → VPS». Параметры:
+//   q          — поиск по title
+//   limit      — макс. кол-во (default 500)
+//   offset     — пагинация
+//   company_id, contact_id — фильтры
+//   status     — фильтр по lead_status (enum)
+//   fields     — кастомные колонки (default — минимум для дропдауна)
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const q = (searchParams.get("q") ?? "").trim();
+  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? "500"), 1), 5000);
+  const offset = Math.max(Number(searchParams.get("offset") ?? "0"), 0);
+  const companyId = searchParams.get("company_id");
+  const contactId = searchParams.get("contact_id");
+  const status = searchParams.get("status");
+  const fields = searchParams.get("fields") || "id, title, status, source, created_at, company_id, contact_id";
+
+  const admin = createAdminClient();
+  let query = admin.from("leads").select(fields).order("created_at", { ascending: false });
+
+  if (companyId) query = query.eq("company_id", companyId);
+  if (contactId) query = query.eq("contact_id", contactId);
+  if (status) query = query.eq("status", status);
+  if (q.length >= 2) {
+    const escape = (s: string) => s.replace(/[%_,()]/g, "\\$&");
+    query = query.ilike("title", `%${escape(q)}%`);
+  }
+
+  query = query.range(offset, offset + limit - 1);
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ leads: data ?? [] });
+}
+
 // Create a new lead. Bypasses RLS so we can attribute the row to whoever
 // triggered the request (e.g. site form falls back to no auth → 401).
 export async function POST(req: NextRequest) {

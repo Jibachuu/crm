@@ -2,6 +2,57 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// GET добавлен 19.05 для миграции «browser → VPS» (см. memory
+// audit-2026-05-19). Раньше дропдауны в Create/EditLead/DealModal,
+// ContractsClient, QuotesList и т.п. дёргали supabase.from("companies")
+// напрямую — Supabase на AWS, российские провайдеры режут AWS-IP без
+// VPN, поэтому компании не подгружались. Теперь все эти места
+// проксируются через VPS.
+//
+// Параметры:
+//   q       — фильтр по name/inn/brand (≥2 символа)
+//   limit   — макс. кол-во (default 5000, чтобы за один запрос загрузить
+//             весь каталог компаний для дропдауна)
+//   offset  — пагинация
+//   contact_id — компания(и) которые видят данный contact_id
+//   ids     — список UUID через запятую (для batch-load)
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const q = (searchParams.get("q") ?? "").trim();
+  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? "5000"), 1), 10000);
+  const offset = Math.max(Number(searchParams.get("offset") ?? "0"), 0);
+  const ids = searchParams.get("ids");
+  const fields = searchParams.get("fields") || "id, name, inn, kpp, ogrn, legal_address, director, phone, email";
+
+  const admin = createAdminClient();
+  let query = admin.from("companies").select(fields).order("name");
+
+  if (ids) {
+    const idList = ids.split(",").map((s) => s.trim()).filter(Boolean);
+    if (idList.length > 0) query = query.in("id", idList);
+  } else if (q.length >= 2) {
+    const escape = (s: string) => s.replace(/[%_,()]/g, "\\$&");
+    const escapedQ = escape(q);
+    const digits = q.replace(/\D/g, "");
+    const ors = [
+      `name.ilike.%${escapedQ}%`,
+      `brand_name.ilike.%${escapedQ}%`,
+    ];
+    if (digits.length >= 5) ors.push(`inn.ilike.%${digits}%`);
+    query = query.or(ors.join(","));
+  }
+
+  query = query.range(offset, offset + limit - 1);
+
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ companies: data ?? [] });
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -10,17 +61,25 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const admin = createAdminClient();
 
+  const insert: Record<string, unknown> = {
+    name: body.name,
+    created_by: user.id,
+  };
+  // Whitelist расширен 19.05.2026 для миграции browser→VPS (ColdCalls
+  // и QuotesList создают компании со всеми этими полями).
+  for (const f of [
+    "inn", "kpp", "ogrn", "brand_name", "director",
+    "phone", "email", "website", "legal_address", "actual_address",
+    "city", "region", "description", "assigned_to", "company_type",
+    "additional_phone_1", "additional_phone_2", "additional_phone_3",
+    "additional_email_1", "additional_email_2", "additional_email_3",
+  ]) {
+    if (body[f] !== undefined) insert[f] = body[f] || null;
+  }
   const { data, error } = await admin
     .from("companies")
-    .insert({
-      name: body.name,
-      inn: body.inn || null,
-      phone: body.phone || null,
-      email: body.email || null,
-      legal_address: body.legal_address || null,
-      created_by: user.id,
-    })
-    .select("id, name")
+    .insert(insert)
+    .select("id, name, inn")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });

@@ -540,38 +540,60 @@ function ConvertForm({ row, users, onDone, onCancel }: { row: any; users: { id: 
 
   async function handleSave() {
     setSaving(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    // 19.05.2026 — через VPS-API, не из браузера в supabase. Этап 1.
+    // created_by заполняется на сервере из auth.getUser, поэтому
+    // user?.id больше не передаём.
     const ids: { lead?: string; contact?: string; company?: string } = {};
     if (companyName) {
-      const { data } = await supabase.from("companies").insert({
-        name: companyName, inn: companyInn || null,
-        phone: cleanPhone(companyPhone) || null, email: companyEmail || null,
-        additional_phone_1: allPhones[1] || null, additional_phone_2: allPhones[2] || null, additional_phone_3: allPhones[3] || null,
-        additional_email_1: allEmails[1] || null, additional_email_2: allEmails[2] || null, additional_email_3: allEmails[3] || null,
-        legal_address: companyAddress || null, city: companyCity || null,
-        website: row.main_website || null,
-        description: leadComment || null,
-        assigned_to: assignedTo || user?.id, created_by: user?.id,
-      }).select("id").single();
-      if (data) ids.company = data.id;
+      const res = await fetch("/api/companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: companyName, inn: companyInn || null,
+          phone: cleanPhone(companyPhone) || null, email: companyEmail || null,
+          additional_phone_1: allPhones[1] || null, additional_phone_2: allPhones[2] || null, additional_phone_3: allPhones[3] || null,
+          additional_email_1: allEmails[1] || null, additional_email_2: allEmails[2] || null, additional_email_3: allEmails[3] || null,
+          legal_address: companyAddress || null, city: companyCity || null,
+          website: row.main_website || null,
+          description: leadComment || null,
+          assigned_to: assignedTo || null,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.id) ids.company = data.id;
+      }
     }
     if (contactName) {
-      const { data } = await supabase.from("contacts").insert({
-        full_name: contactName, phone: cleanPhone(contactPhone) || null, email: contactEmail || null,
-        position: contactPosition || null,
-        additional_phone_1: allPhones[1] || null, additional_phone_2: allPhones[2] || null, additional_phone_3: allPhones[3] || null,
-        additional_email_1: allEmails[1] || null, additional_email_2: allEmails[2] || null, additional_email_3: allEmails[3] || null,
-        company_id: ids.company || null, assigned_to: assignedTo || user?.id, created_by: user?.id,
-      }).select("id").single();
-      if (data) ids.contact = data.id;
+      const res = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: contactName, phone: cleanPhone(contactPhone) || null, email: contactEmail || null,
+          position: contactPosition || null,
+          additional_phone_1: allPhones[1] || null, additional_phone_2: allPhones[2] || null, additional_phone_3: allPhones[3] || null,
+          additional_email_1: allEmails[1] || null, additional_email_2: allEmails[2] || null, additional_email_3: allEmails[3] || null,
+          company_id: ids.company || null, assigned_to: assignedTo || null,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.id) ids.contact = data.id;
+      }
     }
-    const { data: lead } = await supabase.from("leads").insert({
-      title: leadTitle, source: "cold_call", description: leadComment || null,
-      contact_id: ids.contact || null, company_id: ids.company || null,
-      assigned_to: assignedTo || user?.id, created_by: user?.id,
-    }).select("id").single();
-    if (lead) ids.lead = lead.id;
+    const leadRes = await fetch("/api/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: leadTitle, source: "cold_call", description: leadComment || null,
+        contact_id: ids.contact || null, company_id: ids.company || null,
+        assigned_to: assignedTo || null,
+      }),
+    });
+    if (leadRes.ok) {
+      const lead = await leadRes.json();
+      if (lead?.id) ids.lead = lead.id;
+    }
     setSaving(false);
     onDone(ids);
   }

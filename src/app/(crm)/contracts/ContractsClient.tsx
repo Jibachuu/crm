@@ -52,15 +52,23 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
   useEffect(() => {
     loadContracts();
     const supabase = createClient();
-    supabase.from("companies").select("id, name, inn, kpp, ogrn, legal_address, director, phone, email").order("name").limit(2000).then(({ data }) => setCompanies(data ?? []));
-    supabase.from("deals").select("id, title").order("created_at", { ascending: false }).limit(200).then(({ data }) => setDeals(data ?? []));
+    // 19.05.2026 — миграция browser→VPS, этап 1. Компании/сделки/товары
+    // — через VPS-API. Invoices/quotes ещё прямо из supabase (этап 2).
+    fetch("/api/companies?limit=5000&fields=" + encodeURIComponent("id, name, inn, kpp, ogrn, legal_address, director, phone, email"))
+      .then((r) => r.ok ? r.json() : { companies: [] })
+      .then((d) => setCompanies(d.companies ?? []));
+    fetch("/api/deals?limit=200&fields=" + encodeURIComponent("id, title"))
+      .then((r) => r.ok ? r.json() : { deals: [] })
+      .then((d) => setDeals(d.deals ?? []));
     supabase.from("invoices").select("id, invoice_number, buyer_name, total_amount").order("created_at", { ascending: false }).limit(100).then(({ data }) => setInvoices(data ?? []));
     // Backlog v6 §4.2: also offer «Из КП» and «Из сделки» when filling a
     // contract's specification. Quotes carry variants + tier-prices that
     // map cleanly onto spec lines; deal order rows are likewise the
     // ground truth for what's being shipped.
     supabase.from("quotes").select("id, title, total, created_at").is("deleted_at", null).order("created_at", { ascending: false }).limit(100).then(({ data }) => setQuotes(data ?? []));
-    supabase.from("products").select("id, name, sku, base_price, category, subcategory").eq("is_active", true).order("name").then(({ data }) => setProducts(data ?? []));
+    fetch("/api/products?active=true")
+      .then((r) => r.ok ? r.json() : { products: [] })
+      .then((d) => setProducts(d.products ?? []));
   }, []);
 
   async function loadContracts() {

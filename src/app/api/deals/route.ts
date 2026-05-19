@@ -2,6 +2,45 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// GET добавлен 19.05 для миграции «browser → VPS». Параметры:
+//   q          — поиск по title
+//   limit      — макс. кол-во (default 500)
+//   offset     — пагинация
+//   company_id — фильтр по компании
+//   contact_id — фильтр по контакту
+//   stage      — фильтр по стадии (enum)
+//   fields     — кастомные колонки (по умолчанию минимальные для дропдауна)
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const q = (searchParams.get("q") ?? "").trim();
+  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? "500"), 1), 5000);
+  const offset = Math.max(Number(searchParams.get("offset") ?? "0"), 0);
+  const companyId = searchParams.get("company_id");
+  const contactId = searchParams.get("contact_id");
+  const stage = searchParams.get("stage");
+  const fields = searchParams.get("fields") || "id, title, stage, amount, created_at, company_id, contact_id";
+
+  const admin = createAdminClient();
+  let query = admin.from("deals").select(fields).order("created_at", { ascending: false });
+
+  if (companyId) query = query.eq("company_id", companyId);
+  if (contactId) query = query.eq("contact_id", contactId);
+  if (stage) query = query.eq("stage", stage);
+  if (q.length >= 2) {
+    const escape = (s: string) => s.replace(/[%_,()]/g, "\\$&");
+    query = query.ilike("title", `%${escape(q)}%`);
+  }
+
+  query = query.range(offset, offset + limit - 1);
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ deals: data ?? [] });
+}
+
 export async function PUT(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
