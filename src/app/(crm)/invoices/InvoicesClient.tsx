@@ -272,25 +272,29 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     const newItems: InvoiceItem[] = [];
     for (const r of billableRows) {
       const p = r.products ?? {};
-      const litersPart = p.liters ? formatLiters(p.liters) : "";
-      // deal_products has no own `name` — pull from joined products.
-      // Override category/subcategory with row-level if set (some
-      // imports denormalised them in v30 migration).
-      const cat = r.category || p.category;
-      const sub = r.subcategory || p.subcategory;
-      const composed = [cat, sub, litersPart, p.container, p.name].filter(Boolean).join(" / ") || p.name || "Товар";
-      // Always append /арт. <sku> so the printed invoice carries the
-      // article — operators rely on it for stock lookups (2026-05-07).
-      const baseName = p.sku && !composed.toLowerCase().includes(p.sku.toLowerCase())
-        ? `${composed} / арт. ${p.sku}`
-        : composed;
+      // Жиба 20.05: при копировании заказа из сделки в счёт переносить
+      // именно те варианты, что вписаны в позицию (полные имена), а не
+      // основное название. Старая логика композировала «Категория /
+      // Подкатегория / Литры / Контейнер / Имя / арт. SKU», что забивало
+      // строку — менеджер видел шапку, а лейбл варианта терялся в конце.
+      // Теперь — минимум: имя товара + арт + лейбл варианта.
+      const baseName = (p.name || "Товар").trim();
+      const withSku = p.sku && !baseName.toLowerCase().includes(p.sku.toLowerCase())
+        ? `${baseName} / арт. ${p.sku}`
+        : baseName;
 
       const vs = Array.isArray(r.variants) ? r.variants : [];
       if (vs.length > 0) {
         for (const v of vs) {
+          // Лейбл варианта — основная идентификация позиции в КП/счёте,
+          // ставим его в начало, а имя товара остаётся как контекст в скобках.
+          const variantLabel = (v.label || "").trim();
+          const composed = variantLabel
+            ? `${variantLabel} (${withSku})`
+            : withSku;
           newItems.push({
             product_id: r.product_id ?? "",
-            name: v.label ? `${baseName} / ${v.label}` : baseName,
+            name: composed,
             quantity: v.quantity || 1,
             unit: "шт",
             price: v.price ?? 0,
@@ -298,9 +302,14 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
           });
         }
       } else {
+        // У позиции нет вариантов — стандартный «Имя / арт. SKU».
+        // Если у товара есть liters/container — добавляем как контекст.
+        const litersPart = p.liters ? formatLiters(p.liters) : "";
+        const ctx = [litersPart, p.container].filter(Boolean).join(", ");
+        const fullName = ctx ? `${withSku} (${ctx})` : withSku;
         newItems.push({
           product_id: r.product_id ?? "",
-          name: baseName,
+          name: fullName,
           quantity: r.quantity || 1,
           unit: "шт",
           price: r.unit_price ?? 0,

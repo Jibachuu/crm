@@ -50,11 +50,26 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const admin = createAdminClient();
 
-  // Next invoice_number — простой автоинкремент.
-  const { data: maxInv } = await admin.from("invoices")
-    .select("invoice_number").order("invoice_number", { ascending: false }).limit(1);
-  const lastNum = maxInv?.[0]?.invoice_number ? Number(maxInv[0].invoice_number) : 0;
-  const nextNum = body.invoice_number || String(Number.isFinite(lastNum) ? lastNum + 1 : 1);
+  // Atomic invoice_number через PG-функцию next_invoice_number() (см.
+  // migration_v83). Раньше POST читал max()+1 — гонка двух одновременных
+  // запросов писала ОДИН И ТОТ ЖЕ номер. Жиба 20.05: «в списке два #35
+  // рядом, клик по номеру открывает другой счёт». nextval() атомарен.
+  // Fallback: если миграция v83 ещё не накатили, используем legacy
+  // max+1 — UI выживает, но без гарантии уникальности.
+  let nextNum: number | string;
+  if (body.invoice_number) {
+    nextNum = body.invoice_number;
+  } else {
+    const rpc = await admin.rpc("next_invoice_number");
+    if (!rpc.error && rpc.data != null) {
+      nextNum = rpc.data as number;
+    } else {
+      const { data: maxInv } = await admin.from("invoices")
+        .select("invoice_number").order("invoice_number", { ascending: false }).limit(1);
+      const lastNum = maxInv?.[0]?.invoice_number ? Number(maxInv[0].invoice_number) : 0;
+      nextNum = Number.isFinite(lastNum) ? lastNum + 1 : 1;
+    }
+  }
 
   const items: Array<{ name: string; quantity: number; price: number; total: number; product_id?: string; unit?: string }> = Array.isArray(body.items) ? body.items : [];
   const totalAmount = body.total_amount ?? items.reduce((s, i) => s + (Number(i.total) || 0), 0);
