@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Search, Package, Truck, X, Check, Trash2 } from "lucide-react";
+import { Plus, Search, Package, Truck, X, Check, Trash2, AlertTriangle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { formatDate } from "@/lib/utils";
@@ -29,9 +29,18 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
   const [newWorkerId, setNewWorkerId] = useState("");
   const [newNotes, setNewNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [missingTrackOnly, setMissingTrackOnly] = useState(false);
 
-  // Modal for tracking number / arrival date
-  const [promptModal, setPromptModal] = useState<{ orderId: string; stage: string; type: "tracking" | "arrival" } | null>(null);
+  // Modal for tracking number / arrival date.
+  // `pendingTracking` carries the trek collected on the tracking step into the
+  // arrival step when moving straight to «Доставлен» without a trek — both
+  // fields then save in one API call.
+  const [promptModal, setPromptModal] = useState<{
+    orderId: string;
+    stage: string;
+    type: "tracking" | "arrival";
+    pendingTracking?: string;
+  } | null>(null);
   const [promptValue, setPromptValue] = useState("");
 
   // Detail panel
@@ -46,8 +55,12 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
     if (search && !o.companies?.name?.toLowerCase().includes(search.toLowerCase()) && !o.tracking_number?.toLowerCase().includes(search.toLowerCase())) return false;
     if (managerFilter && o.manager_id !== managerFilter) return false;
     if (workerFilter && o.worker_id !== workerFilter) return false;
+    if (missingTrackOnly && !(["shipped", "delivered"].includes(o.stage) && !o.tracking_number)) return false;
     return true;
   });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const missingTrackCount = (orders as any[]).filter((o) => ["shipped", "delivered"].includes(o.stage) && !o.tracking_number).length;
 
   async function createOrder() {
     if (!newDealId) return;
@@ -62,36 +75,73 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
   }
 
   async function moveStage(orderId: string, newStage: string) {
-    // Check if we need tracking number or arrival date
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const order = (orders as any[]).find((o) => o.id === orderId);
+    const existingTrack = order?.tracking_number ?? "";
+
+    // «Отправлен» requires a trek-number. Pre-fill existing value if any
+    // (e.g. re-entering shipped from delivered) so МОП can confirm in one
+    // click instead of retyping.
     if (newStage === "shipped") {
       setPromptModal({ orderId, stage: newStage, type: "tracking" });
-      setPromptValue("");
+      setPromptValue(existingTrack);
       return;
     }
+
+    // «Доставлен» also requires a trek — if order has none yet, first
+    // collect the trek, then chain into the arrival-date prompt.
     if (newStage === "delivered") {
+      if (!existingTrack) {
+        setPromptModal({ orderId, stage: newStage, type: "tracking" });
+        setPromptValue("");
+        return;
+      }
       setPromptModal({ orderId, stage: newStage, type: "arrival" });
       setPromptValue(new Date().toISOString().slice(0, 10));
       return;
     }
+
     await doMove(orderId, newStage);
   }
 
   async function doMove(orderId: string, stage: string, extra: Record<string, string> = {}) {
-    await fetch("/api/production", {
+    const res = await fetch("/api/production", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "move", id: orderId, stage, ...extra }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error ?? "Не удалось перевести заказ");
+      return false;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setOrders(orders.map((o: any) => o.id === orderId ? { ...o, stage, ...extra, updated_at: new Date().toISOString() } : o));
+    return true;
   }
 
   async function confirmPrompt() {
     if (!promptModal) return;
-    const extra: Record<string, string> = {};
-    if (promptModal.type === "tracking" && promptValue.trim()) extra.tracking_number = promptValue;
-    if (promptModal.type === "arrival" && promptValue.trim()) extra.estimated_arrival = promptValue;
-    await doMove(promptModal.orderId, promptModal.stage, extra);
-    setPromptModal(null);
+    const value = promptValue.trim();
+    if (!value) return; // button is disabled, defensive
+
+    if (promptModal.type === "tracking") {
+      // Going to «Доставлен» without an existing trek — collect arrival next,
+      // save trek + arrival together in one move call.
+      if (promptModal.stage === "delivered") {
+        setPromptModal({ ...promptModal, type: "arrival", pendingTracking: value });
+        setPromptValue(new Date().toISOString().slice(0, 10));
+        return;
+      }
+      const ok = await doMove(promptModal.orderId, promptModal.stage, { tracking_number: value });
+      if (ok) setPromptModal(null);
+      return;
+    }
+
+    // arrival
+    const extra: Record<string, string> = { estimated_arrival: value };
+    if (promptModal.pendingTracking) extra.tracking_number = promptModal.pendingTracking;
+    const ok = await doMove(promptModal.orderId, promptModal.stage, extra);
+    if (ok) setPromptModal(null);
   }
 
   async function addComment() {
@@ -122,6 +172,20 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
           <option value="">Все работники</option>
           {users.map((u: { id: string; full_name: string }) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
         </select>
+        <button
+          type="button"
+          onClick={() => setMissingTrackOnly((v) => !v)}
+          className="text-xs px-2 py-1.5 rounded inline-flex items-center gap-1"
+          style={{
+            border: "1px solid " + (missingTrackOnly ? "#c62828" : "#d0d0d0"),
+            background: missingTrackOnly ? "#fee5e5" : "#fff",
+            color: missingTrackOnly ? "#c62828" : (missingTrackCount > 0 ? "#c62828" : "#666"),
+            fontWeight: missingTrackOnly ? 600 : 400,
+          }}
+          title="Заказы в «Отправлен»/«Доставлен» без трек-номера"
+        >
+          <AlertTriangle size={12} /> Без трека {missingTrackCount > 0 && `(${missingTrackCount})`}
+        </button>
         <Button onClick={() => setCreateOpen(true)} size="sm"><Plus size={13} /> Новый заказ</Button>
       </div>
 
@@ -191,6 +255,11 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
                       </div>
 
                       {order.tracking_number && <p className="text-xs mt-1 font-mono" style={{ color: "#7b1fa2" }}>🚚 {order.tracking_number}</p>}
+                      {!order.tracking_number && (order.stage === "shipped" || order.stage === "delivered") && (
+                        <p className="text-xs mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-semibold" style={{ background: "#fee5e5", color: "#c62828" }}>
+                          <AlertTriangle size={10} /> Без трек-номера
+                        </p>
+                      )}
                       {order.estimated_arrival && <p className="text-xs" style={{ color: "#2e7d32" }}>📦 Прибытие: {formatDate(order.estimated_arrival)}</p>}
 
                       {/* Move buttons for workers/admins */}
@@ -240,21 +309,39 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
         </div>
       </Modal>
 
-      {/* Prompt Modal (tracking / arrival) */}
+      {/* Prompt Modal (tracking / arrival) — required, no skip.
+          Backlog: МОПы массово пропускали этот шаг → >60% заказов
+          в «Отправлен» сидели без трек-номера. Теперь без трека
+          переход в shipped/delivered невозможен. */}
       {promptModal && (
         <Modal open onClose={() => {}} title={promptModal.type === "tracking" ? "Введите трек-номер" : "Введите дату прибытия"} size="sm">
           <div className="p-5 space-y-3">
             <p className="text-xs" style={{ color: "#888" }}>
-              {promptModal.type === "tracking" ? "Трек-номер (можно пропустить)" : "Ожидаемая дата прибытия (можно пропустить)"}
+              {promptModal.type === "tracking"
+                ? "Трек-номер обязателен для этапа «Отправлен»/«Доставлен»"
+                : "Ожидаемая дата прибытия"}
             </p>
             {promptModal.type === "tracking" ? (
-              <input value={promptValue} onChange={(e) => setPromptValue(e.target.value)} style={inputStyle} placeholder="ABC123456789" autoFocus />
+              <input
+                value={promptValue}
+                onChange={(e) => setPromptValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && promptValue.trim()) confirmPrompt(); }}
+                style={inputStyle}
+                placeholder="ABC123456789"
+                autoFocus
+              />
             ) : (
-              <input type="date" value={promptValue} onChange={(e) => setPromptValue(e.target.value)} style={inputStyle} autoFocus />
+              <input
+                type="date"
+                value={promptValue}
+                onChange={(e) => setPromptValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && promptValue.trim()) confirmPrompt(); }}
+                style={inputStyle}
+                autoFocus
+              />
             )}
             <div className="flex gap-2">
-              <Button onClick={confirmPrompt}><Check size={13} /> Подтвердить</Button>
-              <Button variant="secondary" onClick={() => { setPromptModal(null); doMove(promptModal.orderId, promptModal.stage); }}>Пропустить</Button>
+              <Button onClick={confirmPrompt} disabled={!promptValue.trim()}><Check size={13} /> Подтвердить</Button>
               <Button variant="secondary" onClick={() => setPromptModal(null)}>Отмена</Button>
             </div>
           </div>
@@ -298,7 +385,15 @@ function DetailPanel({ order, users, userRole, onClose, onUpdated, onDeleted }: 
   });
 
   async function updateField(field: string, value: string) {
-    await fetch("/api/production", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", id: order.id, [field]: value || null }) });
+    const res = await fetch("/api/production", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "update", id: order.id, [field]: value || null }) });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error ?? "Не удалось сохранить");
+      // Roll back local state so the input shows the server value again.
+      if (field === "tracking_number") setTrackEdit(order.tracking_number ?? "");
+      if (field === "estimated_arrival") setArrivalEdit(order.estimated_arrival ?? "");
+      return;
+    }
     onUpdated({ id: order.id, [field]: value || null });
   }
 

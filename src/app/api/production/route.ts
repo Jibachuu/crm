@@ -69,8 +69,22 @@ export async function POST(req: NextRequest) {
   // Move stage
   if (action === "move") {
     const { id, stage, tracking_number, estimated_arrival } = body;
-    const { data: current } = await admin.from("order_production").select("stage, manager_id, company_id, deal_id").eq("id", id).single();
+    const { data: current } = await admin
+      .from("order_production")
+      .select("stage, manager_id, company_id, deal_id, tracking_number")
+      .eq("id", id)
+      .single();
     if (!current) return NextResponse.json({ error: "Не найден" }, { status: 404 });
+
+    // Guard: shipped/delivered must always have a trek-number — either in
+    // the payload (fresh move) or already on the record. Prevents future
+    // «слетели трек-номера» regressions even if UI is bypassed.
+    if ((stage === "shipped" || stage === "delivered") && !tracking_number && !current.tracking_number) {
+      return NextResponse.json(
+        { error: "Трек-номер обязателен для этапа «Отправлен»/«Доставлен»" },
+        { status: 400 },
+      );
+    }
 
     const update: Record<string, unknown> = { stage, updated_at: new Date().toISOString() };
     if (tracking_number) { update.tracking_number = tracking_number; update.shipped_at = new Date().toISOString(); }
@@ -142,6 +156,25 @@ export async function POST(req: NextRequest) {
   if (action === "update") {
     const { id, ...fields } = body;
     delete fields.action;
+
+    // Guard: don't let the inline edit in the detail panel null out a
+    // trek-number on an order that's already shipped/delivered. Same root
+    // cause as the «слетели трек-номера» regression — accidental blur on
+    // an empty input would send `tracking_number: null`.
+    if ("tracking_number" in fields && !fields.tracking_number) {
+      const { data: current } = await admin
+        .from("order_production")
+        .select("stage")
+        .eq("id", id)
+        .single();
+      if (current && (current.stage === "shipped" || current.stage === "delivered")) {
+        return NextResponse.json(
+          { error: "Нельзя очистить трек-номер на этапе «Отправлен»/«Доставлен»" },
+          { status: 400 },
+        );
+      }
+    }
+
     await admin.from("order_production").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", id);
     return NextResponse.json({ ok: true });
   }
