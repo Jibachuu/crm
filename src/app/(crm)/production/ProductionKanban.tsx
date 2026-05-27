@@ -153,6 +153,21 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
     setDetailComment("");
   }
 
+  async function deleteOrderQuick(orderId: string, label: string) {
+    if (!confirm(`Убрать «${label}» из производства?`)) return;
+    const res = await fetch("/api/production", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", id: orderId }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error ?? "Не удалось удалить");
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setOrders((orders as any[]).filter((o) => o.id !== orderId));
+  }
+
   const inputStyle: React.CSSProperties = { border: "1px solid #d0d0d0", borderRadius: 4, padding: "6px 10px", fontSize: 13, width: "100%", outline: "none" };
 
   return (
@@ -228,7 +243,7 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
                   }).join(", ");
 
                   return (
-                    <div key={order.id} className="rounded-lg p-3 bg-white cursor-pointer hover:shadow-md transition-shadow"
+                    <div key={order.id} className="rounded-lg p-3 bg-white cursor-pointer hover:shadow-md transition-shadow relative group"
                       style={{ border: "1px solid #e4e4e4" }}
                       draggable
                       onDragStart={(e) => {
@@ -236,7 +251,17 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
                         e.dataTransfer.effectAllowed = "move";
                       }}
                       onClick={() => setDetailOrder(order)}>
-                      <p className="text-sm font-semibold mb-1" style={{ color: "#333" }}>{order.companies?.name ?? "—"}</p>
+                      {/* Quick remove — shown on hover, top-right.
+                          Backlog: МОПам нужен быстрый способ выкинуть карточку
+                          из канбана без открытия детальной панели. */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteOrderQuick(order.id, order.companies?.name ?? "заказ"); }}
+                        className="absolute top-1.5 right-1.5 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50"
+                        title="Убрать из производства"
+                      >
+                        <Trash2 size={12} style={{ color: "#c62828" }} />
+                      </button>
+                      <p className="text-sm font-semibold mb-1 pr-6" style={{ color: "#333" }}>{order.companies?.name ?? "—"}</p>
                       <p className="text-xs mb-1" style={{ color: "#0067a5" }}>{order.deals?.title ?? "—"}</p>
                       {products && <p className="text-xs mb-2 truncate" style={{ color: "#888" }}>{products}</p>}
 
