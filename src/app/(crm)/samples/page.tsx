@@ -19,7 +19,7 @@ export default async function SamplesPage() {
   // column doesn't exist yet (migration_v71 not applied — without the
   // fallback the page just shows "Пробников не найдено").
   async function loadSamples() {
-    const sel = "*, companies(id, name), contacts(id, full_name), users!samples_assigned_to_fkey(id, full_name), logist:users!samples_logist_id_fkey(id, full_name)";
+    const sel = "*, companies(id, name), contacts(id, full_name), lead:lead_id(id, title), deal:deal_id(id, title), users!samples_assigned_to_fkey(id, full_name), logist:users!samples_logist_id_fkey(id, full_name)";
     const res = await admin.from("samples")
       .select(sel)
       .is("deleted_at", null)

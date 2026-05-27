@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Search, FlaskConical, Trash2, Edit2, Truck, List, Columns, Link2 } from "lucide-react";
+import { Plus, Search, FlaskConical, Trash2, Edit2, Truck, List, Columns, Link2, ExternalLink } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
@@ -272,18 +272,42 @@ export default function SamplesList({ initialSamples, companies, contacts, users
                       key={s.id}
                       draggable
                       onDragStart={(e) => e.dataTransfer.setData("text/sample-id", s.id)}
-                      onClick={() => openEdit(s)}
+                      onClick={(e) => {
+                        // Не открывать модалку, если кликнули по вложенной ссылке (компания/контакт/лид/сделка).
+                        if ((e.target as HTMLElement).closest("a")) return;
+                        openEdit(s);
+                      }}
                       className="bg-white p-3 rounded cursor-pointer hover:shadow-sm transition-shadow"
                       style={{ border: "1px solid #e4e4e4" }}
                     >
-                      <p className="text-xs font-medium mb-1" style={{ color: "#333" }}>
-                        {s.companies?.name || s.venue_name || "Без названия"}
-                      </p>
+                      {s.companies ? (
+                        <Link href={`/companies/${s.companies.id}`} onClick={(e) => e.stopPropagation()} className="text-xs font-medium mb-1 block hover:underline" style={{ color: "#0067a5" }}>
+                          {s.companies.name}
+                        </Link>
+                      ) : (
+                        <p className="text-xs font-medium mb-1" style={{ color: "#333" }}>{s.venue_name || "Без названия"}</p>
+                      )}
                       {s.venue_name && s.companies?.name && (
                         <p className="text-xs mb-1" style={{ color: "#888" }}>{s.venue_name}</p>
                       )}
                       {s.contacts?.full_name && (
-                        <p className="text-xs" style={{ color: "#0067a5" }}>{s.contacts.full_name}</p>
+                        <Link href={`/contacts/${s.contacts.id}`} onClick={(e) => e.stopPropagation()} className="text-xs hover:underline block" style={{ color: "#0067a5" }}>
+                          {s.contacts.full_name}
+                        </Link>
+                      )}
+                      {(s.lead || s.deal) && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {s.lead && (
+                            <Link href={`/leads/${s.lead.id}`} onClick={(e) => e.stopPropagation()} className="text-xs px-1.5 py-0.5 rounded hover:underline" style={{ background: "#eef4ff", color: "#0067a5" }}>
+                              Лид: {s.lead.title}
+                            </Link>
+                          )}
+                          {s.deal && (
+                            <Link href={`/deals/${s.deal.id}`} onClick={(e) => e.stopPropagation()} className="text-xs px-1.5 py-0.5 rounded hover:underline" style={{ background: "#f0fdf4", color: "#16a34a" }}>
+                              Сделка: {s.deal.title}
+                            </Link>
+                          )}
+                        </div>
                       )}
                       {s.materials && (
                         <p className="text-xs mt-1 line-clamp-2" style={{ color: "#666" }}>{s.materials}</p>
@@ -334,7 +358,7 @@ export default function SamplesList({ initialSamples, companies, contacts, users
                       }}
                       style={{ accentColor: "#0067a5" }} />
                   </th>
-                  {["Компания", "Заведение", "Контакт", "Материалы", "Доставка", "Трек", "Даты", "Статус", "МОП", "Логист", ""].map((h) => (
+                  {["Компания", "Заведение", "Контакт", "Связано", "Материалы", "Доставка", "Трек", "Даты", "Статус", "МОП", "Логист", ""].map((h) => (
                     <th key={h} className="text-left px-3 py-2 font-semibold uppercase tracking-wide" style={{ color: "#888", fontSize: 10 }}>{h}</th>
                   ))}
                 </tr>
@@ -361,6 +385,22 @@ export default function SamplesList({ initialSamples, companies, contacts, users
                           {s.contact_phone && <p style={{ color: "#888" }}>{s.contact_phone}</p>}
                         </div>
                       ) : s.contact_phone ? <span style={{ color: "#888" }}>{s.contact_phone}</span> : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {(s.lead || s.deal) ? (
+                        <div className="flex flex-col gap-0.5">
+                          {s.lead && (
+                            <Link href={`/leads/${s.lead.id}`} className="hover:underline truncate" style={{ color: "#0067a5", maxWidth: 140 }} title={s.lead.title}>
+                              📋 {s.lead.title}
+                            </Link>
+                          )}
+                          {s.deal && (
+                            <Link href={`/deals/${s.deal.id}`} className="hover:underline truncate" style={{ color: "#16a34a", maxWidth: 140 }} title={s.deal.title}>
+                              🤝 {s.deal.title}
+                            </Link>
+                          )}
+                        </div>
+                      ) : <span style={{ color: "#ccc" }}>—</span>}
                     </td>
                     <td className="px-3 py-2" style={{ color: "#333", maxWidth: 150 }}>
                       <span className="truncate block">{s.materials || "—"}</span>
@@ -411,7 +451,14 @@ export default function SamplesList({ initialSamples, companies, contacts, users
         <div className="p-5 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label style={lblStyle}>Компания</label>
+              <div className="flex items-center justify-between mb-1">
+                <label style={{ ...lblStyle, marginBottom: 0 }}>Компания</label>
+                {form.company_id && (
+                  <a href={`/companies/${form.company_id}`} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-0.5 hover:underline" style={{ color: "#0067a5" }} title="Открыть в новой вкладке">
+                    <ExternalLink size={11} /> открыть
+                  </a>
+                )}
+              </div>
               <SearchableSelect
                 options={companies.map((c: { id: string; name: string }) => ({ id: c.id, label: c.name }))}
                 value={form.company_id}
@@ -427,7 +474,14 @@ export default function SamplesList({ initialSamples, companies, contacts, users
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label style={lblStyle}>Контактное лицо</label>
+              <div className="flex items-center justify-between mb-1">
+                <label style={{ ...lblStyle, marginBottom: 0 }}>Контактное лицо</label>
+                {form.contact_id && (
+                  <a href={`/contacts/${form.contact_id}`} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-0.5 hover:underline" style={{ color: "#0067a5" }} title="Открыть в новой вкладке">
+                    <ExternalLink size={11} /> открыть
+                  </a>
+                )}
+              </div>
               <SearchableSelect
                 options={contacts.map((c: { id: string; full_name: string; phone?: string; companies?: { name: string } | null }) => ({
                   id: c.id,
@@ -467,7 +521,14 @@ export default function SamplesList({ initialSamples, companies, contacts, users
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label style={lblStyle}>Связать с лидом (необязательно)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label style={{ ...lblStyle, marginBottom: 0 }}>Связать с лидом (необязательно)</label>
+                {form.lead_id && (
+                  <a href={`/leads/${form.lead_id}`} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-0.5 hover:underline" style={{ color: "#0067a5" }} title="Открыть в новой вкладке">
+                    <ExternalLink size={11} /> открыть
+                  </a>
+                )}
+              </div>
               <SearchableSelect
                 options={(leads ?? []).map((l: { id: string; title: string; companies?: { name?: string } | null }) => ({
                   id: l.id,
@@ -481,7 +542,14 @@ export default function SamplesList({ initialSamples, companies, contacts, users
               />
             </div>
             <div>
-              <label style={lblStyle}>Связать со сделкой (необязательно)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label style={{ ...lblStyle, marginBottom: 0 }}>Связать со сделкой (необязательно)</label>
+                {form.deal_id && (
+                  <a href={`/deals/${form.deal_id}`} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-0.5 hover:underline" style={{ color: "#16a34a" }} title="Открыть в новой вкладке">
+                    <ExternalLink size={11} /> открыть
+                  </a>
+                )}
+              </div>
               <SearchableSelect
                 options={(deals ?? []).map((d: { id: string; title: string; companies?: { name?: string } | null }) => ({
                   id: d.id,
