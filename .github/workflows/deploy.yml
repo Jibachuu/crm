@@ -30,7 +30,17 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             npm install
+            # 22.05.2026 next build съел всю RAM (whisper-server 600 МБ +
+            # crm-app + apt-daily) → OOM killer прибил whisper, BUILD_ID
+            # не записался, сервер 2 дня сидел на старом билде. Останавливаем
+            # whisper на время билда (он переживёт 3-минутный простой),
+            # затем поднимаем обратно — даже если билд упадёт.
+            WHISPER_RESTORED=0
+            restore_whisper() { if [ "$WHISPER_RESTORED" = "0" ]; then WHISPER_RESTORED=1; systemctl start whisper-server || true; fi; }
+            trap restore_whisper EXIT
+            systemctl stop whisper-server || true
             NODE_OPTIONS="--max-old-space-size=1536" npx next build
+            restore_whisper
             # Двойная защита: рестартим только если билд реально на диске.
             test -f .next/BUILD_ID
             systemctl restart crm-app
