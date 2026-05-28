@@ -8,6 +8,13 @@ const IMAP_USER = process.env.IMAP_USER || "";
 const IMAP_PASS = process.env.IMAP_PASS || "";
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_KEY || ""; // service role key
+// Tilda email→webhook bridge (28.05.2026): когда первая попытка оплаты
+// в Tilda истекает по DEADLINE_EXPIRED, а покупатель переоплачивает —
+// Tilda не перевыпускает webhook, но шлёт письмо с тем же телом заказа.
+// Watcher ловит его и форвардит в наш webhook, чтобы оплаченный заказ
+// гарантированно появился в CRM. Webhook сам дедупит по Order ID.
+const WEBHOOK_URL = process.env.WEBHOOK_URL || "http://localhost:3000/api/webhooks/tilda";
+const TILDA_WEBHOOK_KEY = process.env.TILDA_WEBHOOK_KEY || "";
 const CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 // Track already-processed emails to avoid duplicates
@@ -69,6 +76,41 @@ async function checkInbox() {
           const fromName = parsed.from?.value?.[0]?.name || parsed.from?.text || fromEmail || "";
 
           if (!fromEmail || fromEmail === IMAP_USER.toLowerCase()) continue;
+
+          // Tilda order email → webhook bridge. Маркеры одинаковые что в
+          // webhook'е, что в письме (Tilda шлёт идентичное тело). Если
+          // нашли — форвардим всё тело письма в наш webhook одним полем
+          // Comments, дальше парсер на стороне Next.js разберёт по полкам
+          // и создаст лид+сделку. Webhook сам дедупит по Order ID.
+          const bodyText = parsed.text || (parsed.html ? String(parsed.html).replace(/<[^>]+>/g, " ") : "") || "";
+          const isTildaOrder = /Order\s*#\s*\d+/i.test(bodyText)
+            && /Payment\s*(Amount|ID)\s*:/i.test(bodyText)
+            && /Full\s*name\s*:/i.test(bodyText);
+          if (isTildaOrder) {
+            try {
+              const url = TILDA_WEBHOOK_KEY
+                ? `${WEBHOOK_URL}?key=${encodeURIComponent(TILDA_WEBHOOK_KEY)}`
+                : WEBHOOK_URL;
+              const form = new URLSearchParams();
+              form.set("Comments", bodyText);
+              const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: form.toString(),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (data?.deduplicated) {
+                console.log(`[EMAIL] Tilda order ${data.order_id} already in CRM (dedup)`);
+              } else if (data?.lead_id) {
+                console.log(`[EMAIL] Tilda order ${data.order_id || "?"} → lead ${data.lead_id}${data.deal_id ? ` + deal ${data.deal_id}` : ""}`);
+              } else {
+                console.log(`[EMAIL] Tilda forward returned non-2xx or no lead_id:`, JSON.stringify(data).slice(0, 200));
+              }
+            } catch (e) {
+              console.log("[EMAIL] Tilda forward failed:", e.message);
+            }
+            continue;
+          }
 
           // Skip mail from any of our own users (admins replying from
           // jibachuu@gmail.com, etc.) — those flooded the leads table on
@@ -178,3 +220,4 @@ setInterval(() => {
 
 console.log(`[EMAIL Watcher] Started. Checking every ${CHECK_INTERVAL / 1000}s`);
 console.log(`[EMAIL Watcher] IMAP: ${IMAP_USER}@${IMAP_HOST}`);
+console.log(`[EMAIL Watcher] Tilda forward: ${TILDA_WEBHOOK_KEY ? "enabled" : "DISABLED (TILDA_WEBHOOK_KEY missing)"} → ${WEBHOOK_URL}`);

@@ -250,6 +250,32 @@ export async function POST(req: NextRequest) {
   // Detect paid order — Tilda payment webhook posts payment[orderid] etc.,
   // плюс если блоб сказал «The order is paid for.» — тоже считаем.
   const orderId = body["payment[orderid]"] || body["payment[order]"] || blobOrderId || "";
+
+  // Дедуп по Order ID. Один и тот же заказ может прийти и через webhook,
+  // и через email-watcher (28.05 — email-bridge для случая, когда первая
+  // оплата истекла по DEADLINE_EXPIRED и Tilda не перевыпустила webhook).
+  // Title для оплаченных заказов всегда содержит «(№<orderId>)» — поэтому
+  // ищем по нему. Не делаем 200 «ok» молча — возвращаем lead_id, чтобы
+  // вызывающая сторона видела, что заказ уже есть в системе.
+  if (orderId) {
+    const { data: existingLead } = await admin
+      .from("leads")
+      .select("id")
+      .ilike("title", `%(№${orderId})%`)
+      .is("deleted_at", null)
+      .limit(1)
+      .maybeSingle();
+    if (existingLead) {
+      console.log(`[TILDA] Order ${orderId} already exists as lead ${existingLead.id} — dedup skip.`);
+      return NextResponse.json({
+        ok: true,
+        deduplicated: true,
+        lead_id: existingLead.id,
+        order_id: orderId,
+      });
+    }
+  }
+
   const paidAmountStr = body["payment[amount]"] || body["payment[sum]"] || body["amount"] || "";
   const paidAmountFields = Number(String(paidAmountStr).replace(/[^\d.,]/g, "").replace(",", "."));
   const paidAmount = Number.isFinite(paidAmountFields) && paidAmountFields > 0 ? paidAmountFields : blobAmount;
