@@ -27,9 +27,12 @@ export async function GET(req: NextRequest) {
   // products row. Including a non-existent column made the whole query
   // 400 with "column deal_products.name does not exist" 2026-05-05.
   async function run(withKind: boolean) {
+    // products(...).flavor / products(...).kind — каталожный аромат/вид;
+    // нужен в /invoices при копировании заказа в счёт, чтобы у косметики
+    // в строке счёта отображался конкретный аромат, а не только имя.
     const cols = withKind
-      ? "id, quantity, unit_price, total_price, product_id, product_block, variants, base_price, category, subcategory, volume_ml, flavor, kind, products(name, sku, category, subcategory, liters, container, excluded_from_invoice)"
-      : "id, quantity, unit_price, total_price, product_id, product_block, variants, base_price, category, subcategory, volume_ml, flavor, products(name, sku, category, subcategory, liters, container, excluded_from_invoice)";
+      ? "id, quantity, unit_price, total_price, product_id, product_block, variants, base_price, category, subcategory, volume_ml, flavor, kind, products(name, sku, category, subcategory, liters, container, flavor, kind, excluded_from_invoice)"
+      : "id, quantity, unit_price, total_price, product_id, product_block, variants, base_price, category, subcategory, volume_ml, flavor, products(name, sku, category, subcategory, liters, container, flavor, kind, excluded_from_invoice)";
     let q = admin.from("deal_products").select(cols).eq("deal_id", dealId);
     if (block) q = q.eq("product_block", block);
     return q;

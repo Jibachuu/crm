@@ -259,7 +259,10 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       base_price?: number;
       category?: string;
       subcategory?: string;
-      products?: { name?: string; sku?: string; category?: string; subcategory?: string; liters?: string; container?: string; excluded_from_invoice?: boolean } | null;
+      // deal_products.flavor — выбранный для конкретной позиции аромат
+      // (косметика часто хранит его именно здесь, а не на каталоге).
+      flavor?: string;
+      products?: { name?: string; sku?: string; category?: string; subcategory?: string; liters?: string; container?: string; flavor?: string; kind?: string; excluded_from_invoice?: boolean } | null;
     };
 
     // Backlog v6 §7.2: skip sample rows (excluded_from_invoice).
@@ -272,26 +275,29 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     const newItems: InvoiceItem[] = [];
     for (const r of billableRows) {
       const p = r.products ?? {};
-      // Жиба 20.05: при копировании заказа из сделки в счёт переносить
-      // именно те варианты, что вписаны в позицию (полные имена), а не
-      // основное название. Старая логика композировала «Категория /
-      // Подкатегория / Литры / Контейнер / Имя / арт. SKU», что забивало
-      // строку — менеджер видел шапку, а лейбл варианта терялся в конце.
-      // Теперь — минимум: имя товара + арт + лейбл варианта.
+      // Имя позиции: «{name} / арт. {sku}» как базовое идентифицирующее
+      // ядро, плюс контекст в скобках — аромат (для косметики), литры и
+      // тара. До 28.05 аромат не подтягивался вообще, литры/тара терялись
+      // у вариантов — менеджеры заполняли это руками.
+      // ВАЖНО: deal_products.kind = 'purchase'/'rental' (v82) — это НЕ
+      // аромат; каталожное products.kind (v57) — да. Поэтому аромат
+      // берём из r.flavor → p.flavor → p.kind в таком порядке.
       const baseName = (p.name || "Товар").trim();
       const withSku = p.sku && !baseName.toLowerCase().includes(p.sku.toLowerCase())
         ? `${baseName} / арт. ${p.sku}`
         : baseName;
+      const litersPart = p.liters ? formatLiters(p.liters) : "";
+      const aroma = (r.flavor || p.flavor || p.kind || "").trim();
+      const ctx = [aroma, litersPart, p.container].filter(Boolean).join(", ");
 
       const vs = Array.isArray(r.variants) ? r.variants : [];
       if (vs.length > 0) {
         for (const v of vs) {
-          // Лейбл варианта — основная идентификация позиции в КП/счёте,
-          // ставим его в начало, а имя товара остаётся как контекст в скобках.
+          // Вариант — главный идентификатор (УФ-печать и т.д.), идёт
+          // первым; имя/арт/аромат/литры/тара кладём в скобки как контекст.
           const variantLabel = (v.label || "").trim();
-          const composed = variantLabel
-            ? `${variantLabel} (${withSku})`
-            : withSku;
+          const inside = ctx ? `${withSku}, ${ctx}` : withSku;
+          const composed = variantLabel ? `${variantLabel} (${inside})` : inside;
           newItems.push({
             product_id: r.product_id ?? "",
             name: composed,
@@ -302,10 +308,6 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
           });
         }
       } else {
-        // У позиции нет вариантов — стандартный «Имя / арт. SKU».
-        // Если у товара есть liters/container — добавляем как контекст.
-        const litersPart = p.liters ? formatLiters(p.liters) : "";
-        const ctx = [litersPart, p.container].filter(Boolean).join(", ");
         const fullName = ctx ? `${withSku} (${ctx})` : withSku;
         newItems.push({
           product_id: r.product_id ?? "",
