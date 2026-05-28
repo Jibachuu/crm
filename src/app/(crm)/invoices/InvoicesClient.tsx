@@ -288,7 +288,14 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
         : baseName;
       const litersPart = p.liters ? formatLiters(p.liters) : "";
       const aroma = (r.flavor || p.flavor || p.kind || "").trim();
-      const ctx = [aroma, litersPart, p.container].filter(Boolean).join(", ");
+      // Подкатегория для держателей («Настольные/Настенные») и подобных —
+      // в имени её обычно нет, без неё строка обезличивается. Для косметики
+      // (subcategory часто совпадает с name, типа «Крем»/«Мыло») дедуп
+      // отсеивает дубль. category намеренно не выводим — она дублирует
+      // раздел каталога и забивает строку (20.05 решение).
+      const sub = (r.subcategory || p.subcategory || "").trim();
+      const subPart = sub && !baseName.toLowerCase().includes(sub.toLowerCase()) ? sub : "";
+      const ctx = [subPart, aroma, litersPart, p.container].filter(Boolean).join(", ");
 
       const vs = Array.isArray(r.variants) ? r.variants : [];
       if (vs.length > 0) {
