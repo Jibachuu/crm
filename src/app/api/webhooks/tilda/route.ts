@@ -107,6 +107,15 @@ function parseTildaBlob(text: string): TildaParsed | null {
     const dc = Number(delivMatch[2].replace(/\s/g, "").replace(",", "."));
     if (Number.isFinite(dc)) out.deliveryCost = dc;
   }
+  // Fallback по методу: «СДЭК - доставка по всей России» (без цены) —
+  // Tilda иногда шлёт строку с перевозчиком, но без указания суммы (она
+  // включена в Payment Amount, см. дельту в route handler). Перехватываем
+  // известных перевозчиков, чтобы synthetic-строка «Доставка» в описании
+  // лида была с именем перевозчика, а не голым «Доставка».
+  if (!out.deliveryMethod) {
+    const methodMatch = t.match(/\b(СДЭК|Cdek|Почта России|Boxberry|EMS|DHL|самовывоз|курьер(?:[^.,]*)?)\b/i);
+    if (methodMatch) out.deliveryMethod = methodMatch[1].trim();
+  }
   const payId = grab(/Payment\s+ID\s*:/i, STOPS);
   if (payId) out.paymentId = payId;
   const formName = grab(/Form\s+Name\s*:/i, STOPS);
@@ -314,9 +323,28 @@ export async function POST(req: NextRequest) {
   const deliveryMethodFromPayment = body["payment[delivery]"] || body["payment[delivery_method]"] || "";
   const deliveryMethod = blobDeliveryMethod || deliveryMethodFromPayment || "";
   const deliveryCostFromPayment = Number(String(body["payment[delivery_amount]"] || body["payment[delivery_price]"] || body["payment[delivery_cost]"] || "").replace(/[^\d.,]/g, "").replace(",", "."));
-  const deliveryCost = Number.isFinite(deliveryCostFromPayment) && deliveryCostFromPayment > 0
+  let deliveryCost = Number.isFinite(deliveryCostFromPayment) && deliveryCostFromPayment > 0
     ? deliveryCostFromPayment
     : blobDeliveryCost;
+  // Жиба 29.05: «стоимость доставки не передается с Тильды». Tilda для
+  // некоторых форматов корзины пишет только метод («СДЭК - доставка по
+  // всей России») без цифры — её регекс не ловит, а структурное поле
+  // payment[delivery_amount] в email-bridge пути отсутствует. Зато
+  // Payment Amount всегда содержит итог, включающий доставку. Дельта
+  // paid − sum(products) — это и есть стоимость доставки.
+  // Защиты:
+  //   • delta >= 5 — отсекаем копеечные расхождения из-за округлений.
+  //   • delta < paidAmount * 0.5 — отсекаем случаи когда продукты вообще
+  //     не распарсились (тогда дельта = весь paidAmount, и мы бы создали
+  //     синтетическую «доставку» на сумму заказа — мусор).
+  if (deliveryCost === 0 && Number.isFinite(paidAmount) && paidAmount > 0 && products.length > 0) {
+    const productsTotal = products.reduce((s, p) => s + (p.amount || 0), 0);
+    const delta = paidAmount - productsTotal;
+    if (delta >= 5 && delta < paidAmount * 0.5) {
+      deliveryCost = delta;
+      console.log(`[TILDA] Delivery cost derived from delta: paid=${paidAmount} − products=${productsTotal} = ${delta}`);
+    }
+  }
   if (deliveryCost > 0) {
     products.push({
       name: deliveryMethod ? `Доставка ${deliveryMethod}` : "Доставка",
