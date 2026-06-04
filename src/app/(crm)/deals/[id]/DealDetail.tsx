@@ -258,33 +258,30 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
     }).catch(() => {});
   }
 
-  // Перенос строки(ок) из «Запроса» в «Заказ»: меняем product_block через
-  // тот же admin PATCH, что используется для прочих правок строки. amount
-  // сделки пересчитываем, потому что в total входят только заказ-строки.
-  async function moveToOrder(ids: string[]) {
+  // Копия строк(и) из «Запроса» в «Заказ»: серверный POST читает исходные
+  // строки и инсертит дубликаты с product_block="order". Исходные строки в
+  // Запросе остаются — Жиба 04.06.2026: «запрос — это исходная потребность,
+  // заказ — что покупают; информация про запрос тоже ценная». amount сделки
+  // пересчитываем, в total входят только заказ-строки.
+  async function copyToOrder(ids: string[]) {
     if (ids.length === 0) return;
-    // Оптимистично двигаем локально, затем валидируем через PATCH. Если
-    // какой-то запрос упал — откатываем эту строку обратно.
-    const prevList = dealProducts;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const next = dealProducts.map((p: any) => ids.includes(p.id) ? { ...p, product_block: "order" } : p);
-    setDealProducts(next);
-    recalcDealAmount(next);
-    const failures: string[] = [];
-    await Promise.all(ids.map(async (id) => {
+    try {
       const res = await fetch("/api/deals/products", {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, product_block: "order" }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ copy_ids: ids, target_block: "order" }),
       });
-      if (!res.ok) failures.push(id);
-    }));
-    if (failures.length > 0) {
-      // Откатываем только упавшие, остальные оставляем перенесёнными.
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert("Не удалось скопировать в заказ: " + (d.error || res.status));
+        return;
+      }
+      const { products } = await res.json();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rolled = next.map((p: any) => failures.includes(p.id) ? prevList.find((x: { id: string }) => x.id === p.id) ?? p : p);
-      setDealProducts(rolled);
-      recalcDealAmount(rolled);
-      alert(`Не удалось перенести ${failures.length} стр.`);
+      const next = [...dealProducts, ...(products as any[])];
+      setDealProducts(next);
+      recalcDealAmount(next);
+    } catch (e) {
+      alert("Ошибка: " + (e as Error).message);
     }
   }
 
@@ -671,7 +668,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   onEdit={(item) => setEditingProduct(item)}
                   onRemove={(id) => { const updated = dealProducts.filter((x: { id: string }) => x.id !== id); setDealProducts(updated); recalcDealAmount(updated); }}
                   onUpdate={(id, fields) => { const updated = dealProducts.map((x: { id: string }) => x.id === id ? { ...x, ...fields } : x); setDealProducts(updated); recalcDealAmount(updated); }}
-                  onMoveToOrder={moveToOrder}
+                  onMoveToOrder={copyToOrder}
                 />
                 <DealProductBlock
                   title="Заказ"
@@ -917,15 +914,15 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
           <p className="text-xs" style={{ color: "#999" }}>{description}</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Перенос всего блока «Запрос» в «Заказ» одним действием. Полезно
-              когда клиент после уточнений согласился именно на то, с чем
-              изначально пришёл — без дублирования строк руками. */}
+          {/* Копирует строки «Запроса» в «Заказ» одним действием. Исходные
+              строки в Запросе остаются — запрос хранит исходную потребность
+              клиента, заказ — что фактически покупают. Жиба 04.06.2026. */}
           {block !== "order" && onMoveToOrder && items.length > 0 && (
             <Button size="sm" variant="secondary" onClick={() => {
-              if (!confirm(`Перенести все ${items.length} стр. в «Заказ»?`)) return;
+              if (!confirm(`Скопировать ${items.length} стр. в «Заказ»? Запрос останется.`)) return;
               onMoveToOrder(items.map((i: { id: string }) => i.id));
             }}>
-              <ArrowRight size={12} /> Перенести всё в заказ
+              <ArrowRight size={12} /> Скопировать в заказ
             </Button>
           )}
           <Button size="sm" variant="secondary" onClick={onAdd}>

@@ -47,6 +47,68 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ products: r.data ?? [] });
 }
 
+// POST — копировать существующие строки сделки в блок «Заказ».
+// Раньше «Перенести в заказ» делал PATCH product_block: request → order,
+// и Запрос становился пустым — Жиба 04.06.2026 «информация о запросе тоже
+// ценная, я различаю исходную потребность и что покупают». Теперь это
+// именно копия: исходные строки в Запросе остаются, в Заказе появляются
+// дубликаты с product_block="order".
+export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  const ids: string[] = Array.isArray(body.copy_ids) ? body.copy_ids : [];
+  if (ids.length === 0) return NextResponse.json({ error: "copy_ids required" }, { status: 400 });
+  const targetBlock = body.target_block === "request" ? "request" : "order";
+
+  const admin = createAdminClient();
+  // Все колонки которые имеет смысл копировать. id/created_at БД заполнит сама.
+  const colsWithKind = "deal_id, product_id, variant_id, quantity, unit_price, base_price, discount_percent, total_price, variants, category, subcategory, volume_ml, flavor, kind, lifecycle_days";
+  const colsNoKind = "deal_id, product_id, variant_id, quantity, unit_price, base_price, discount_percent, total_price, variants, category, subcategory, volume_ml, flavor, lifecycle_days";
+  let readData: Record<string, unknown>[] | null = null;
+  let readErr: { message?: string } | null = null;
+  {
+    const r = await admin.from("deal_products").select(colsWithKind).in("id", ids);
+    if (r.error && /column.*kind.*does not exist|42703/i.test(r.error.message || "")) {
+      const fallback = await admin.from("deal_products").select(colsNoKind).in("id", ids);
+      readData = (fallback.data as unknown as Record<string, unknown>[] | null) ?? null;
+      readErr = fallback.error;
+    } else {
+      readData = (r.data as unknown as Record<string, unknown>[] | null) ?? null;
+      readErr = r.error;
+    }
+  }
+  if (readErr) return NextResponse.json({ error: readErr.message }, { status: 400 });
+  if (!readData || readData.length === 0) {
+    return NextResponse.json({ error: "no rows found for given ids" }, { status: 404 });
+  }
+
+  const rowsToInsert = readData.map((r) => ({ ...r, product_block: targetBlock }));
+  const insSelect = "*, products(name, sku, image_url, liters, container)";
+  let insData: unknown[] | null = null;
+  let insErr: { message?: string } | null = null;
+  {
+    const r = await admin.from("deal_products").insert(rowsToInsert).select(insSelect);
+    if (r.error && /column.*kind.*does not exist|42703/i.test(r.error.message || "")) {
+      const rowsNoKind = rowsToInsert.map((row) => {
+        const copy: Record<string, unknown> = { ...row };
+        delete copy.kind;
+        return copy;
+      });
+      const fallback = await admin.from("deal_products").insert(rowsNoKind).select(insSelect);
+      insData = (fallback.data as unknown as unknown[] | null) ?? null;
+      insErr = fallback.error;
+    } else {
+      insData = (r.data as unknown as unknown[] | null) ?? null;
+      insErr = r.error;
+    }
+  }
+  if (insErr) return NextResponse.json({ error: insErr.message }, { status: 400 });
+  return NextResponse.json({ products: insData ?? [] });
+}
+
 export async function DELETE(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
