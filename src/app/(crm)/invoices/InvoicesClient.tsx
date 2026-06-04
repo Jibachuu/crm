@@ -14,8 +14,60 @@ import { formatLiters } from "@/lib/utils";
 const STATUS_LABELS: Record<string, string> = { issued: "Выставлен", paid: "Оплачен", overdue: "Просрочен" };
 const STATUS_VARIANTS: Record<string, "default" | "warning" | "success" | "danger"> = { issued: "warning", paid: "success", overdue: "danger" };
 
+// Каталожный id «Дозатор для канистр» (sku=doz5000). При добавлении в счёт
+// крема 5000мл (канистра) дозатор нужен покупателю чтобы из неё разливать,
+// поэтому сразу подкладываем строку — менеджеры забывали, клиенты жаловались.
+// У мыла 5000мл такого нет (отдельное решение от 2026-06-03).
+const CANISTER_DISPENSER_ID = "1cb6f051-81a2-432a-85fd-4a3d31971e78";
+
+// «Доставка» — синтетическая позиция, которая ВСЕГДА последняя в счёте
+// (решение от 2026-06-04). Не товар каталога: product_id всегда пустой,
+// менеджер сам ставит цену и при желании дополняет имя («Доставка до ПВЗ»
+// / «Доставка до двери»). Распознаём по префиксу имени, чтобы не зависеть
+// от точного совпадения после редактирования.
+const DELIVERY_DEFAULT_NAME = "Доставка";
+function isDeliveryItem(item: { name: string; product_id?: string }): boolean {
+  // Каталожные товары с похожим названием не считаем доставкой — у нас
+  // её в каталоге нет, но если когда-нибудь появится, ручной выбор в
+  // строке не должен превращать её в «прибита к концу».
+  if (item.product_id) return false;
+  return /^доставка/i.test((item.name || "").trim());
+}
+function makeDeliveryRow(): InvoiceItem {
+  return { product_id: "", name: DELIVERY_DEFAULT_NAME, quantity: 1, unit: "шт", price: 0, total: 0 };
+}
+// Перекладывает массив так, чтобы доставка была одна и последней.
+// Если уже есть — сохраняем все правки менеджера (имя/цена/qty), просто
+// двигаем в конец. Если нет — добавляем дефолтную строку. Несколько
+// доставок схлопываем в первую (защита от двойного импорта).
+function withDeliveryLast(rows: InvoiceItem[]): InvoiceItem[] {
+  const delivery = rows.find(isDeliveryItem) ?? makeDeliveryRow();
+  const rest = rows.filter((r) => !isDeliveryItem(r));
+  return [...rest, delivery];
+}
+
 interface PriceTier { from_qty: number; to_qty: number | null; price: number }
 interface InvoiceItem { product_id: string; name: string; quantity: number; unit: string; price: number; total: number; price_tiers?: PriceTier[] }
+
+// True для каталожной позиции «Крем 5000мл» в любой из двух форм:
+//  • name="Крем 5000мл" (отдельный товар, liters пустой);
+//  • name="Крем" + subcategory="Крем" + liters="5000мл" + container="Канистра".
+// Дополнительный фолбэк по тексту имени — на случай старых строк с
+// пустым product_id, импортированных вручную.
+function isCream5000Canister(item: { product_id?: string; name: string }, productsList: Array<{ id: string; name?: string; subcategory?: string; liters?: string; container?: string }>): boolean {
+  if (item.product_id) {
+    const p = productsList.find((pr) => pr.id === item.product_id);
+    if (p) {
+      const name = (p.name || "").toLowerCase();
+      const sub = (p.subcategory || "").toLowerCase();
+      const liters = (p.liters || "").toLowerCase();
+      const isCream = sub === "крем" || name.startsWith("крем");
+      const is5000 = liters.includes("5000") || /5000\s*мл/i.test(p.name || "");
+      return isCream && is5000;
+    }
+  }
+  return /крем/i.test(item.name) && /5000\s*мл/i.test(item.name);
+}
 
 function SearchableCompanySelect({ companies, value, onChange, inputStyle, placeholder = "Поиск компании..." }: { companies: { id: string; name: string }[]; value: string; onChange: (id: string) => void; inputStyle: React.CSSProperties; placeholder?: string }) {
   const [query, setQuery] = useState("");
@@ -156,7 +208,14 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     comment: "Срок отгрузки до 10 рабочих дней (12 при индивидуальном заказе)",
     vat_included: false,
   });
-  const [items, setItems] = useState<InvoiceItem[]>([{ product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]);
+  // Стартовая раскладка: одна пустая позиция + доставка в конце.
+  // Доставка хранится в общем массиве, но UI и сериализация на сервер
+  // защищают от того, чтобы менеджер случайно её удалил или перетащил
+  // выше товаров.
+  const [items, setItems] = useState<InvoiceItem[]>([
+    { product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 },
+    makeDeliveryRow(),
+  ]);
 
   async function importFromQuote(quoteId: string) {
     if (!quoteId) return;
@@ -229,7 +288,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
         });
       }
     }
-    setItems(out);
+    setItems(withDeliveryLast(withCanisterDispenser(out)));
   }
 
   // Pull "Заказ"-block products straight from the linked deal into the
@@ -326,7 +385,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
         });
       }
     }
-    setItems(newItems);
+    setItems(withDeliveryLast(withCanisterDispenser(newItems)));
   }
 
   function selectBuyer(companyId: string) {
@@ -335,8 +394,37 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     setForm({ ...form, buyer_company_id: companyId, buyer_name: c?.name ?? "", buyer_inn: c?.inn ?? "", buyer_kpp: c?.kpp ?? "", buyer_address: c?.legal_address ?? "" });
   }
 
-  function addItem() { setItems([...items, { product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]); }
-  function removeItem(i: number) { setItems(items.filter((_, idx) => idx !== i)); }
+  function addItem() {
+    // Новую строку ставим ПЕРЕД доставкой, чтобы доставка осталась последней.
+    setItems(withDeliveryLast([...items, { product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]));
+  }
+  function removeItem(i: number) {
+    // Удалили доставку случайно — withDeliveryLast добавит дефолт обратно.
+    setItems(withDeliveryLast(items.filter((_, idx) => idx !== i)));
+  }
+
+  // Подмешать «Дозатор для канистр» если в счёте есть крем 5000мл и дозатора
+  // ещё нет. Вызывается только при создании счёта (через сделку, КП, ручной
+  // выбор), в режиме редактирования не работает — иначе при правке старого
+  // счёта могла бы появляться лишняя строка.
+  function withCanisterDispenser(rows: InvoiceItem[]): InvoiceItem[] {
+    const hasCream = rows.some((it) => isCream5000Canister(it, products));
+    if (!hasCream) return rows;
+    if (rows.some((it) => it.product_id === CANISTER_DISPENSER_ID)) return rows;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const disp = (products as any[]).find((p) => p.id === CANISTER_DISPENSER_ID);
+    if (!disp) return rows;
+    const name = buildProductName(disp);
+    const price = Number(disp.base_price) || 0;
+    return [...rows, {
+      product_id: CANISTER_DISPENSER_ID,
+      name,
+      quantity: 1,
+      unit: "шт",
+      price,
+      total: price,
+    }];
+  }
 
   // Бутылочный товар → даёт раскладку 5 стандартных вариантов как в КП.
   // Replaces the source row with 5 typed rows so the printed invoice
@@ -383,7 +471,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       price: v.price,
       total: (src.quantity || 1) * v.price,
     }));
-    setItems([...items.slice(0, idx), ...newRows, ...items.slice(idx + 1)]);
+    setItems(withDeliveryLast([...items.slice(0, idx), ...newRows, ...items.slice(idx + 1)]));
   }
   // Same field order as КП builder so invoice item names stay consistent
   // with what the client saw in the КП. Косметика обычно имеет
@@ -408,7 +496,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   }
 
   function updateItem(i: number, field: string, val: string | number) {
-    setItems(items.map((item, idx) => {
+    const next = items.map((item, idx) => {
       if (idx !== i) return item;
       const updated = { ...item, [field]: val };
       if (field === "product_id") {
@@ -418,7 +506,16 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       }
       updated.total = updated.quantity * updated.price;
       return updated;
-    }));
+    });
+    // Подмешиваем дозатор только когда поменялся товар — иначе при правке
+    // qty/price у уже-существующего крема дозатор воскрешался бы после удаления.
+    // Доставку при правках полей строк не двигаем (она и так в конце; если
+    // редактируется именно она — реордер не нужен, индекс не меняется).
+    // Реордер делаем только когда поменялся product_id, т.к. это единственный
+    // путь, который может вставить новую позицию (например, дозатор) и сбить
+    // порядок.
+    const afterDispenser = field === "product_id" ? withCanisterDispenser(next) : next;
+    setItems(field === "product_id" ? withDeliveryLast(afterDispenser) : afterDispenser);
   }
 
   const totalAmount = items.reduce((s, i) => s + i.total, 0);
@@ -434,7 +531,9 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     if (innLen !== 10 && innLen !== 12) missing.push("ИНН (10 или 12 цифр)");
     if (isLegalEntity && !form.buyer_kpp?.trim()) missing.push("КПП");
     if (!form.buyer_address?.trim()) missing.push("Юридический адрес");
-    if (items.length === 0) missing.push("Хотя бы одна позиция");
+    // Доставка-строка присутствует всегда (см. withDeliveryLast) — она
+    // не считается за «позицию» для требования минимального наполнения счёта.
+    if (items.filter((i) => i.name && !isDeliveryItem(i)).length === 0) missing.push("Хотя бы одна позиция (не считая доставки)");
     if (missing.length > 0) {
       alert("Заполните обязательные поля:\n• " + missing.join("\n• "));
       return;
@@ -548,7 +647,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       comment: previewInvoice.comment ?? "",
       vat_included: !!previewInvoice.vat_included,
     });
-    setItems(previewItems.map((i: InvoiceItem) => ({
+    setItems(withDeliveryLast(previewItems.map((i: InvoiceItem) => ({
       product_id: i.product_id ?? "",
       name: i.name,
       quantity: i.quantity,
@@ -556,7 +655,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       price: i.price,
       total: i.total,
       price_tiers: i.price_tiers ?? undefined,
-    })));
+    }))));
     setPreviewInvoice(null);
     setEditingInvoice(false);
     setCreateOpen(true);
@@ -992,33 +1091,47 @@ function doPrint(){
               </div>
             </div>
             <div className="space-y-2">
-              {items.map((item, i) => (
-                <div key={i} className="rounded p-2" style={{ border: "1px solid #f0f0f0" }}>
+              {items.map((item, i) => {
+                const delivery = isDeliveryItem(item);
+                return (
+                <div key={i} className="rounded p-2" style={{ border: delivery ? "1px solid #b3e0f5" : "1px solid #f0f0f0", background: delivery ? "#f5fbff" : undefined }}>
                   <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-4">
-                      <SearchableSelect
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        options={products.map((p: any) => ({
-                          id: p.id,
-                          // Same naming convention as the invoice line itself,
-                          // so the user sees the full breakdown
-                          // (объём + тара + аромат) before picking.
-                          label: buildProductName(p),
-                          sublabel: p.sku ? `арт. ${p.sku}` : undefined,
-                        }))}
-                        value={item.product_id}
-                        onChange={(id) => updateItem(i, "product_id", id)}
-                        placeholder="Поиск товара по названию, объёму, аромату или артикулу..."
-                        style={{ ...inputStyle, fontSize: 12 }}
-                      />
-                      {!item.product_id && <input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Или введите название" style={{ ...inputStyle, fontSize: 11, marginTop: 2 }} />}
+                      {delivery ? (
+                        // Доставка — не из каталога: только редактируемое имя
+                        // (менеджер может написать «Доставка до ПВЗ» и т.д.).
+                        // Плашка слева — чтобы строку нельзя было спутать с товаром.
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: "#0067a5", color: "#fff", whiteSpace: "nowrap" }}>ДОСТАВКА</span>
+                          <input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Доставка" style={{ ...inputStyle, fontSize: 12 }} />
+                        </div>
+                      ) : (
+                        <>
+                          <SearchableSelect
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            options={(products as any[]).filter((p) => !/^доставка/i.test(p.name || "")).map((p: any) => ({
+                              id: p.id,
+                              // Same naming convention as the invoice line itself,
+                              // so the user sees the full breakdown
+                              // (объём + тара + аромат) before picking.
+                              label: buildProductName(p),
+                              sublabel: p.sku ? `арт. ${p.sku}` : undefined,
+                            }))}
+                            value={item.product_id}
+                            onChange={(id) => updateItem(i, "product_id", id)}
+                            placeholder="Поиск товара по названию, объёму, аромату или артикулу..."
+                            style={{ ...inputStyle, fontSize: 12 }}
+                          />
+                          {!item.product_id && <input value={item.name} onChange={(e) => updateItem(i, "name", e.target.value)} placeholder="Или введите название" style={{ ...inputStyle, fontSize: 11, marginTop: 2 }} />}
+                        </>
+                      )}
                     </div>
                     <div className="col-span-2"><input type="number" min="0.01" step="0.01" value={item.quantity} onChange={(e) => updateItem(i, "quantity", Number(e.target.value))} style={{ ...inputStyle, fontSize: 12 }} placeholder="Кол-во" /></div>
                     <div className="col-span-1"><input value={item.unit} onChange={(e) => updateItem(i, "unit", e.target.value)} style={{ ...inputStyle, fontSize: 12 }} /></div>
                     <div className="col-span-2"><input type="number" min="0" step="0.01" value={item.price} onChange={(e) => updateItem(i, "price", Number(e.target.value))} style={{ ...inputStyle, fontSize: 12 }} placeholder="Цена" /></div>
                     <div className="col-span-2 text-sm font-medium" style={{ color: "#2e7d32", paddingTop: 6 }}>{formatCurrency(item.total)}</div>
                     <div className="col-span-1 flex items-center gap-1">
-                      {isBottleItem(item) && (
+                      {!delivery && isBottleItem(item) && (
                         <button
                           type="button"
                           onClick={() => expandBottleVariants(i)}
@@ -1029,11 +1142,14 @@ function doPrint(){
                           Вариации
                         </button>
                       )}
-                      {items.length > 1 && <button onClick={() => removeItem(i)} className="text-xs text-red-500 hover:underline">✕</button>}
+                      {/* Доставку убрать нельзя: она автоматически возвращается
+                          обратно дефолтной, поэтому крестик у неё не показываем. */}
+                      {!delivery && items.length > 1 && <button onClick={() => removeItem(i)} className="text-xs text-red-500 hover:underline">✕</button>}
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -1052,7 +1168,7 @@ function doPrint(){
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" size="sm" onClick={() => setCreateOpen(false)}>Отмена</Button>
-            <Button size="sm" onClick={handleCreate} loading={saving} disabled={!form.buyer_name || items.every((i) => !i.name)}>
+            <Button size="sm" onClick={handleCreate} loading={saving} disabled={!form.buyer_name || items.every((i) => isDeliveryItem(i) || !i.name)}>
               <Receipt size={13} /> Создать счёт
             </Button>
           </div>

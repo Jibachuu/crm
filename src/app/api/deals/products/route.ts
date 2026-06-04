@@ -92,14 +92,14 @@ export async function PATCH(req: NextRequest) {
   const admin = createAdminClient();
   let r = await admin.from("deal_products")
     .update(updates).eq("id", body.id)
-    .select("*, products(name, sku, image_url)").single();
+    .select("*, products(name, sku, image_url, liters, container)").single();
   if (r.error && /column.*kind.*does not exist|42703/i.test(r.error.message || "")) {
     // Pre-v82 schema — drop `kind` and retry so the rest of the update
     // still goes through.
     delete (updates as Record<string, unknown>).kind;
     r = await admin.from("deal_products")
       .update(updates).eq("id", body.id)
-      .select("*, products(name, sku, image_url)").single();
+      .select("*, products(name, sku, image_url, liters, container)").single();
   }
   if (r.error) return NextResponse.json({ error: r.error.message }, { status: 400 });
   return NextResponse.json({ product: r.data });

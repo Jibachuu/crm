@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, Package, Plus, CheckSquare, MessageSquare, Send, Paperclip, FileDown, Receipt, X } from "lucide-react";
+import { ChevronLeft, Edit2, Trash2, Phone, Mail, Building2, Package, Plus, CheckSquare, MessageSquare, Send, Paperclip, FileDown, Receipt, X, ArrowRight } from "lucide-react";
 import TaskItem from "@/components/ui/TaskItem";
 import TelegramChat from "@/components/ui/TelegramChat";
 import MaxChat from "@/components/ui/MaxChat";
@@ -256,6 +256,36 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: deal.id, title: deal.title, stage: deal.stage, amount: total }),
     }).catch(() => {});
+  }
+
+  // Перенос строки(ок) из «Запроса» в «Заказ»: меняем product_block через
+  // тот же admin PATCH, что используется для прочих правок строки. amount
+  // сделки пересчитываем, потому что в total входят только заказ-строки.
+  async function moveToOrder(ids: string[]) {
+    if (ids.length === 0) return;
+    // Оптимистично двигаем локально, затем валидируем через PATCH. Если
+    // какой-то запрос упал — откатываем эту строку обратно.
+    const prevList = dealProducts;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const next = dealProducts.map((p: any) => ids.includes(p.id) ? { ...p, product_block: "order" } : p);
+    setDealProducts(next);
+    recalcDealAmount(next);
+    const failures: string[] = [];
+    await Promise.all(ids.map(async (id) => {
+      const res = await fetch("/api/deals/products", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, product_block: "order" }),
+      });
+      if (!res.ok) failures.push(id);
+    }));
+    if (failures.length > 0) {
+      // Откатываем только упавшие, остальные оставляем перенесёнными.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rolled = next.map((p: any) => failures.includes(p.id) ? prevList.find((x: { id: string }) => x.id === p.id) ?? p : p);
+      setDealProducts(rolled);
+      recalcDealAmount(rolled);
+      alert(`Не удалось перенести ${failures.length} стр.`);
+    }
   }
 
   return (
@@ -641,6 +671,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   onEdit={(item) => setEditingProduct(item)}
                   onRemove={(id) => { const updated = dealProducts.filter((x: { id: string }) => x.id !== id); setDealProducts(updated); recalcDealAmount(updated); }}
                   onUpdate={(id, fields) => { const updated = dealProducts.map((x: { id: string }) => x.id === id ? { ...x, ...fields } : x); setDealProducts(updated); recalcDealAmount(updated); }}
+                  onMoveToOrder={moveToOrder}
                 />
                 <DealProductBlock
                   title="Заказ"
@@ -831,7 +862,7 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function DealProductBlock({ title, description, items, total, onAdd, block = "request", onRemove, onUpdate, onEdit }: { title: string; description: string; items: any[]; total: number; onAdd: () => void; block?: string; onRemove?: (id: string) => void; onUpdate?: (id: string, fields: Record<string, unknown>) => void; onEdit?: (item: any) => void }) {
+function DealProductBlock({ title, description, items, total, onAdd, block = "request", onRemove, onUpdate, onEdit, onMoveToOrder }: { title: string; description: string; items: any[]; total: number; onAdd: () => void; block?: string; onRemove?: (id: string) => void; onUpdate?: (id: string, fields: Record<string, unknown>) => void; onEdit?: (item: any) => void; onMoveToOrder?: (ids: string[]) => void | Promise<void> }) {
 
   // All deal_products mutations go through admin API — RLS blocks
   // non-admin users from updating directly which manifested as
@@ -885,9 +916,22 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
           <h3 className="text-sm font-semibold" style={{ color: "#333" }}>{title}</h3>
           <p className="text-xs" style={{ color: "#999" }}>{description}</p>
         </div>
-        <Button size="sm" variant="secondary" onClick={onAdd}>
-          <Plus size={12} /> Добавить
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Перенос всего блока «Запрос» в «Заказ» одним действием. Полезно
+              когда клиент после уточнений согласился именно на то, с чем
+              изначально пришёл — без дублирования строк руками. */}
+          {block !== "order" && onMoveToOrder && items.length > 0 && (
+            <Button size="sm" variant="secondary" onClick={() => {
+              if (!confirm(`Перенести все ${items.length} стр. в «Заказ»?`)) return;
+              onMoveToOrder(items.map((i: { id: string }) => i.id));
+            }}>
+              <ArrowRight size={12} /> Перенести всё в заказ
+            </Button>
+          )}
+          <Button size="sm" variant="secondary" onClick={onAdd}>
+            <Plus size={12} /> Добавить
+          </Button>
+        </div>
       </div>
       <Card>
         {items.length === 0 ? (
@@ -912,7 +956,16 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                 </tr>
               </thead>
               <tbody>
-                {items.map((item: { id: string; products: { name: string; sku: string; image_url?: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; lifecycle_days?: number; quantity: number; unit_price: number; discount_percent: number; total_price: number; variants?: { label: string; price: number; quantity: number; sum: number }[] }) => (
+                {items.map((item: { id: string; products: { name: string; sku: string; image_url?: string; liters?: string; container?: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; lifecycle_days?: number; quantity: number; unit_price: number; discount_percent: number; total_price: number; variants?: { label: string; price: number; quantity: number; sum: number }[] }) => {
+                  // Объём и тара из каталога — менеджеры просили видеть
+                  // прямо в строке заказа/запроса (Жиба 04.06.2026: «Мыло
+                  // 300мл / Стекло», иначе «Мыло» без объёма выглядит
+                  // одинаково для разных артикулов). volume_ml на самой
+                  // строке оставляем как fallback на случай старых
+                  // позиций без каталожного liters.
+                  const litersText = item.products?.liters ?? (item.volume_ml ? `${item.volume_ml} мл` : "");
+                  const containerText = item.products?.container ?? "";
+                  return (
                   <tr key={item.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
                     <td className="px-4 py-2">
                       <div className="flex items-start gap-3">
@@ -927,7 +980,8 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                         <div className="flex-1 min-w-0">
                           <p className="font-medium" style={{ color: "#333" }}>
                             {item.products?.name}
-                            {item.volume_ml && <span className="text-xs font-normal ml-1" style={{ color: "#888" }}>{item.volume_ml} мл</span>}
+                            {litersText && <span className="text-xs font-normal ml-1" style={{ color: "#555" }}>· {litersText}</span>}
+                            {containerText && <span className="text-xs font-normal ml-1" style={{ color: "#888" }}>· {containerText}</span>}
                           </p>
                           <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products?.sku}</p>
                           {item.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{item.flavor}</p>}
@@ -1009,6 +1063,11 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                     )}</td>
                     <td className="px-2 py-2 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {block !== "order" && onMoveToOrder && (
+                          <button onClick={() => onMoveToOrder([item.id])} className="p-1 rounded hover:bg-green-50" title="Перенести в «Заказ»">
+                            <ArrowRight size={13} style={{ color: "#2e7d32" }} />
+                          </button>
+                        )}
                         <button onClick={() => onEdit?.(item)} className="p-1 rounded hover:bg-blue-50" title="Редактировать">
                           <Edit2 size={13} style={{ color: "#0067a5" }} />
                         </button>
@@ -1018,7 +1077,8 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: "1px solid #e4e4e4", background: "#fafafa" }}>

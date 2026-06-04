@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
     "city", "region", "description", "assigned_to", "company_type",
     "additional_phone_1", "additional_phone_2", "additional_phone_3",
     "additional_email_1", "additional_email_2", "additional_email_3",
+    "edo_id",
   ]) {
     if (body[f] !== undefined) insert[f] = body[f] || null;
   }
@@ -107,7 +108,7 @@ export async function PUT(req: NextRequest) {
     "activity", "need", "company_type", "phone", "email", "website",
     "description", "assigned_to", "venue_type_id", "supplier_id",
     "opened_recently", "timezone", "contract_status", "contract_comment",
-    "contract_file_url", "contract_file_name",
+    "contract_file_url", "contract_file_name", "edo_id",
   ] as const) {
     if (body[f] !== undefined) updates[f] = body[f] || null;
   }

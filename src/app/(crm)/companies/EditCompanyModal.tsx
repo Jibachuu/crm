@@ -102,6 +102,7 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
       inn: (fd.get("inn") as string) || null,
       ogrn: (fd.get("ogrn") as string) || null,
       kpp: (fd.get("kpp") as string) || null,
+      edo_id: (fd.get("edo_id") as string) || null,
       director: (fd.get("director") as string) || null,
       city: (fd.get("city") as string) || null,
       region: (fd.get("region") as string) || null,
@@ -202,6 +203,8 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
           <Input label="КПП" name="kpp" defaultValue={company?.kpp ?? ""} />
           <Input label="Ген. директор" name="director" defaultValue={company?.director ?? ""} />
         </div>
+
+        <Input label="ЭДО id" name="edo_id" defaultValue={company?.edo_id ?? ""} placeholder="идентификатор в Диадоке / СБИС / Контуре" />
 
         <Input label="Юридический адрес" name="legal_address" defaultValue={company?.legal_address ?? ""} />
         <Input label="Фактический адрес" name="actual_address" defaultValue={company?.actual_address ?? ""} />

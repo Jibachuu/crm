@@ -536,6 +536,7 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                 {company.inn && <div className="flex justify-between"><span className="text-slate-500">ИНН</span><span className="text-slate-700">{company.inn}</span></div>}
                 {company.ogrn && <div className="flex justify-between"><span className="text-slate-500">ОГРН</span><span className="text-slate-700">{company.ogrn}</span></div>}
                 {company.kpp && <div className="flex justify-between"><span className="text-slate-500">КПП</span><span className="text-slate-700">{company.kpp}</span></div>}
+                {company.edo_id && <div className="flex justify-between gap-2"><span className="text-slate-500 flex-shrink-0">ЭДО id</span><span className="text-slate-700 truncate font-mono text-xs" title={company.edo_id}>{company.edo_id}</span></div>}
                 {company.director && <div className="flex justify-between"><span className="text-slate-500">Директор</span><span className="text-slate-700">{company.director}</span></div>}
                 {company.city && <div className="flex justify-between"><span className="text-slate-500">Город</span><span className="text-slate-700">{company.city}</span></div>}
                 {company.region && <div className="flex justify-between"><span className="text-slate-500">Регион</span><span className="text-slate-700">{company.region}</span></div>}

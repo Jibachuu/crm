@@ -236,10 +236,18 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
               >
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 {stageOrders.map((order: any) => {
-                  const products = (order.deals?.deal_products ?? []).filter((dp: { product_block?: string }) => dp.product_block === "order").map((dp: { quantity: number; products: { name: string } | { name: string }[] }) => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const products = (order.deals?.deal_products ?? []).filter((dp: { product_block?: string }) => dp.product_block === "order").flatMap((dp: any) => {
+                    const p = Array.isArray(dp.products) ? dp.products[0] : dp.products;
+                    // Если у позиции есть варианты — печатаем только их лейблы
+                    // (жёлтые в сделке): они полностью заменяют базовое имя.
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const p = Array.isArray(dp.products) ? dp.products[0] : dp.products as any;
-                    return `${p?.name ?? "?"} × ${dp.quantity}`;
+                    const vs = Array.isArray(dp.variants) ? dp.variants.filter((v: any) => v && (v.label || v.quantity)) : [];
+                    if (vs.length > 0) {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      return vs.map((v: any) => `${(v.label || "").trim() || p?.name || "?"} × ${v.quantity ?? dp.quantity}`);
+                    }
+                    return [`${p?.name ?? "?"} × ${dp.quantity}`];
                   }).join(", ");
 
                   return (
@@ -471,9 +479,24 @@ function DetailPanel({ order, users, userRole, onClose, onUpdated, onDeleted }: 
         {/* Products */}
         <div>
           <h4 className="font-semibold mb-1" style={{ color: "#888" }}>Товары</h4>
-          {(order.deals?.deal_products ?? []).filter((dp: { product_block?: string }) => dp.product_block === "order").map((dp: { quantity: number; products: any }, i: number) => {
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          {(order.deals?.deal_products ?? []).filter((dp: { product_block?: string }) => dp.product_block === "order").flatMap((dp: any, i: number) => {
             const p = Array.isArray(dp.products) ? dp.products[0] : dp.products;
-            return <p key={i} style={{ color: "#333" }}>{p?.name} (арт. {p?.sku}) × {dp.quantity}</p>;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const vs = Array.isArray(dp.variants) ? dp.variants.filter((v: any) => v && (v.label || v.quantity)) : [];
+            // Когда заполнены жёлтые варианты в сделке — это и есть «что
+            // именно делаем». Базовое имя/арт не нужно — лейбл уже содержит
+            // всё (Крем / Black pepper / флакон 500мл / арт). При пустых
+            // вариантах падаем на старое поведение.
+            if (vs.length > 0) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              return vs.map((v: any, j: number) => (
+                <p key={`${i}-${j}`} style={{ color: "#333" }}>
+                  {(v.label || "").trim() || (p?.name ?? "?")} × {v.quantity ?? dp.quantity}
+                </p>
+              ));
+            }
+            return [<p key={i} style={{ color: "#333" }}>{p?.name} (арт. {p?.sku}) × {dp.quantity}</p>];
           })}
         </div>
 

@@ -30,7 +30,7 @@ export default async function ProductionPage() {
         *,
         companies(id, name),
         contacts(full_name),
-        deals(id, title, deal_products(quantity, product_block, products(name, sku))),
+        deals(id, title, deal_products(quantity, product_block, variants, products(name, sku))),
         manager:manager_id(id, full_name),
         worker:worker_id(id, full_name)
       `)

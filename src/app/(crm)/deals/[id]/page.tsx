@@ -44,9 +44,13 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
+  // liters/container — каталожный объём и тара. Нужны в UI блоков
+  // «Запрос»/«Заказ», чтобы строка показывала «Мыло, 300мл, Стекло»,
+  // а не голое «Мыло» (запрос менеджера 04.06.2026). Раньше у косметики
+  // объём терялся, флаконы тоже без объёма путали клиента.
   const { data: dealProducts } = await admin
     .from("deal_products")
-    .select("*, products(name, sku, image_url)")
+    .select("*, products(name, sku, image_url, liters, container)")
     .eq("deal_id", id);
 
   return (
