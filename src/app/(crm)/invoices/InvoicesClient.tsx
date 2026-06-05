@@ -798,11 +798,14 @@ table{border-collapse:collapse}
 .totals .r{text-align:right}
 .totals .bold{font-weight:bold}
 .sum-words{font-weight:bold;font-size:11px;margin:5px 0}
-.fine-print{font-size:9px;color:#333;margin:15px 0;line-height:1.5}
-.sign-block{margin-top:25px;position:relative}
+.fine-print{font-size:9px;color:#333;margin:10px 0;line-height:1.5}
+.sign-block{margin-top:15px;position:relative;page-break-inside:avoid;break-inside:avoid}
 .sign-line{display:inline-block;width:200px;border-bottom:1px solid #000;margin:0 10px}
 .stamp{position:absolute;left:0;bottom:-10px;width:140px;height:140px;opacity:0.8}
 .signature{position:absolute;left:160px;bottom:10px;width:100px;opacity:0.8}
+/* Низ счёта (итоги + сумма прописью + фин-принт + подпись) держим единым блоком.
+   До этого Chrome выпихивал sign-block в одиночестве на стр. 2 — Жиба 05.06.2026. */
+.invoice-footer{page-break-inside:avoid;break-inside:avoid}
 @media print{body{margin:10mm 15mm}@page{size:A4;margin:10mm 15mm 10mm 15mm}
   /* Hide browser header/footer (about:blank, page numbers, date) */
   @top-left{content:none}@top-right{content:none}@bottom-left{content:none}@bottom-right{content:none}
@@ -857,16 +860,17 @@ ${previewItems.map((item: { name: string; quantity: number; unit: string; price:
 </tbody>
 </table>
 
+<div class="invoice-footer">
 <table class="totals">
 <tr><td colspan="4"></td><td class="r bold" style="width:100px">Итого:</td><td class="r bold" style="width:100px">${fmt(total)}</td></tr>
 <tr><td colspan="4"></td><td class="r">${inv.vat_included ? "В том числе НДС (20%):" : "Без налога (НДС)"}</td><td class="r">${inv.vat_included ? fmt(total * 0.2 / 1.2) : "-"}</td></tr>
 <tr><td colspan="4"></td><td class="r bold">Всего к оплате:</td><td class="r bold">${fmt(total)}</td></tr>
 </table>
 
-<p style="margin-top:10px">Всего наименований ${previewItems.length}, на сумму ${fmt(total)} руб.</p>
+<p style="margin-top:6px">Всего наименований ${previewItems.length}, на сумму ${fmt(total)} руб.</p>
 <p class="sum-words">${amountToWords(total)}</p>
 
-${dueDateStr ? `<p style="margin-top:10px">Оплатить не позднее ${dueDateStr}</p>` : ""}
+${dueDateStr ? `<p style="margin-top:6px">Оплатить не позднее ${dueDateStr}</p>` : ""}
 
 <div class="fine-print">
 Оплата данного счета означает согласие с условиями поставки товара.<br>
@@ -879,6 +883,7 @@ ${stampSrc ? `<img class="stamp" src="${stampSrc}" />` : ""}
 ${sigSrc ? `<img class="signature" src="${sigSrc}" />` : ""}
 <p><strong>Предприниматель</strong> <span class="sign-line"></span> / ${supplier?.director ?? ""} /</p>
 </div>
+</div><!-- /.invoice-footer -->
 
 <script>
 document.title='Счёт ${inv.invoice_number}';
