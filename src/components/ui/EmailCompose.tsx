@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Send, X, Paperclip, FileText, ChevronDown, Bold, Italic, Link as LinkIcon, RotateCcw } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Send, X, Paperclip, FileText, ChevronDown } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import Button from "./Button";
+import RichEmailEditor from "./RichEmailEditor";
 import { createClient } from "@/lib/supabase/client";
 
 interface Template {
@@ -36,10 +37,9 @@ interface Props {
 
 export default function EmailCompose({ to, recipients, entityType, entityId, defaultSubject, onSent, onClose, onChangeTo, compact = false }: Props) {
   const [subject, setSubject] = useState(defaultSubject ?? "");
-  // Body is HTML now — minimal rich text via contenteditable + execCommand.
-  // Plain newlines come in from templates/signatures, converted to <br>.
+  // Body is HTML — TipTap-based rich text editor (RichEmailEditor).
+  // Plain newlines from templates/signatures converted to <br>.
   const [body, setBody] = useState("");
-  const editorRef = useRef<HTMLDivElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -79,9 +79,6 @@ export default function EmailCompose({ to, recipients, entityType, entityId, def
 
   function setBodyHtml(html: string) {
     setBody(html);
-    if (editorRef.current && editorRef.current.innerHTML !== html) {
-      editorRef.current.innerHTML = html;
-    }
   }
 
   // Auto-append signature: prefer current user's signature, then is_default
@@ -104,18 +101,6 @@ export default function EmailCompose({ to, recipients, entityType, entityId, def
     setBodyHtml(plainToHtml(t.body) + sigBlock);
     setSignatureAppended(!!defaultSig);
     setShowTemplates(false);
-  }
-
-  function exec(cmd: string, value?: string) {
-    editorRef.current?.focus();
-    document.execCommand(cmd, false, value);
-    if (editorRef.current) setBody(editorRef.current.innerHTML);
-  }
-
-  function insertLink() {
-    const url = prompt("Введите URL (https://...)");
-    if (!url) return;
-    exec("createLink", url.startsWith("http") ? url : "https://" + url);
   }
 
   function addFiles(newFiles: FileList | null) {
@@ -242,73 +227,12 @@ export default function EmailCompose({ to, recipients, entityType, entityId, def
           placeholder="Тема письма"
           style={inputStyle}
         />
-        {/* Mini rich-text toolbar */}
-        <div className="flex gap-1 p-1 rounded-t" style={{ border: "1px solid #d0d0d0", borderBottom: "none", background: "#fafafa" }}>
-          <button type="button" onClick={() => exec("bold")} className="p-1.5 rounded hover:bg-blue-50" title="Полужирный (Ctrl+B)">
-            <Bold size={13} style={{ color: "#555" }} />
-          </button>
-          <button type="button" onClick={() => exec("italic")} className="p-1.5 rounded hover:bg-blue-50" title="Курсив (Ctrl+I)">
-            <Italic size={13} style={{ color: "#555" }} />
-          </button>
-          <button type="button" onClick={insertLink} className="p-1.5 rounded hover:bg-blue-50" title="Вставить ссылку">
-            <LinkIcon size={13} style={{ color: "#555" }} />
-          </button>
-          <button type="button" onClick={() => exec("removeFormat")} className="p-1.5 rounded hover:bg-blue-50" title="Снять форматирование">
-            <RotateCcw size={13} style={{ color: "#555" }} />
-          </button>
-        </div>
-        <div
-          ref={editorRef}
-          contentEditable
-          suppressContentEditableWarning
-          onInput={(e) => setBody((e.target as HTMLDivElement).innerHTML)}
-          onPaste={(e) => {
-            const items = e.clipboardData?.items;
-            if (!items) return;
-            const imageFiles: File[] = [];
-            for (const item of Array.from(items)) {
-              if (item.type.startsWith("image/")) {
-                const file = item.getAsFile();
-                if (file) {
-                  const ext = (file.type.split("/")[1] || "png").split(";")[0];
-                  const safe = file.name?.trim()
-                    ? file
-                    : new File([file], `image_${Date.now()}.${ext}`, { type: file.type });
-                  imageFiles.push(safe);
-                }
-              }
-            }
-            if (imageFiles.length > 0) {
-              e.preventDefault();
-              setFiles((prev) => [...prev, ...imageFiles]);
-              return;
-            }
-            // Backlog v6 §5.13: pasted HTML from web Yandex / Gmail kept
-            // its inline styles ("вставить как plain text" не работало).
-            // Always coerce paste to plain text — insert it via
-            // execCommand so undo / caret position behave normally.
-            // The «Снять форматирование» toolbar button covers post-paste
-            // cleanup of any other rich content.
-            const text = e.clipboardData?.getData("text/plain");
-            if (text != null) {
-              e.preventDefault();
-              document.execCommand("insertText", false, text);
-            }
-          }}
-          data-placeholder="Текст письма..."
-          style={{
-            border: "1px solid #d0d0d0",
-            borderTop: "none",
-            borderRadius: "0 0 4px 4px",
-            padding: "8px 10px",
-            fontSize: 13,
-            minHeight: compact ? 100 : 160,
-            outline: "none",
-            background: "#fff",
-          }}
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-expect-error custom CSS prop is harmless
-          css="empty:before { content: attr(data-placeholder); color: #aaa; }"
+        <RichEmailEditor
+          value={body}
+          onChange={setBody}
+          onPasteFiles={(newFiles) => setFiles((prev) => [...prev, ...newFiles])}
+          placeholder="Текст письма..."
+          minHeight={compact ? 100 : 160}
         />
         {/* Attachments */}
         {files.length > 0 && (
