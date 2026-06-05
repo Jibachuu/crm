@@ -159,7 +159,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     setPreviewItems([]);
     // 19.05.2026 — миграция browser→VPS, этап 2.
     fetch(`/api/invoices?id=${id}&items=1`).then((r) => r.ok ? r.json() : { items: [] }).then((d) => {
-      setPreviewItems(d.items ?? []);
+      setPreviewItems(withDeliveryLast(d.items ?? []));
     });
     // Strip the param so refresh / back-button doesn't keep retriggering.
     const url = new URL(window.location.href);
@@ -597,7 +597,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
     setPreviewItems([]);
     const res = await fetch(`/api/invoices?id=${inv.id}&items=1`);
     const d = res.ok ? await res.json() : { items: [] };
-    setPreviewItems(d.items ?? []);
+    setPreviewItems(withDeliveryLast(d.items ?? []));
   }
 
   async function updateStatus(id: string, status: string) {
@@ -618,7 +618,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
   function startEditInvoice() {
     if (!previewInvoice) return;
     setEditingInvoice(true);
-    setEditItems(previewItems.map((i: InvoiceItem) => ({ ...i })));
+    setEditItems(withDeliveryLast(previewItems.map((i: InvoiceItem) => ({ ...i }))));
     setEditMeta({
       invoice_number: String(previewInvoice.invoice_number ?? ""),
       invoice_date: previewInvoice.invoice_date ? String(previewInvoice.invoice_date).slice(0, 10) : "",
@@ -708,7 +708,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       price: v.price,
       total: (src.quantity || 1) * v.price,
     }));
-    setEditItems([...editItems.slice(0, idx), ...newRows, ...editItems.slice(idx + 1)]);
+    setEditItems(withDeliveryLast([...editItems.slice(0, idx), ...newRows, ...editItems.slice(idx + 1)]));
   }
 
   async function saveEditInvoice() {
@@ -745,7 +745,7 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
       }),
     });
 
-    setPreviewItems(editItems);
+    setPreviewItems(withDeliveryLast(editItems));
     setPreviewInvoice({ ...previewInvoice, ...metaUpdate });
     setInvoices(invoices.map((inv: { id: string }) =>
       inv.id === previewInvoice.id ? { ...inv, ...metaUpdate } : inv
@@ -1345,7 +1345,7 @@ function doPrint(){
                                 Вариации
                               </button>
                             )}
-                            <button onClick={() => setEditItems(editItems.filter((_, idx) => idx !== i))} className="p-0.5 hover:bg-red-50 rounded"><Trash2 size={11} className="text-red-400" /></button>
+                            <button onClick={() => setEditItems(withDeliveryLast(editItems.filter((_, idx) => idx !== i)))} className="p-0.5 hover:bg-red-50 rounded"><Trash2 size={11} className="text-red-400" /></button>
                           </div>
                         </td>
                       </tr>
@@ -1353,7 +1353,7 @@ function doPrint(){
                     })}
                   </tbody>
                 </table>
-                <button onClick={() => setEditItems([...editItems, { product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }])} className="text-xs mb-3" style={{ color: "#0067a5" }}>+ Добавить строку</button>
+                <button onClick={() => setEditItems(withDeliveryLast([...editItems, { product_id: "", name: "", quantity: 1, unit: "шт", price: 0, total: 0 }]))} className="text-xs mb-3" style={{ color: "#0067a5" }}>+ Добавить строку</button>
                 <div className="text-sm mb-2">
                   <p><strong>Итого: {formatCurrency(editItems.reduce((s, i) => s + i.total, 0))}</strong></p>
                 </div>
