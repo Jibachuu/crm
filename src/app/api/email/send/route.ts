@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import MailComposer from "nodemailer/lib/mail-composer";
+import { ImapFlow } from "imapflow";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -79,11 +81,21 @@ export async function POST(req: NextRequest) {
       ? body.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
       : body;
 
-    await transporter.sendMail({
+    const mailOptions = {
       from, to, subject,
       text,
       html,
       attachments,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    // Положить копию в IMAP-папку «Отправленные», иначе письмо не видно
+    // в webmail.hosting.reg.ru (SMTP только отправляет, в IMAP не пишет).
+    // Не должно ронять ответ пользователю, если IMAP не настроен или
+    // отвалился — письмо уже улетело. Жиба 05.06.2026.
+    await appendToImapSent(mailOptions).catch((e) => {
+      console.error("[email/send] IMAP append failed:", e);
     });
 
     // Save sent email to DB
@@ -117,5 +129,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: "sent", attachmentCount: attachments.length });
   } catch (err: unknown) {
     return NextResponse.json({ error: (err as { message?: string }).message }, { status: 500 });
+  }
+}
+
+// Билдим RFC-822 raw и кладём в IMAP-папку «Sent» (или эквивалент).
+// Если у сервера есть RFC 6154 special-use, ищем по флагу \Sent;
+// иначе fallback на наиболее частые имена («Sent», «Sent Items»,
+// «Отправленные», «Sent Messages»).
+async function appendToImapSent(mailOptions: nodemailer.SendMailOptions): Promise<void> {
+  const host = process.env.IMAP_HOST || process.env.SMTP_HOST;
+  const port = Number(process.env.IMAP_PORT || 993);
+  const user = process.env.IMAP_USER || process.env.SMTP_USER;
+  const pass = process.env.IMAP_PASS || process.env.SMTP_PASS;
+  if (!host || !user || !pass) return;
+
+  const composer = new MailComposer(mailOptions);
+  const raw: Buffer = await new Promise((resolve, reject) => {
+    composer.compile().build((err: Error | null, message: Buffer) =>
+      err ? reject(err) : resolve(message)
+    );
+  });
+
+  const client = new ImapFlow({ host, port, secure: true, auth: { user, pass }, logger: false });
+  await client.connect();
+  try {
+    let target: string | null = null;
+    for await (const m of (await client.list()) as Array<{ path: string; specialUse?: string; name?: string }>) {
+      if (m.specialUse === "\\Sent") { target = m.path; break; }
+    }
+    if (!target) {
+      const all = (await client.list()) as Array<{ path: string; name?: string }>;
+      const candidates = ["sent", "sent items", "sent messages", "отправленные", "отправлено"];
+      const found = all.find((m) =>
+        candidates.includes((m.name || m.path).toLowerCase()) ||
+        candidates.includes(m.path.toLowerCase())
+      );
+      if (found) target = found.path;
+    }
+    if (!target) {
+      console.warn("[email/send] IMAP Sent folder not found — sent copy not stored");
+      return;
+    }
+    await client.append(target, raw, ["\\Seen"]);
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
   }
 }
