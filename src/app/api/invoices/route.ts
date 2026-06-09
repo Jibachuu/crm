@@ -97,6 +97,13 @@ export async function POST(req: NextRequest) {
     created_by: user.id,
   };
 
+  // v85: template_variant. Колонка появилась в migration_v85 — если ещё не
+  // применена, не пишем (иначе PostgREST вернёт «column does not exist»).
+  if (body.template_variant === "offer" || body.template_variant === "standard") {
+    const v85Probe = await admin.from("invoices").select("template_variant").limit(1);
+    if (!v85Probe.error) insert.template_variant = body.template_variant;
+  }
+
   const { data: invoice, error } = await admin.from("invoices").insert(insert).select("*").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -137,6 +144,11 @@ export async function PUT(req: NextRequest) {
     "comment", "deal_id",
   ]) {
     if (body[f] !== undefined) updates[f] = body[f];
+  }
+  // v85: template_variant — пишем только если миграция применена.
+  if (body.template_variant === "offer" || body.template_variant === "standard") {
+    const v85Probe = await admin.from("invoices").select("template_variant").limit(1);
+    if (!v85Probe.error) updates.template_variant = body.template_variant;
   }
   if (Object.keys(updates).length > 0) {
     const { error } = await admin.from("invoices").update(updates).eq("id", body.id);

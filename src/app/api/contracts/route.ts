@@ -99,6 +99,14 @@ export async function POST(req: NextRequest) {
       comment: body.comment || null,
       created_by: user.id,
     };
+    // v85: вариант шаблона договора. 'standard' печатает базовый текст,
+    // 'havenberg' добавляет пункты 5.4/5.5/6.6 про льготные флаконы.
+    // Колонка появилась в migration_v85 — если ещё не применена, не пишем
+    // (иначе PostgREST вернёт 400 «column does not exist»).
+    if (body.template_variant === "havenberg" || body.template_variant === "standard") {
+      const v85Probe = await admin.from("contracts").select("template_variant").limit(1);
+      if (!v85Probe.error) baseInsert.template_variant = body.template_variant;
+    }
     const v81Insert: Record<string, unknown> = hasV81 ? {
       contract_type: contractType,
       buyer_director_basis_full: body.buyer_director_basis_full || null,
@@ -259,6 +267,12 @@ export async function POST(req: NextRequest) {
       delete (fields as Record<string, unknown>).shipping_cost;
       delete (fields as Record<string, unknown>).purchase_frequency_terms;
       delete (fields as Record<string, unknown>).equipment_location_address;
+    }
+    // v85: template_variant. Если миграция не применена — выкидываем поле,
+    // чтобы PUT не валился на pre-v85 базе.
+    const v85Probe = await admin.from("contracts").select("template_variant").limit(1);
+    if (v85Probe.error) {
+      delete (fields as Record<string, unknown>).template_variant;
     }
     // Strip read-only/joined fields that don't exist as columns (the
     // existing UI re-sends the entire row including joins like `companies`

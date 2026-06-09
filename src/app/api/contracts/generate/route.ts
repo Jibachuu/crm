@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateContractHtml } from "@/lib/contract-template";
+import { generateContractHtmlV2 } from "@/lib/contract-template-v2";
 import { generateInvoiceContractHtml } from "@/lib/invoice-contract-template";
 import { generateRentalContractHtml, generateRentalEquipmentActHtml } from "@/lib/rental-contract-template";
 import { amountToWords } from "@/lib/numToWords";
@@ -254,7 +255,11 @@ ${items.map((item, i) => `<tr><td class="c">${i + 1}</td><td>${item.name}</td><t
   }
 
   // ── Full contract ──
-  const html = generateContractHtml({
+  // template_variant === 'havenberg' добавляет пункты 5.4/5.5/6.6 про флаконы
+  // (новый PDF от 31.05.2026). Дефолт 'standard' печатает существующий шаблон.
+  const renderContract =
+    contract.template_variant === "havenberg" ? generateContractHtmlV2 : generateContractHtml;
+  const html = renderContract({
     contract_number: contract.contract_number, date: dateStr,
     supplier_name: supplier?.legal_name || "Индивидуальный предприниматель Абзалов Никита Львович",
     supplier_ogrnip: supplier?.ogrnip || "323183200014134",

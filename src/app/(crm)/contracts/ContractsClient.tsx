@@ -242,6 +242,7 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
       buyer_phone: c.buyer_phone || "",
       buyer_short_name: c.buyer_short_name || "",
       deal_id: c.deal_id || "",
+      template_variant: c.template_variant || "standard",
       delivery_method: "СДЭК",
       payment_terms: "предоплата 100%",
       shipment_days: 12,
@@ -321,6 +322,7 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
       buyer_email: form.buyer_email, buyer_phone: form.buyer_phone,
       buyer_short_name: form.buyer_short_name,
       deal_id: dealId || form.deal_id || null,
+      template_variant: form.template_variant || "standard",
     };
 
     let contract;
@@ -582,6 +584,20 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
             <div><label style={lblStyle}>Доставка</label><input value={form.delivery_method || ""} onChange={(e) => setForm({ ...form, delivery_method: e.target.value })} style={inputStyle} /></div>
             <div><label style={lblStyle}>Условия оплаты</label><input value={form.payment_terms || ""} onChange={(e) => setForm({ ...form, payment_terms: e.target.value })} style={inputStyle} /></div>
             <div><label style={lblStyle}>Срок отгрузки (дней)</label><input type="number" value={form.shipment_days || 3} onChange={(e) => setForm({ ...form, shipment_days: Number(e.target.value) })} style={inputStyle} /></div>
+          </div>
+
+          {/* Section: Template variant — добавляет пункты 5.4/5.5/6.6 про
+              использование флаконов Havenberg и штраф 1390₽ за нарушение. */}
+          <div>
+            <label style={lblStyle}>Шаблон договора</label>
+            <select
+              value={form.template_variant || "standard"}
+              onChange={(e) => setForm({ ...form, template_variant: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="standard">Стандартный</option>
+              <option value="havenberg">С условиями Havenberg (пункты 5.4 / 5.5 / 6.6)</option>
+            </select>
           </div>
           </>)}
 
