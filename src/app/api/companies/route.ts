@@ -74,6 +74,9 @@ export async function POST(req: NextRequest) {
     "additional_phone_1", "additional_phone_2", "additional_phone_3",
     "additional_email_1", "additional_email_2", "additional_email_3",
     "edo_id",
+    // v86: банковские реквизиты покупателя — становятся источником истины
+    // для подстановки в договоры/счета.
+    "bank_name", "bank_account", "bik", "corr_account",
   ]) {
     if (body[f] !== undefined) insert[f] = body[f] || null;
   }
@@ -109,6 +112,10 @@ export async function PUT(req: NextRequest) {
     "description", "assigned_to", "venue_type_id", "supplier_id",
     "opened_recently", "timezone", "contract_status", "contract_comment",
     "contract_file_url", "contract_file_name", "edo_id",
+    // v86: банковские реквизиты — пишутся через тот же PUT, что и остальная
+    // карточка. Запись игнорируется, если миграция ещё не применена
+    // (Supabase ругнётся в ответе — это видит EditCompanyModal через ошибку).
+    "bank_name", "bank_account", "bik", "corr_account",
   ] as const) {
     if (body[f] !== undefined) updates[f] = body[f] || null;
   }
@@ -126,6 +133,22 @@ export async function PUT(req: NextRequest) {
   if (body.is_network !== undefined) updates.is_network = !!body.is_network;
   if (body.contract_signed_at !== undefined) updates.contract_signed_at = body.contract_signed_at || null;
   if (body.addresses !== undefined) updates.addresses = body.addresses;
+
+  // v86 защита: если миграция ещё не применена, выкидываем bank_* колонки,
+  // иначе PostgREST вернёт 400 «column does not exist» и сломает сохранение
+  // карточки компании целиком (на проде до применения миграции).
+  if (
+    "bank_name" in updates || "bank_account" in updates ||
+    "bik" in updates || "corr_account" in updates
+  ) {
+    const probe = await admin.from("companies").select("bank_name").limit(1);
+    if (probe.error) {
+      delete updates.bank_name;
+      delete updates.bank_account;
+      delete updates.bik;
+      delete updates.corr_account;
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "no fields to update" }, { status: 400 });

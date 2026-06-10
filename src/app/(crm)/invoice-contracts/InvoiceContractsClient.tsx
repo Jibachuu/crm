@@ -80,13 +80,20 @@ export default function InvoiceContractsClient({ companyId, dealId }: { companyI
   }
 
   function fillFromCompany(coId: string) {
-    const co = companies.find((c) => c.id === coId);
+    const co = companies.find((c) => c.id === coId) as
+      | (typeof companies[number] & { bank_name?: string; bank_account?: string; bik?: string; corr_account?: string })
+      | undefined;
     if (co) {
       setForm((f: AnyRec) => ({
         ...f, buyer_company_id: co.id, buyer_name: co.name || "",
         buyer_inn: co.inn || "", buyer_kpp: co.kpp || "", buyer_ogrn: co.ogrn || "",
         buyer_address: co.legal_address || "", buyer_director_name: co.director || "",
         buyer_email: co.email || "", buyer_phone: co.phone || "",
+        // v86: автоподстановка банковских реквизитов из карточки компании.
+        buyer_bank_name: co.bank_name || "",
+        buyer_account: co.bank_account || "",
+        buyer_bik: co.bik || "",
+        buyer_corr_account: co.corr_account || "",
       }));
     }
   }

@@ -96,6 +96,13 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
         buyer_inn: co.inn || "", buyer_kpp: co.kpp || "", buyer_ogrn: co.ogrn || "",
         buyer_address: co.legal_address || "", buyer_director_name: co.director || "",
         buyer_email: co.email || "", buyer_phone: co.phone || "",
+        // v86: банковские реквизиты тоже подтягиваем из карточки. Менеджер
+        // может перебить руками — тогда после сохранения договора актуальные
+        // значения отправятся обратно в companies (см. handleCreate).
+        buyer_bank_name: co.bank_name || "",
+        buyer_account: co.bank_account || "",
+        buyer_bik: co.bik || "",
+        buyer_corr_account: co.corr_account || "",
       }));
     }
   }
@@ -364,6 +371,8 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
       }
     }
 
+    // v86: bank-реквизиты возвращаются в companies на стороне сервера
+    // (см. /api/contracts route.ts) — единый sync для всех типов договоров.
     setCreateOpen(false);
     setEditingContract(null);
     setForm({ buyer_director_title: "генерального директора", buyer_director_basis: "Устава", delivery_method: "СДЭК", payment_terms: "предоплата 100%", shipment_days: 12, items: [{ name: "", quantity: 1, price: 0, total: 0 }] });

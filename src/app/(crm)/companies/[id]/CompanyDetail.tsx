@@ -538,6 +538,12 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                 {company.kpp && <div className="flex justify-between"><span className="text-slate-500">КПП</span><span className="text-slate-700">{company.kpp}</span></div>}
                 {company.edo_id && <div className="flex justify-between gap-2"><span className="text-slate-500 flex-shrink-0">ЭДО id</span><span className="text-slate-700 truncate font-mono text-xs" title={company.edo_id}>{company.edo_id}</span></div>}
                 {company.director && <div className="flex justify-between"><span className="text-slate-500">Директор</span><span className="text-slate-700">{company.director}</span></div>}
+                {/* v86: банковские реквизиты — нужны для авто-подстановки в
+                    договоры/счета. Показываем только если заполнено. */}
+                {company.bank_name && <div className="flex justify-between gap-2"><span className="text-slate-500 flex-shrink-0">Банк</span><span className="text-slate-700 truncate text-right" title={company.bank_name}>{company.bank_name}</span></div>}
+                {company.bik && <div className="flex justify-between"><span className="text-slate-500">БИК</span><span className="text-slate-700 font-mono text-xs">{company.bik}</span></div>}
+                {company.bank_account && <div className="flex justify-between gap-2"><span className="text-slate-500 flex-shrink-0">Р/с</span><span className="text-slate-700 truncate font-mono text-xs" title={company.bank_account}>{company.bank_account}</span></div>}
+                {company.corr_account && <div className="flex justify-between gap-2"><span className="text-slate-500 flex-shrink-0">К/с</span><span className="text-slate-700 truncate font-mono text-xs" title={company.corr_account}>{company.corr_account}</span></div>}
                 {company.city && <div className="flex justify-between"><span className="text-slate-500">Город</span><span className="text-slate-700">{company.city}</span></div>}
                 {company.region && <div className="flex justify-between"><span className="text-slate-500">Регион</span><span className="text-slate-700">{company.region}</span></div>}
                 <div className="flex justify-between">

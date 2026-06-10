@@ -89,6 +89,10 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
         website: (fd.get("website") as string) || null,
         description: (fd.get("description") as string) || null,
         assigned_to: (fd.get("assigned_to") as string) || null,
+        bank_name: (fd.get("bank_name") as string) || null,
+        bank_account: (fd.get("bank_account") as string) || null,
+        bik: (fd.get("bik") as string) || null,
+        corr_account: (fd.get("corr_account") as string) || null,
         venue_type_id: venueTypeId || null,
         supplier_id: supplierId || null,
         bathrooms_count: fd.get("bathrooms_count") ? Number(fd.get("bathrooms_count")) : null,
@@ -171,6 +175,20 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
           <Input label="Телефон" name="phone" type="tel" placeholder="+7 (999) 000-00-00" />
           <Input label="Email" name="email" type="email" />
           <Input label="Сайт" name="website" />
+        </div>
+
+        {/* v86: банковские реквизиты — подтянутся в форму создания
+            договора/счёта при выборе этой компании. */}
+        <div className="pt-2 border-t border-slate-200">
+          <p className="text-xs font-semibold uppercase mb-2" style={{ color: "#888", letterSpacing: 0.4 }}>Банковские реквизиты</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Банк" name="bank_name" placeholder="АО «ТБанк» г. Москва" />
+            <Input label="БИК" name="bik" placeholder="044525974" />
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <Input label="Р/с" name="bank_account" placeholder="40802..." />
+            <Input label="К/с" name="corr_account" placeholder="30101..." />
+          </div>
         </div>
 
         <Textarea label="Деятельность компании" name="activity" />

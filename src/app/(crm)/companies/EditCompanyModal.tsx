@@ -130,6 +130,11 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
       // If user picked a TZ manually, respect it; otherwise auto-derive
       // from city/region (now also covers regions, not just cities).
       timezone: (fd.get("timezone") as string) || getTimezoneFromRegion((fd.get("city") as string) || (fd.get("region") as string) || ""),
+      // v86: банковские реквизиты — нужны для автоподстановки в договоры/счета.
+      bank_name: (fd.get("bank_name") as string) || null,
+      bank_account: (fd.get("bank_account") as string) || null,
+      bik: (fd.get("bik") as string) || null,
+      corr_account: (fd.get("corr_account") as string) || null,
     });
 
     if (err || !data) { setError(err || "Не удалось сохранить"); setLoading(false); return; }
@@ -246,6 +251,21 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
         {(company?.company_type === "restaurant" || venueTypeName === "Ресторан") && (
           <Input label="Средний чек (₽)" name="avg_check" type="number" min="0" defaultValue={company?.avg_check ?? ""} />
         )}
+
+        {/* v86: банковские реквизиты — нужны для автоподстановки в договоры
+            и счета. Когда заполнено хоть одно поле, оно подтянется в форму
+            создания договора/счёта при выборе этой компании покупателем. */}
+        <div className="pt-2 border-t border-slate-200">
+          <p className="text-xs font-semibold uppercase mb-2" style={{ color: "#888", letterSpacing: 0.4 }}>Банковские реквизиты</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Банк" name="bank_name" defaultValue={company?.bank_name ?? ""} placeholder="АО «ТБанк» г. Москва" />
+            <Input label="БИК" name="bik" defaultValue={company?.bik ?? ""} placeholder="044525974" />
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <Input label="Р/с" name="bank_account" defaultValue={company?.bank_account ?? ""} placeholder="40802..." />
+            <Input label="К/с" name="corr_account" defaultValue={company?.corr_account ?? ""} placeholder="30101..." />
+          </div>
+        </div>
 
         <Textarea label="Деятельность компании" name="activity" defaultValue={company?.activity ?? ""} />
         <Textarea label="Потребность" name="need" defaultValue={company?.need ?? ""} />

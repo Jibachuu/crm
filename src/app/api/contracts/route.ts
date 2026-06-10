@@ -127,6 +127,24 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+    // v86: банковские реквизиты покупателя возвращаем в карточку компании.
+    // companies = источник истины; так следующий документ той же компании
+    // сразу подтянет актуальные значения через fillFromCompany. Игнорируем
+    // молча, если миграция v86 ещё не применена.
+    if (body.buyer_company_id) {
+      const companyPatch: Record<string, string> = {};
+      if (body.buyer_bank_name) companyPatch.bank_name = body.buyer_bank_name;
+      if (body.buyer_account) companyPatch.bank_account = body.buyer_account;
+      if (body.buyer_bik) companyPatch.bik = body.buyer_bik;
+      if (body.buyer_corr_account) companyPatch.corr_account = body.buyer_corr_account;
+      if (Object.keys(companyPatch).length > 0) {
+        const probe = await admin.from("companies").select("bank_name").limit(1);
+        if (!probe.error) {
+          await admin.from("companies").update(companyPatch).eq("id", body.buyer_company_id);
+        }
+      }
+    }
+
     // Invoice-contract стоит на ногах одной таблицей товаров — кладём
     // её сразу как «единственную» спецификацию, чтобы переиспользовать
     // existing specification_items машинерию (она же используется в
@@ -287,6 +305,21 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await admin.from("contracts").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", id).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // v86 — sync банковских реквизитов покупателя обратно в карточку компании.
+    if (data?.buyer_company_id) {
+      const companyPatch: Record<string, string> = {};
+      if (data.buyer_bank_name) companyPatch.bank_name = data.buyer_bank_name;
+      if (data.buyer_account) companyPatch.bank_account = data.buyer_account;
+      if (data.buyer_bik) companyPatch.bik = data.buyer_bik;
+      if (data.buyer_corr_account) companyPatch.corr_account = data.buyer_corr_account;
+      if (Object.keys(companyPatch).length > 0) {
+        const probe = await admin.from("companies").select("bank_name").limit(1);
+        if (!probe.error) {
+          await admin.from("companies").update(companyPatch).eq("id", data.buyer_company_id);
+        }
+      }
+    }
     return NextResponse.json(data);
   }
 
