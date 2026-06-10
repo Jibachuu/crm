@@ -77,10 +77,11 @@ export function generateRentalContractHtml(v: RentalContractVars): string {
   h2.sub{font-size:12px;font-weight:normal;font-style:italic;margin-top:0}
   h3{font-size:12px;margin:14px 0 4px}
   p{margin:3px 0;text-align:justify}
-  .sign-block{position:relative;min-height:140px;margin-top:10px}
-  .stamp{position:absolute;left:0;top:50px;width:150px;opacity:0.85}
-  .signature{position:absolute;left:170px;top:0;width:120px;opacity:0.9}
-  @media print{body{margin:10mm 12mm}@page{size:A4;margin:10mm 12mm}}
+  .sign-block{position:relative;min-height:160px;margin-top:10px}
+  .stamp{position:absolute;left:0;top:35px;width:140px;opacity:0.85}
+  .signature{position:absolute;left:150px;top:5px;width:115px;opacity:0.9}
+  @page{size:A4;margin:0}
+  @media print{body{margin:12mm 14mm 14mm}#printBtn{display:none!important}}
 </style></head><body>
 
 <h2>ДОГОВОР ПОСТАВКИ №${v.contract_number}</h2>
@@ -290,10 +291,11 @@ export function generateRentalEquipmentActHtml(v: RentalEquipmentActVars): strin
   h2{text-align:center;font-size:14px;margin:0 0 6px}
   h2.sub{font-size:12px;font-weight:normal;font-style:italic;margin-top:0}
   table{border-collapse:collapse;width:100%}
-  .sign-block{position:relative;min-height:120px;margin-top:14px}
-  .stamp{position:absolute;left:0;top:36px;width:140px;opacity:0.85}
-  .signature{position:absolute;left:160px;top:0;width:110px;opacity:0.9}
-  @media print{body{margin:10mm 15mm}@page{size:A4}}
+  .sign-block{position:relative;min-height:140px;margin-top:14px}
+  .stamp{position:absolute;left:0;top:30px;width:130px;opacity:0.85}
+  .signature{position:absolute;left:140px;top:5px;width:105px;opacity:0.9}
+  @page{size:A4;margin:0}
+  @media print{body{margin:12mm 15mm 14mm}#printBtn{display:none!important}}
 </style></head><body>
 
 <h2>ПРИЛОЖЕНИЕ №3</h2>

@@ -7,6 +7,37 @@ import { generateInvoiceContractHtml } from "@/lib/invoice-contract-template";
 import { generateRentalContractHtml, generateRentalEquipmentActHtml } from "@/lib/rental-contract-template";
 import { amountToWords } from "@/lib/numToWords";
 import { toGenitiveFullName } from "@/lib/russianDeclension";
+import QRCode from "qrcode";
+
+// Формирует QR-код по ст. 1383 ФНС (формат СТ-00012) для оплаты счёта.
+// Тот же набор полей, что и QR на обычном счёте (см. InvoicesClient.tsx
+// printInvoice). Возвращает data:image/png URL или пустую строку при ошибке.
+async function makePaymentQr(opts: {
+  supplier: { legal_name?: string; account_number?: string; bank_name?: string; bik?: string; corr_account?: string; inn?: string; kpp?: string } | null;
+  total: number;
+  documentNumber: string;
+  documentDate: Date;
+  documentLabel: string;
+}): Promise<string> {
+  const s = opts.supplier ?? {};
+  const parts = [
+    "ST00012",
+    `Name=${s.legal_name ?? ""}`,
+    `PersonalAcc=${s.account_number ?? ""}`,
+    `BankName=${s.bank_name ?? ""}`,
+    `BIC=${s.bik ?? ""}`,
+    `CorrespAcc=${s.corr_account ?? ""}`,
+    `PayeeINN=${s.inn ?? ""}`,
+    s.kpp ? `KPP=${s.kpp}` : "",
+    `Sum=${Math.round((opts.total || 0) * 100)}`,
+    `Purpose=Оплата по ${opts.documentLabel} №${opts.documentNumber} от ${opts.documentDate.toLocaleDateString("ru-RU")}`,
+  ].filter(Boolean).join("|");
+  try {
+    return await QRCode.toDataURL(parts, { width: 240, margin: 1 });
+  } catch {
+    return "";
+  }
+}
 
 function fmt(n: number) { return Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, " ").replace(".", ","); }
 
@@ -94,6 +125,16 @@ export async function GET(req: NextRequest) {
       ? Number(contract.total_amount)
       : items.reduce((s, i) => s + (i.total || 0), 0);
 
+    // QR на счёте-договоре — те же реквизиты, что в обычном счёте, плюс
+    // ссылка на этот счёт-договор в назначении платежа.
+    const qrImg = await makePaymentQr({
+      supplier,
+      total,
+      documentNumber: contract.contract_number,
+      documentDate: new Date(contract.contract_date),
+      documentLabel: "счёту-договору",
+    });
+
     const html = generateInvoiceContractHtml({
       contract_number: contract.contract_number,
       date_ru: dateStr,
@@ -129,6 +170,7 @@ export async function GET(req: NextRequest) {
       validity_bank_days: contract.validity_bank_days ?? 5,
       stamp_img: stampSrc,
       sig_img: sigSrc,
+      qr_img: qrImg,
     });
     return NextResponse.json({ html });
   }
@@ -226,7 +268,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       html: `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Спецификация №${spec.spec_number}</title>
-<style>body{font-family:Arial,sans-serif;font-size:12px;margin:20mm 15mm;color:#000;line-height:1.5}table{border-collapse:collapse;width:100%}.items td,.items th{border:1px solid #000;padding:4px 8px;font-size:11px}.items th{text-align:center;font-weight:bold}.items .r{text-align:right}.items .c{text-align:center}.sign-block{margin-top:18px;position:relative;min-height:120px}.stamp{position:absolute;left:0;top:36px;width:150px;opacity:0.85}.signature{position:absolute;left:170px;top:0;width:120px;opacity:0.9}@media print{body{margin:10mm 15mm}@page{size:A4}}</style></head><body>
+<style>body{font-family:Arial,sans-serif;font-size:12px;margin:20mm 15mm;color:#000;line-height:1.5}table{border-collapse:collapse;width:100%}.items td,.items th{border:1px solid #000;padding:4px 8px;font-size:11px}.items th{text-align:center;font-weight:bold}.items .r{text-align:right}.items .c{text-align:center}.sign-block{margin-top:18px;position:relative;min-height:140px}.stamp{position:absolute;left:0;top:30px;width:140px;opacity:0.85}.signature{position:absolute;left:150px;top:5px;width:115px;opacity:0.9}@page{size:A4;margin:0}@media print{body{margin:12mm 15mm 14mm}#printBtn{display:none!important}}</style></head><body>
 <h2 style="text-align:center;margin-bottom:5px">СПЕЦИФИКАЦИЯ №${spec.spec_number}</h2>
 <p style="text-align:center;margin-top:0">к договору поставки №${contract.contract_number} от ${new Date(contract.contract_date).toLocaleDateString("ru-RU")}</p>
 <table style="width:100%;margin:10px 0"><tr><td>город Казань</td><td style="text-align:right">${formatDateRu(new Date(spec.spec_date))}</td></tr></table>

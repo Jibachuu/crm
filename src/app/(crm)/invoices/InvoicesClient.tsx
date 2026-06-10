@@ -812,15 +812,17 @@ table{border-collapse:collapse}
 .fine-print{font-size:9px;color:#333;margin:10px 0;line-height:1.5}
 .sign-block{margin-top:15px;position:relative;page-break-inside:avoid;break-inside:avoid}
 .sign-line{display:inline-block;width:200px;border-bottom:1px solid #000;margin:0 10px}
-.stamp{position:absolute;left:0;bottom:-10px;width:140px;height:140px;opacity:0.8}
-.signature{position:absolute;left:160px;bottom:10px;width:100px;opacity:0.8}
+.stamp{position:absolute;left:0;bottom:-10px;width:130px;height:130px;opacity:0.8}
+.signature{position:absolute;left:140px;bottom:5px;width:100px;opacity:0.85}
 /* Низ счёта (итоги + сумма прописью + фин-принт + подпись) держим единым блоком.
    До этого Chrome выпихивал sign-block в одиночестве на стр. 2 — Жиба 05.06.2026. */
 .invoice-footer{page-break-inside:avoid;break-inside:avoid}
-@media print{body{margin:10mm 15mm}@page{size:A4;margin:10mm 15mm 10mm 15mm}
-  /* Hide browser header/footer (about:blank, page numbers, date) */
-  @top-left{content:none}@top-right{content:none}@bottom-left{content:none}@bottom-right{content:none}
-}
+/* @page margin:0 убирает шапку браузера (about:blank, дата, заголовок документа,
+   номер страницы) — иначе бы они печатались по дефолту. Контент сдвигаем
+   через body margin в @media print. #printBtn прячем чтобы кнопка
+   «Напечатать / Сохранить PDF» не попадала в готовый PDF. */
+@page{size:A4;margin:0}
+@media print{body{margin:12mm 15mm 14mm}#printBtn{display:none!important}}
 </style></head><body>
 
 <!-- Bank header with QR -->

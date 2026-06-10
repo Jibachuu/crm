@@ -59,6 +59,10 @@ export type InvoiceContractVars = {
   // Signature images (optional — для печати PDF с подписью поставщика)
   stamp_img?: string;
   sig_img?: string;
+  // QR-код по стандарту СТ-00012 (формат ФНС для оплаты) — генерируется
+  // в /api/contracts/generate из реквизитов supplier + суммы. Если пусто,
+  // блок справа от шапки не отрисовывается. Как в обычном счёте.
+  qr_img?: string;
 };
 
 const tdHead = 'style="border:1px solid #000;padding:5px 8px;font-size:11px;font-weight:bold;text-align:center"';
@@ -92,15 +96,17 @@ export function generateInvoiceContractHtml(v: InvoiceContractVars): string {
   table{border-collapse:collapse;width:100%}
   .header-table td{padding:4px 8px;font-size:11px;vertical-align:top}
   .header-table .lbl{width:35%;color:#000}
-  .sign-block{margin-top:18px;position:relative;min-height:120px}
-  .stamp{position:absolute;left:0;top:36px;width:140px;opacity:0.85}
-  .signature{position:absolute;left:160px;top:0;width:110px;opacity:0.9}
-  @media print{body{margin:10mm 12mm}@page{size:A4}}
+  .sign-block{margin-top:18px;position:relative;min-height:140px}
+  .stamp{position:absolute;left:0;top:30px;width:130px;opacity:0.85}
+  .signature{position:absolute;left:140px;top:5px;width:105px;opacity:0.9}
+  @page{size:A4;margin:0}
+  @media print{body{margin:12mm 14mm 14mm}#printBtn{display:none!important}}
   #printBtn button{padding:10px 30px;font-size:14px;background:#0067a5;color:#fff;border:none;border-radius:6px;cursor:pointer}
 </style></head><body>
 
-<!-- Шапка: банковские реквизиты получателя -->
-<table class="header-table" style="border:1px solid #000;margin-bottom:10px">
+<!-- Шапка: банковские реквизиты получателя (+ QR-код справа) -->
+<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px">
+<table class="header-table" style="border:1px solid #000;flex:1">
   <tr><td class="lbl" style="border-right:1px solid #000">Банк получателя</td><td>${dash(v.supplier_bank_name)}</td></tr>
   <tr><td class="lbl" style="border-right:1px solid #000;border-top:1px solid #000">БИК</td><td style="border-top:1px solid #000">${dash(v.supplier_bik)}</td></tr>
   <tr><td class="lbl" style="border-right:1px solid #000;border-top:1px solid #000">Корр. счёт</td><td style="border-top:1px solid #000">${dash(v.supplier_corr_account)}</td></tr>
@@ -109,6 +115,11 @@ export function generateInvoiceContractHtml(v: InvoiceContractVars): string {
   <tr><td class="lbl" style="border-right:1px solid #000;border-top:1px solid #000">Расчётный счёт</td><td style="border-top:1px solid #000">${dash(v.supplier_account)}</td></tr>
   <tr><td class="lbl" style="border-right:1px solid #000;border-top:1px solid #000">Получатель</td><td style="border-top:1px solid #000"><strong>${dash(v.supplier_legal_name)}</strong></td></tr>
 </table>
+${v.qr_img ? `<div style="text-align:center;flex-shrink:0">
+<img src="${v.qr_img}" style="width:120px;height:120px" />
+<p style="font-size:8px;color:#555;margin-top:2px">Отсканируйте для<br>оплаты</p>
+</div>` : ""}
+</div>
 
 <h1>Счёт-договор №${v.contract_number} от ${v.date_ru}</h1>
 
