@@ -895,11 +895,11 @@ ${dueDateStr ? `<p style="margin-top:6px">Оплатить не позднее $
 Товар отпускается по факту прихода денег на р/с Поставщика, самовывозом, при наличии доверенности и паспорта.
 </div>
 
-<div class="sign-block">
+${isOffer ? "" : `<div class="sign-block">
 ${stampSrc ? `<img class="stamp" src="${stampSrc}" />` : ""}
 ${sigSrc ? `<img class="signature" src="${sigSrc}" />` : ""}
 <p><strong>Предприниматель</strong> <span class="sign-line"></span> / ${supplier?.director ?? ""} /</p>
-</div>
+</div>`}
 </div><!-- /.invoice-footer -->
 
 ${isOffer ? `<div style="page-break-before:always;font-size:10px;line-height:1.45">
