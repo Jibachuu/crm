@@ -814,9 +814,13 @@ table{border-collapse:collapse}
 .sign-line{display:inline-block;width:200px;border-bottom:1px solid #000;margin:0 10px}
 .stamp{position:absolute;left:0;bottom:-10px;width:130px;height:130px;opacity:0.8}
 .signature{position:absolute;left:140px;bottom:5px;width:100px;opacity:0.85}
-/* Низ счёта (итоги + сумма прописью + фин-принт + подпись) держим единым блоком.
-   До этого Chrome выпихивал sign-block в одиночестве на стр. 2 — Жиба 05.06.2026. */
-.invoice-footer{page-break-inside:avoid;break-inside:avoid}
+/* Низ счёта (итоги + сумма прописью + фин-принт + подпись) — раньше держали
+   единым блоком (break-inside:avoid) чтобы не было одинокого sign-block на
+   стр. 2. Но в режиме «оферта» это давало пустую страницу перед «Общими
+   условиями», т.к. footer с подписью насильно прыгал на свою страницу
+   целиком. Теперь только sign-block сам по себе не разрывается (см. CSS
+   .sign-block ниже), а остальной footer может перетекать. */
+.invoice-footer{}
 /* @page margin:0 убирает шапку браузера (about:blank, дата, заголовок документа,
    номер страницы) — иначе бы они печатались по дефолту. Контент сдвигаем
    через body margin в @media print. #printBtn прячем чтобы кнопка
@@ -962,7 +966,9 @@ ${isOffer ? `<div style="page-break-before:always;font-size:10px;line-height:1.4
 <p>8.5. Если срок поставки нарушен более чем на 3 (три) рабочих дня, Покупатель вправе отказаться от соответствующей поставки и потребовать возврата денежных средств, оплаченных за товар, срок поставки которого нарушен.</p>
 </div>
 
-<div style="margin-top:18px;border-top:1px solid #000;padding-top:6px;font-size:11px">
+<div style="margin-top:18px;border-top:1px solid #000;padding-top:10px;font-size:11px;position:relative;min-height:150px">
+${stampSrc ? `<img src="${stampSrc}" style="position:absolute;left:0;top:18px;width:130px;height:130px;opacity:0.8" />` : ""}
+${sigSrc ? `<img src="${sigSrc}" style="position:absolute;left:140px;top:8px;width:100px;opacity:0.85" />` : ""}
 <strong>Предприниматель</strong> <span style="display:inline-block;width:200px;border-bottom:1px solid #000;margin:0 10px"></span> ${supplier?.director ?? "Абзалов Н.Л."}
 </div>
 </div>` : ""}
