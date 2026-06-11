@@ -20,8 +20,8 @@ p{margin:3px 0;text-align:justify}
 .sign-block{position:relative;min-height:160px;margin-top:10px}
 .stamp{position:absolute;left:0;top:35px;width:140px;opacity:0.85}
 .signature{position:absolute;left:150px;top:5px;width:115px;opacity:0.9}
-@page{size:A4;margin:0}
-@media print{body{margin:12mm 14mm 14mm}#printBtn{display:none!important}}
+@page{size:A4;margin:14mm 16mm}
+@media print{body{margin:0}p{orphans:3;widows:3}#printBtn{display:none!important}}
 </style></head><body>
 
 <h2>ДОГОВОР ПОСТАВКИ №${v("contract_number")}</h2>

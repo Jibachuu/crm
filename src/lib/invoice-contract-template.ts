@@ -99,8 +99,8 @@ export function generateInvoiceContractHtml(v: InvoiceContractVars): string {
   .sign-block{margin-top:18px;position:relative;min-height:140px}
   .stamp{position:absolute;left:0;top:30px;width:130px;opacity:0.85}
   .signature{position:absolute;left:140px;top:5px;width:105px;opacity:0.9}
-  @page{size:A4;margin:0}
-  @media print{body{margin:12mm 14mm 14mm}#printBtn{display:none!important}}
+  @page{size:A4;margin:14mm 16mm}
+  @media print{body{margin:0}p{orphans:3;widows:3}#printBtn{display:none!important}}
   #printBtn button{padding:10px 30px;font-size:14px;background:#0067a5;color:#fff;border:none;border-radius:6px;cursor:pointer}
 </style></head><body>
 

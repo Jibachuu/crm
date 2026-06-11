@@ -821,12 +821,20 @@ table{border-collapse:collapse}
    целиком. Теперь только sign-block сам по себе не разрывается (см. CSS
    .sign-block ниже), а остальной footer может перетекать. */
 .invoice-footer{}
-/* @page margin:0 убирает шапку браузера (about:blank, дата, заголовок документа,
-   номер страницы) — иначе бы они печатались по дефолту. Контент сдвигаем
-   через body margin в @media print. #printBtn прячем чтобы кнопка
-   «Напечатать / Сохранить PDF» не попадала в готовый PDF. */
-@page{size:A4;margin:0}
-@media print{body{margin:12mm 15mm 14mm}#printBtn{display:none!important}}
+/* @page margin задаётся НА КАЖДОЙ СТРАНИЦЕ — раньше я ставил margin:0
+   и компенсировал body margin'ом, но body margin срабатывает только на
+   первой/последней странице потока — на промежуточных текст прилипал
+   к краю. Теперь margin на @page правильный, body без margin. Если
+   нужно убрать заголовок браузера (about:blank/дата), это снимается
+   в диалоге печати чекбоксом «Headers and footers». orphans/widows
+   защищают от уродских разрывов: одинокая первая или последняя строка
+   абзаца не остаётся на чужой странице. */
+@page{size:A4;margin:14mm 16mm}
+@media print{
+  body{margin:0}
+  p{orphans:3;widows:3}
+  #printBtn{display:none!important}
+}
 </style></head><body>
 
 <!-- Bank header with QR -->

@@ -80,8 +80,8 @@ export function generateRentalContractHtml(v: RentalContractVars): string {
   .sign-block{position:relative;min-height:160px;margin-top:10px}
   .stamp{position:absolute;left:0;top:35px;width:140px;opacity:0.85}
   .signature{position:absolute;left:150px;top:5px;width:115px;opacity:0.9}
-  @page{size:A4;margin:0}
-  @media print{body{margin:12mm 14mm 14mm}#printBtn{display:none!important}}
+  @page{size:A4;margin:14mm 16mm}
+  @media print{body{margin:0}p{orphans:3;widows:3}#printBtn{display:none!important}}
 </style></head><body>
 
 <h2>ДОГОВОР ПОСТАВКИ №${v.contract_number}</h2>
@@ -294,8 +294,8 @@ export function generateRentalEquipmentActHtml(v: RentalEquipmentActVars): strin
   .sign-block{position:relative;min-height:140px;margin-top:14px}
   .stamp{position:absolute;left:0;top:30px;width:130px;opacity:0.85}
   .signature{position:absolute;left:140px;top:5px;width:105px;opacity:0.9}
-  @page{size:A4;margin:0}
-  @media print{body{margin:12mm 15mm 14mm}#printBtn{display:none!important}}
+  @page{size:A4;margin:14mm 16mm}
+  @media print{body{margin:0}p{orphans:3;widows:3}#printBtn{display:none!important}}
 </style></head><body>
 
 <h2>ПРИЛОЖЕНИЕ №3</h2>
