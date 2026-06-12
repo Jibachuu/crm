@@ -17,6 +17,17 @@ export default async function CRMLayout({ children }: { children: React.ReactNod
   const { data: profile } = await admin.from("users").select("*").eq("id", authUser.id).single();
   if (!profile) redirect("/login");
 
+  // v87: пока админ не утвердил юзера, он не видит данные CRM. Это второй
+  // забор после закрытой регистрации (Phase 1) — даже если кто-то получил
+  // аккаунт через Supabase Dashboard / signUp напрямую через REST,
+  // is_approved=false по умолчанию (см. migration_v87.sql и триггер
+  // handle_new_user). is_approved отсутствует в TS-типе User (генерится из
+  // /types/database) — обращаемся через bracket-доступ, чтобы tsc не ругался
+  // до следующего регена типов.
+  if ((profile as Record<string, unknown>).is_approved === false) {
+    redirect("/pending-approval");
+  }
+
   // Load permissions for non-admin users
   let permissions: Record<string, { can_read: boolean; can_create: boolean; can_update: boolean; can_delete: boolean }> = {};
   if (profile.role !== "admin") {

@@ -34,6 +34,7 @@ import {
   X,
   MoreHorizontal,
   Trash2,
+  UserCheck,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 
@@ -152,6 +153,12 @@ export default function Sidebar({ user, permissions = {} }: { user: User; permis
             <NavLink item={{ href: "/trash", label: "Корзина", icon: Trash2 }} isActive={pathname.startsWith("/trash")} onClick={() => setMobileOpen(false)} />
             <NavLink item={{ href: "/settings", label: "Настройки", icon: Settings }} isActive={pathname.startsWith("/settings")} onClick={() => setMobileOpen(false)} />
           </>
+        )}
+        {/* v87: список юзеров, которые ожидают аппрува. Видно только админу,
+            и только когда там реально кто-то есть — счётчик подгружается
+            client-side, чтобы не дёргать API при каждом рендере sidebar. */}
+        {user.role === "admin" && (
+          <NavLink item={{ href: "/admin/pending", label: "Заявки на доступ", icon: UserCheck }} isActive={pathname.startsWith("/admin/pending")} onClick={() => setMobileOpen(false)} />
         )}
       </nav>
 
