@@ -17,23 +17,15 @@ export async function login(formData: FormData) {
   redirect("/");
 }
 
-export async function register(formData: FormData) {
-  const supabase = await createClient();
-  const email = formData.get("email") as string;
-  const password = formData.get("password") as string;
-  const full_name = formData.get("full_name") as string;
-
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { full_name } },
-  });
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  return { success: "Проверьте почту для подтверждения регистрации" };
+// Регистрация в CRM закрыта намеренно — это внутренняя B2B-система.
+// Раньше любой посторонний мог зарегистрироваться через эту action,
+// получить роль «manager» через trigger handle_new_user и сразу видеть
+// лиды, сделки, цены и реквизиты компаний.
+// Action оставлена в файле для совместимости с импортом из register/page
+// и сразу возвращает ошибку — даже если кто-то посылает POST напрямую,
+// в обход disabled UI, signUp не вызовется.
+export async function register(_formData: FormData) {
+  return { error: "Самостоятельная регистрация отключена. Доступ выдаёт администратор." };
 }
 
 export async function logout() {

@@ -80,11 +80,11 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-slate-500">
-            Нет аккаунта?{" "}
-            <Link href="/register" className="text-blue-600 hover:text-blue-700 hover:underline font-medium">
-              Зарегистрироваться
-            </Link>
+          {/* Регистрация закрыта намеренно — это внутренняя B2B CRM, доступы
+              выдаёт администратор. Раньше тут была ссылка /register, но через
+              неё постороннее лицо могло получить доступ к ценам/лидам/сделкам. */}
+          <p className="mt-6 text-center text-xs text-slate-400">
+            Доступ выдаётся администратором. Если вам нужен аккаунт — обратитесь к&nbsp;руководителю.
           </p>
         </div>
       </div>

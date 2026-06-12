@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { fetchAll, countRows } from "@/lib/supabase/fetchAll";
 import Header from "@/components/layout/Header";
 import LeadsList from "./LeadsList";
 
 export const metadata: Metadata = { title: "Лиды" };
 
-// Cap on initial server-side load. 5k rows is ~6 MB JSON which a
-// modern Chrome handles in ~1s. For accounts that grow past this we'd
-// need a real server-side pagination/search endpoint.
 const PAGE_LIMIT = 5000;
 
 export default async function LeadsPage() {
+  // ВАЖНО (security): сами leads тянем через USER-client. RLS-политика
+  // в schema.sql фильтрует строки до admin/supervisor → все, manager →
+  // только свои/назначенные. Раньше тут был createAdminClient() и в
+  // sidebar.bundle уходил весь датасет, видимый в Network-вкладке у
+  // любого зарегистрированного — это была критическая утечка.
+  // Справочники (users/funnel_stages/funnels) оставляем через admin —
+  // они общие, без чувствительных данных, и нужны UI всем.
+  const user = await createClient();
   const admin = createAdminClient();
 
   const [leads, users, funnelStages, funnels, totalActive] = await Promise.all([
-    fetchAll(admin, "leads", `
+    fetchAll(user, "leads", `
       *,
       contacts(id, full_name, phone),
       companies(id, name),
@@ -32,7 +38,7 @@ export default async function LeadsPage() {
       eq: { type: "lead" },
       order: { column: "is_default", ascending: false },
     }),
-    countRows(admin, "leads", { notDeleted: true }),
+    countRows(user, "leads", { notDeleted: true }),
   ]);
 
   return (

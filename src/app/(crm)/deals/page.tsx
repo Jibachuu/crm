@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { fetchAll, countRows } from "@/lib/supabase/fetchAll";
 import Header from "@/components/layout/Header";
 import DealsList from "./DealsList";
@@ -9,10 +10,14 @@ export const metadata: Metadata = { title: "Сделки" };
 const PAGE_LIMIT = 5000;
 
 export default async function DealsPage() {
+  // ВАЖНО (security): сделки тянем через USER-client с RLS — manager видит
+  // только свои/назначенные, admin/supervisor — все. Раньше тут был
+  // createAdminClient() и весь датасет уходил в браузер любому залогиненному.
+  const user = await createClient();
   const admin = createAdminClient();
 
   const [deals, users, funnelStages, totalActive] = await Promise.all([
-    fetchAll(admin, "deals", `
+    fetchAll(user, "deals", `
       *,
       contacts(id, full_name),
       companies(id, name),
@@ -25,7 +30,7 @@ export default async function DealsPage() {
     fetchAll(admin, "funnel_stages", "id, funnel_id, name, slug, color, sort_order, is_final, is_success", {
       order: { column: "sort_order" },
     }),
-    countRows(admin, "deals", { notDeleted: true }),
+    countRows(user, "deals", { notDeleted: true }),
   ]);
 
   // Get deal funnel stages
