@@ -38,9 +38,21 @@ function makeDeliveryRow(): InvoiceItem {
 }
 // Перекладывает массив так, чтобы доставка была одна и последней.
 // Если уже есть — сохраняем все правки менеджера (имя/цена/qty), просто
-// двигаем в конец. Если нет — добавляем дефолтную строку. Несколько
-// доставок схлопываем в первую (защита от двойного импорта).
+// двигаем в конец. Несколько доставок схлопываем в первую (защита от
+// двойного импорта). Если доставки НЕТ — оставляем как есть (раньше
+// функция автоматически добавляла дефолтную строку, и менеджер, удаляя
+// доставку, тут же получал её обратно — Жиба 15.06.2026: «доставка
+// иногда не нужна, а не убирается»).
 function withDeliveryLast(rows: InvoiceItem[]): InvoiceItem[] {
+  const delivery = rows.find(isDeliveryItem);
+  if (!delivery) return rows;
+  const rest = rows.filter((r) => !isDeliveryItem(r));
+  return [...rest, delivery];
+}
+// Явный вариант для мест, где доставка нужна по умолчанию (импорт из
+// КП / сделки, дублирование) — добавляет дефолтную строку, если её
+// нет, и кладёт в конец.
+function withDeliveryEnsured(rows: InvoiceItem[]): InvoiceItem[] {
   const delivery = rows.find(isDeliveryItem) ?? makeDeliveryRow();
   const rest = rows.filter((r) => !isDeliveryItem(r));
   return [...rest, delivery];
@@ -291,7 +303,8 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
         });
       }
     }
-    setItems(withDeliveryLast(withCanisterDispenser(out)));
+    // Импорт из КП — доставка добавляется по умолчанию.
+    setItems(withDeliveryEnsured(withCanisterDispenser(out)));
   }
 
   // Pull "Заказ"-block products straight from the linked deal into the
@@ -388,7 +401,8 @@ export default function InvoicesClient({ initialInvoices, companies, products, d
         });
       }
     }
-    setItems(withDeliveryLast(withCanisterDispenser(newItems)));
+    // Импорт из сделки — доставка добавляется по умолчанию.
+    setItems(withDeliveryEnsured(withCanisterDispenser(newItems)));
   }
 
   function selectBuyer(companyId: string) {
