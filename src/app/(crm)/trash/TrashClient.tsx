@@ -8,13 +8,14 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { apiGet, apiPost } from "@/lib/api/client";
 import { formatDateTime } from "@/lib/utils";
 
-type Tab = "leads" | "deals" | "contacts" | "companies" | "tasks";
+type Tab = "leads" | "deals" | "contacts" | "companies" | "tasks" | "invoices";
 const TABS: { id: Tab; label: string }[] = [
   { id: "leads", label: "Лиды" },
   { id: "deals", label: "Сделки" },
   { id: "contacts", label: "Контакты" },
   { id: "companies", label: "Компании" },
   { id: "tasks", label: "Задачи" },
+  { id: "invoices", label: "Счета" },
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,6 +26,14 @@ function formatRow(table: Tab, r: Row): { primary: string; secondary?: string } 
   if (table === "deals") return { primary: r.title || "—", secondary: [r.contacts?.full_name, r.companies?.name].filter(Boolean).join(" · ") };
   if (table === "contacts") return { primary: r.full_name || "—", secondary: [r.phone, r.email, r.companies?.name].filter(Boolean).join(" · ") };
   if (table === "companies") return { primary: r.name || "—", secondary: [r.inn, r.phone].filter(Boolean).join(" · ") };
+  if (table === "invoices") {
+    const date = r.invoice_date ? new Date(r.invoice_date).toLocaleDateString("ru-RU") : "";
+    const sum = r.total_amount != null ? `${Number(r.total_amount).toLocaleString("ru-RU")} ₽` : "";
+    return {
+      primary: `Счёт №${r.invoice_number ?? "—"}` + (date ? ` от ${date}` : ""),
+      secondary: [r.buyer_name, sum].filter(Boolean).join(" · "),
+    };
+  }
   return { primary: r.title || "—", secondary: r.due_date ? `до ${formatDateTime(r.due_date)}` : undefined };
 }
 
@@ -105,7 +114,9 @@ export default function TrashClient() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      <Link href={`/${tab}/${r.id}`} className="text-xs hover:underline" style={{ color: "#0067a5" }}>Открыть</Link>
+                      {/* invoices не имеют отдельной /[id] страницы — счёт открывается
+                          в preview-модалке через query ?open=<id> на /invoices. */}
+                      <Link href={tab === "invoices" ? `/invoices?open=${r.id}` : `/${tab}/${r.id}`} className="text-xs hover:underline" style={{ color: "#0067a5" }}>Открыть</Link>
                       <Button size="sm" variant="secondary" onClick={() => restore(r.id)} loading={busy}>
                         <RotateCcw size={12} /> Восстановить
                       </Button>

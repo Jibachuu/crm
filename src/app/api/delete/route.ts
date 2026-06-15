@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-// Tables that support soft delete (have deleted_at column from migration_v67).
-const SOFT_TABLES = ["leads", "deals", "contacts", "companies", "tasks"] as const;
+// Tables that support soft delete (have deleted_at column from migration_v67 + v88).
+const SOFT_TABLES = ["leads", "deals", "contacts", "companies", "tasks", "invoices"] as const;
 // Tables we still hard-delete from (no soft-delete need).
 const HARD_TABLES = ["products", "samples"] as const;
 

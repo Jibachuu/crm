@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const RESTORABLE = ["leads", "deals", "contacts", "companies", "tasks"] as const;
+const RESTORABLE = ["leads", "deals", "contacts", "companies", "tasks", "invoices"] as const;
 type Restorable = typeof RESTORABLE[number];
 
 const CHUNK = 50;

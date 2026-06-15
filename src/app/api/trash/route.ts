@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const SOFT_TABLES = ["leads", "deals", "contacts", "companies", "tasks"] as const;
+const SOFT_TABLES = ["leads", "deals", "contacts", "companies", "tasks", "invoices"] as const;
 type SoftTable = typeof SOFT_TABLES[number];
 
 // Per-table SELECT shapes — keep payloads small and human-readable in /trash UI.
@@ -12,6 +12,9 @@ const SELECTS: Record<SoftTable, string> = {
   contacts: "id, full_name, phone, email, deleted_at, companies(name)",
   companies: "id, name, inn, phone, deleted_at",
   tasks: "id, title, status, due_date, deleted_at",
+  // v88: invoices в корзине. Показываем номер, дату, сумму, покупателя —
+  // чтобы admin понимал что именно удалено и стоит ли восстанавливать.
+  invoices: "id, invoice_number, invoice_date, total_amount, buyer_name, deleted_at",
 };
 
 // GET /api/trash?table=leads&days=30 — admin/supervisor only
@@ -31,7 +34,7 @@ export async function GET(req: NextRequest) {
   const days = Number(url.searchParams.get("days") ?? "30");
 
   if (!table || !SOFT_TABLES.includes(table)) {
-    return NextResponse.json({ error: "table param required (leads/deals/contacts/companies/tasks)" }, { status: 400 });
+    return NextResponse.json({ error: "table param required (leads/deals/contacts/companies/tasks/invoices)" }, { status: 400 });
   }
 
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();

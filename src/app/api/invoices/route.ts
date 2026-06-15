@@ -33,13 +33,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ invoice, items });
   }
 
-  const { data, error } = await admin
+  // v88: фильтр deleted_at IS NULL — мягко удалённые счета не показываем
+  // в основном списке. Если миграция v88 ещё не применена, фильтр упадёт
+  // с «column does not exist» — отлавливаем и делаем fallback на старую
+  // выборку без фильтра.
+  let result = await admin
     .from("invoices")
     .select("*")
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(limit);
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ invoices: data ?? [] });
+  if (result.error && /deleted_at/.test(result.error.message)) {
+    result = await admin
+      .from("invoices")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+  }
+  if (result.error) return NextResponse.json({ error: result.error.message }, { status: 400 });
+  return NextResponse.json({ invoices: result.data ?? [] });
 }
 
 export async function POST(req: NextRequest) {
@@ -187,8 +199,34 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
+  // v88: soft delete вместо hard. Раньше счёт стирался физически и
+  // восстановить было нельзя (см. инцидент со счётом №60 от Жибы
+  // 2026-06-15). Теперь помечаем deleted_at — счёт исчезает из списков,
+  // лежит в /trash 30 дней, доступен admin/supervisor для восстановления.
+  // Связанные invoice_items не трогаем — нужны при restore. При hard-delete
+  // через /api/delete?force=1 удалится всё каскадом (FK on delete cascade).
+  // Fallback: если миграция v88 ещё не применена, падаем обратно на
+  // старый hard delete — UI не сломается, просто без soft-delete.
   const admin = createAdminClient();
-  await admin.from("invoice_items").delete().eq("invoice_id", id);
-  await admin.from("invoices").delete().eq("id", id);
+  const soft = await admin.from("invoices").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+  if (soft.error && /deleted_at/.test(soft.error.message)) {
+    await admin.from("invoice_items").delete().eq("invoice_id", id);
+    await admin.from("invoices").delete().eq("id", id);
+  } else if (soft.error) {
+    return NextResponse.json({ error: soft.error.message }, { status: 500 });
+  } else {
+    // Запись в аудит — кто и когда удалил. Помогает разбирать инциденты.
+    try {
+      await admin.from("audit_log").insert({
+        table_name: "invoices",
+        row_id: id,
+        action: "delete",
+        actor_id: user.id,
+        payload: { source: "api/invoices DELETE" },
+      });
+    } catch (e) {
+      console.warn("[audit_log invoice delete]", e);
+    }
+  }
   return NextResponse.json({ ok: true });
 }
