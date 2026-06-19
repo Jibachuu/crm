@@ -594,18 +594,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: leadErr.message }, { status: 500 });
   }
 
-  // lead_products принимает NULL product_id (см. existing schema), так что
-  // непривязанные позиции тоже сохраняются как пользовательский ввод.
+  // v89: product_id теперь nullable, name доступен — несопоставимые с
+  // каталогом позиции сохраняются с name из источника. Сначала пробуем
+  // вставить с name, при ошибке (pre-v89 schema) — fallback без name и
+  // только с привязанными позициями (старое поведение).
   if (lead?.id && resolved.length > 0) {
     for (const r of resolved) {
-      await admin.from("lead_products").insert({
+      const row = {
         lead_id: lead.id,
         product_id: r.productId,
         quantity: r.p.quantity || 1,
         unit_price: r.p.price,
         total_price: r.p.amount,
         product_block: "request",
-      });
+        name: r.p.name,
+      };
+      const ins = await admin.from("lead_products").insert(row);
+      if (ins.error && /column .*name.* does not exist|null value in column "product_id"/i.test(ins.error.message)) {
+        if (r.productId) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { name: _n, ...legacy } = row;
+          await admin.from("lead_products").insert(legacy);
+        }
+      }
     }
   }
 
@@ -656,27 +667,41 @@ export async function POST(req: NextRequest) {
 
     if (!dealErr && deal) {
       dealId = deal.id;
-      // deal_products.product_id is NOT NULL — кладём только те позиции
-      // что удалось привязать к каталогу. Несопоставимые остаются в
-      // lead_products + видны в секции «ЗАКАЗ» описания.
-      const insertable = resolved.filter((r) => r.productId);
-      if (insertable.length > 0) {
-        // kind не передаём — у колонки DEFAULT 'purchase' (миграция v82),
-        // а если v82 ещё не накатили — колонки нет и любое значение
-        // вызовет 42703.
-        await admin.from("deal_products").insert(
-          insertable.map((r) => ({
+      // v89: product_id теперь nullable + появилась колонка name. Кладём
+      // ВСЕ позиции, даже несопоставимые с каталогом — менеджер видит их
+      // во вкладке «Товары» и может позже добавить в /products. Раньше
+      // тут был filter(r => r.productId) и Жиба жаловалась 19.06.2026,
+      // что «Товары (0)», хотя в описании было 2 позиции по 3500₽.
+      // kind не передаём — у колонки DEFAULT 'purchase' (миграция v82),
+      // а если v82 ещё не накатили — колонки нет и любое значение
+      // вызовет 42703.
+      const rowsWithName = resolved.map((r) => ({
+        deal_id: deal.id,
+        product_id: r.productId,
+        quantity: r.p.quantity || 1,
+        unit_price: r.p.price,
+        total_price: r.p.amount,
+        product_block: "order",
+        name: r.p.name,
+      }));
+      const ins = await admin.from("deal_products").insert(rowsWithName);
+      if (ins.error && /column .*name.* does not exist|null value in column "product_id"/i.test(ins.error.message)) {
+        // Pre-v89 schema fallback: только привязанные, без name.
+        const legacy = resolved
+          .filter((r) => r.productId)
+          .map((r) => ({
             deal_id: deal.id,
             product_id: r.productId as string,
             quantity: r.p.quantity || 1,
             unit_price: r.p.price,
             total_price: r.p.amount,
             product_block: "order",
-          }))
-        );
+          }));
+        if (legacy.length > 0) await admin.from("deal_products").insert(legacy);
+        console.warn(`[TILDA] v89 schema not applied — fell back to legacy insert (${legacy.length}/${resolved.length} items)`);
       }
       if (unmatched.length > 0) {
-        console.warn(`[TILDA] ${unmatched.length} позиций не привязаны к каталогу:`, unmatched.map((u) => u.p.sku || u.p.name).join(", "));
+        console.warn(`[TILDA] ${unmatched.length} позиций без привязки к каталогу — сохранены как свободные строки, добавьте товары в /products чтобы будущие заказы подцеплялись автоматом:`, unmatched.map((u) => u.p.sku || u.p.name).join(", "));
       }
     } else if (dealErr) {
       console.error("[TILDA] Failed to create won deal:", dealErr.message);

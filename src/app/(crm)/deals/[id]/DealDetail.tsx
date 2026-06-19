@@ -953,7 +953,7 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                 </tr>
               </thead>
               <tbody>
-                {items.map((item: { id: string; products: { name: string; sku: string; image_url?: string; liters?: string; container?: string }; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; lifecycle_days?: number; quantity: number; unit_price: number; discount_percent: number; total_price: number; variants?: { label: string; price: number; quantity: number; sum: number }[] }) => {
+                {items.map((item: { id: string; name?: string | null; products?: { name?: string; sku?: string; image_url?: string; liters?: string; container?: string } | null; base_price?: number; category?: string; subcategory?: string; volume_ml?: number; flavor?: string; lifecycle_days?: number; quantity: number; unit_price: number; discount_percent: number; total_price: number; variants?: { label: string; price: number; quantity: number; sum: number }[] }) => {
                   // Объём и тара из каталога — менеджеры просили видеть
                   // прямо в строке заказа/запроса (Жиба 04.06.2026: «Мыло
                   // 300мл / Стекло», иначе «Мыло» без объёма выглядит
@@ -976,11 +976,16 @@ function DealProductBlock({ title, description, items, total, onAdd, block = "re
                         )}
                         <div className="flex-1 min-w-0">
                           <p className="font-medium" style={{ color: "#333" }}>
-                            {item.products?.name}
+                            {/* v89: fallback на item.name для свободных позиций (без product_id) —
+                                пришли из Tilda-webhook, в каталоге нет, но юзер хочет их видеть. */}
+                            {item.products?.name || item.name || "Без названия"}
+                            {!item.products?.name && item.name && (
+                              <span className="text-xs font-normal ml-2 px-1.5 py-0.5 rounded" style={{ background: "#fff4e5", color: "#bf7600", border: "1px solid #ffd9a8" }}>не в каталоге</span>
+                            )}
                             {litersText && <span className="text-xs font-normal ml-1" style={{ color: "#555" }}>· {litersText}</span>}
                             {containerText && <span className="text-xs font-normal ml-1" style={{ color: "#888" }}>· {containerText}</span>}
                           </p>
-                          <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products?.sku}</p>
+                          {item.products?.sku && <p className="text-xs" style={{ color: "#aaa" }}>Арт. {item.products.sku}</p>}
                           {item.flavor && <p className="text-xs" style={{ color: "#7b1fa2" }}>{item.flavor}</p>}
                           {(item.category || item.subcategory) && (
                             <p className="text-xs" style={{ color: "#0067a5" }}>{[item.category, item.subcategory].filter(Boolean).join(" → ")}</p>
