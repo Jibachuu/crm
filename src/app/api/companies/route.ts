@@ -80,6 +80,23 @@ export async function POST(req: NextRequest) {
   ]) {
     if (body[f] !== undefined) insert[f] = body[f] || null;
   }
+
+  // v86 защита: если миграция ещё не применена, выкидываем bank_* колонки —
+  // иначе PostgREST вернёт «Could not find the 'bank_account' column» и UI
+  // покажет красную плашку вместо создания компании.
+  if (
+    "bank_name" in insert || "bank_account" in insert ||
+    "bik" in insert || "corr_account" in insert
+  ) {
+    const probe = await admin.from("companies").select("bank_name").limit(1);
+    if (probe.error) {
+      delete insert.bank_name;
+      delete insert.bank_account;
+      delete insert.bik;
+      delete insert.corr_account;
+    }
+  }
+
   const { data, error } = await admin
     .from("companies")
     .insert(insert)
