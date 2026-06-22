@@ -382,7 +382,10 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
           <Card>
             <CardBody>
               <h2 className="text-base font-semibold mb-1" style={{ color: "#333" }}>{deal.title}</h2>
-              {deal.description && <p className="text-sm" style={{ color: "#666" }}>{deal.description}</p>}
+              {/* white-space: pre-line — сохраняет переносы строк из webhook'ов
+                  (Tilda, Cart-форма). Иначе всё схлопывается в одну простыню
+                  как было: «КОНТАКТ ... АДРЕС ... ЗАКАЗ ...» одной строкой. */}
+              {deal.description && <p className="text-sm whitespace-pre-line" style={{ color: "#666" }}>{deal.description}</p>}
             </CardBody>
           </Card>
 

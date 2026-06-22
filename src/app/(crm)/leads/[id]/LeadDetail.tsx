@@ -415,7 +415,10 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
           <Card>
             <CardBody>
               <h2 className="text-base font-semibold mb-1" style={{ color: "#333" }}>{lead.title}</h2>
-              {lead.description && <p className="text-sm" style={{ color: "#666" }}>{lead.description}</p>}
+              {/* whitespace-pre-line — сохраняет переносы строк из Tilda-webhook
+                  и других интеграций, иначе текст КОНТАКТ/АДРЕС/ЗАКАЗ схлопывается
+                  в одну строку (Жиба 22.06.2026). */}
+              {lead.description && <p className="text-sm whitespace-pre-line" style={{ color: "#666" }}>{lead.description}</p>}
             </CardBody>
           </Card>
 
