@@ -27,7 +27,7 @@ const CONTRACT_COLORS: Record<string, { bg: string; color: string }> = {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function CompaniesList({ initialCompanies, users, totalActive = initialCompanies.length, pageLimit = 1000 }: any) {
+export default function CompaniesList({ initialCompanies, users, totalActive = initialCompanies.length, pageLimit = 1000, havenbergCompanyIds = [] }: any) {
   const { user: currentUser, isManager } = useCurrentUser();
   const [companies, setCompanies] = useState(initialCompanies);
   const [search, setSearch] = useState("");
@@ -38,16 +38,22 @@ export default function CompaniesList({ initialCompanies, users, totalActive = i
   const [dateTo, setDateTo] = useState<string | null>(null);
   const [bulkTaskOpen, setBulkTaskOpen] = useState(false);
   const [contractFilter, setContractFilter] = useState("");
+  // v89 — фильтр «только компании, заказавшие УФ-печать с лого Havenberg».
+  // Set создан один раз из serverside-array.
+  const [havenbergOnly, setHavenbergOnly] = useState(false);
+  const havenbergSet = useState<Set<string>>(() => new Set(havenbergCompanyIds as string[]))[0];
 
-  const filtered = companies.filter((c: { name: string; inn?: string; company_type?: string; contract_status?: string; created_at?: string }) => {
+  const filtered = companies.filter((c: { id: string; name: string; brand_name?: string; inn?: string; company_type?: string; contract_status?: string; created_at?: string }) => {
     const matchSearch = !search ||
       c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.brand_name?.toLowerCase().includes(search.toLowerCase()) ||
       c.inn?.includes(search) ||
       COMPANY_TYPE_LABELS[c.company_type ?? ""]?.toLowerCase().includes(search.toLowerCase());
     const matchContract = !contractFilter || (c.contract_status ?? "none") === contractFilter;
     const matchesDate = (!dateFrom || (c.created_at ?? "") >= dateFrom) && (!dateTo || (c.created_at ?? "") <= dateTo + "T23:59:59");
     const matchesOwner = !isManager || !currentUser || (c as any).assigned_to === currentUser.id;
-    return matchSearch && matchContract && matchesDate && matchesOwner;
+    const matchesHavenberg = !havenbergOnly || havenbergSet.has(c.id);
+    return matchSearch && matchContract && matchesDate && matchesOwner && matchesHavenberg;
   });
 
   const [showCount, setShowCount] = useState(100);
@@ -109,6 +115,14 @@ export default function CompaniesList({ initialCompanies, users, totalActive = i
           ))}
         </select>
         <DateRangeFilter onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
+        {/* Фильтр «Havenberg-УФ» — показывает компании, которые хотя бы раз
+            заказывали флакон с вариантом «С УФ-печатью и логотипом Havenberg».
+            Set company_id вычисляется на сервере (см. companies/page.tsx),
+            здесь только бинарный toggle поверх него. */}
+        <label className="flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1.5 rounded" style={{ border: "1px solid #d0d0d0", background: havenbergOnly ? "#fff4e5" : "#fff", color: havenbergOnly ? "#bf7600" : "#666" }} title="Показать только компании, заказывавшие флаконы с УФ-печатью и нашим логотипом">
+          <input type="checkbox" checked={havenbergOnly} onChange={(e) => { setHavenbergOnly(e.target.checked); setSelected(new Set()); }} style={{ accentColor: "#e65c00" }} />
+          Havenberg-УФ ({havenbergSet.size})
+        </label>
         <ExportImportButtons entity="companies" onImported={() => window.location.reload()} />
         <PurgeButton table="companies" onPurged={() => window.location.reload()} />
         <Button onClick={() => setShowCreate(true)} size="sm">
@@ -157,21 +171,33 @@ export default function CompaniesList({ initialCompanies, users, totalActive = i
               </thead>
               <tbody>
                 {(paginatedCompanies as any[]).map((company: {
-                  id: string; name: string; inn?: string; company_type?: string; contract_status?: string;
+                  id: string; name: string; brand_name?: string; inn?: string; company_type?: string; contract_status?: string;
                   phone?: string; email?: string; website?: string; users?: { full_name: string };
                 }) => {
                   const isSel = selected.has(company.id);
+                  const hasHavenberg = havenbergSet.has(company.id);
                   return (
                     <tr key={company.id} style={{ borderBottom: "1px solid #f0f0f0", background: isSel ? "#f0f7ff" : "transparent" }}>
                       <td className="px-3 py-2.5">
                         <input type="checkbox" checked={isSel} onChange={() => toggleOne(company.id)} className="cursor-pointer" style={{ accentColor: "#0067a5" }} />
                       </td>
                       <td className="px-4 py-2.5">
-                        <Link href={`/companies/${company.id}`} className="flex items-center gap-2">
+                        <Link href={`/companies/${company.id}`} className="flex items-center gap-2 min-w-0">
                           <div className="w-7 h-7 rounded flex items-center justify-center flex-shrink-0" style={{ background: "#f0f0f0" }}>
                             <Building2 size={14} style={{ color: "#888" }} />
                           </div>
-                          <span className="font-medium hover:underline" style={{ color: "#0067a5" }}>{company.name}</span>
+                          {/* brand_name из карточки компании («Бренд / заведение») — иначе
+                              менеджеру по юр-имени «ИП Абдул Юлия Валерьевна» не понять, что
+                              это салон «Lotus Spa». Brand рендерим серым справа от юр-имени. */}
+                          <div className="min-w-0 flex-1">
+                            <span className="font-medium hover:underline" style={{ color: "#0067a5" }}>{company.name}</span>
+                            {company.brand_name && (
+                              <span className="ml-1.5 text-xs" style={{ color: "#888" }}>· {company.brand_name}</span>
+                            )}
+                            {hasHavenberg && (
+                              <span className="ml-1.5 inline-flex items-center text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold align-middle" style={{ background: "#fff4e5", color: "#bf7600", border: "1px solid #ffd9a8" }} title="Заказывали флакон «С УФ-печатью и логотипом Havenberg»">УФ+лого</span>
+                            )}
+                          </div>
                         </Link>
                       </td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{company.inn ?? "—"}</td>
