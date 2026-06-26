@@ -50,6 +50,31 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (upsert.error) return NextResponse.json({ error: upsert.error.message }, { status: 400 });
+
+  // v90 (#40 Рустем 23.06.2026): «Контакт через поле в сделке не виден в
+  // списке сделок». Раньше «+ Добавить контакт» на странице сделки писал
+  // ТОЛЬКО в deal_contacts (junction) — а DealsList в списке сделок
+  // показывает через JOIN на deals.contact_id (primary FK). Если у сделки
+  // contact_id ещё пустой, его нужно проставить, чтобы контакт появился
+  // и в списке, и в публичных карточках.
+  // Также синхронизируем deals.company_id с company_id контакта если
+  // у сделки нет company (часто бывает у Tilda-обращений без company link).
+  const { data: dealRow } = await admin.from("deals")
+    .select("contact_id, company_id")
+    .eq("id", body.deal_id)
+    .single();
+  if (dealRow && !dealRow.contact_id) {
+    const { data: contactRow } = await admin.from("contacts")
+      .select("company_id")
+      .eq("id", body.contact_id)
+      .single();
+    const dealUpdates: Record<string, unknown> = { contact_id: body.contact_id };
+    if (!dealRow.company_id && contactRow?.company_id) {
+      dealUpdates.company_id = contactRow.company_id;
+    }
+    await admin.from("deals").update(dealUpdates).eq("id", body.deal_id);
+  }
+
   return NextResponse.json(upsert.data);
 }
 

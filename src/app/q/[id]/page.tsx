@@ -483,9 +483,14 @@ export default async function PublicQuotePage({ params }: { params: Promise<{ id
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer. Рустем 13.05.2026 попросил приписку «Не является
+            публичной офертой» — добавлено мелким шрифтом отдельной строкой
+            под основным брендом. */}
         <div style={{ padding: "12px 40px", fontSize: 11, textAlign: "center", color: "#b3a894", borderTop: "1px solid #efe9df" }}>
           Artevo — антивандальные держатели и косметика Havenberg для HoReCa
+          <div style={{ marginTop: 4, fontSize: 10, color: "#c4b8a0" }}>
+            Настоящее коммерческое предложение не является публичной офертой (ст. 437 ГК РФ).
+          </div>
         </div>
       </div>
     </div>
