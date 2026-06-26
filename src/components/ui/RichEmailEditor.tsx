@@ -110,7 +110,13 @@ export default function RichEmailEditor({ value, onChange, onPasteFiles, placeho
         }
         if (files.length === 0) return false;
 
-        // Картинки — вставляем inline (data URL). Остальное — в attachments callback.
+        // Картинки — встраиваем inline (data URL) для превью И параллельно
+        // отправляем в attachments-callback. Раньше делали только inline
+        // → Gmail/Outlook часто блокируют base64-img → получатель не видел
+        // картинку (Рустем 29.05.2026: «прикрепил картинку, но она не
+        // прикрепилась хотя визуально была в письме как файл»). Теперь
+        // картинка попадает И в HTML тело (для превью / клиентов умеющих
+        // base64) И как реальный attachment файла.
         const images = files.filter((f) => f.type.startsWith("image/"));
         const others = files.filter((f) => !f.type.startsWith("image/"));
         if (images.length > 0) {
@@ -118,6 +124,7 @@ export default function RichEmailEditor({ value, onChange, onPasteFiles, placeho
           Promise.all(images.map(fileToDataUrl)).then((urls) => {
             urls.forEach((url) => editor?.chain().focus().setImage({ src: url }).run());
           });
+          if (onPasteFiles) onPasteFiles(images);
         }
         if (others.length > 0 && onPasteFiles) {
           if (images.length === 0) event.preventDefault();
@@ -136,6 +143,8 @@ export default function RichEmailEditor({ value, onChange, onPasteFiles, placeho
         Promise.all(images.map(fileToDataUrl)).then((urls) => {
           urls.forEach((url) => editor?.chain().focus().setImage({ src: url }).run());
         });
+        // Та же логика что в paste — картинки и inline и attachment.
+        if (images.length > 0 && onPasteFiles) onPasteFiles(images);
         if (others.length > 0 && onPasteFiles) onPasteFiles(others);
         return true;
       },
