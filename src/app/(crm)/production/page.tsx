@@ -42,15 +42,43 @@ export default async function ProductionPage() {
     console.error("[production] load failed:", loadError);
   }
 
-  const [{ data: users }, { data: wonDeals }] = await Promise.all([
+  // v90 (#41 Жиба 26.06.2026): «была выигранная сделка ИП Семёнов в CRM,
+  // не нашлась в производстве». Старый запрос отдавал ТОЛЬКО первые 50
+  // сделок где text-поле stage='won'. Две дыры:
+  //   1) лимит 50 — старые won-сделки просто не доезжали до dropdown'а;
+  //   2) часть сделок хранит «выигранность» через stage_id → funnel_stages
+  //      где is_success=true, но text-поле stage не обязательно ровно "won"
+  //      (бывает "Выиграна", "win" и т.д.). Раньше такие не показывались.
+  // Сначала вычисляем все стейджи с is_success=true в воронках сделок,
+  // потом отбираем сделки где stage='won' ИЛИ stage_id IN (success-stages).
+  // Также исключаем те у которых УЖЕ есть order_production — нет смысла
+  // создавать второй заказ из той же сделки. Лимит подняли до 500.
+  const { data: successStages } = await admin
+    .from("funnel_stages")
+    .select("id, funnels!inner(type)")
+    .eq("is_success", true)
+    .eq("funnels.type", "deal");
+  const successStageIds = (successStages ?? []).map((s: { id: string }) => s.id);
+
+  const { data: existingOrders } = await admin
+    .from("order_production")
+    .select("deal_id")
+    .not("deal_id", "is", null);
+  const usedDealIds = new Set((existingOrders ?? []).map((r: { deal_id: string | null }) => r.deal_id).filter(Boolean));
+
+  let wonQuery = admin.from("deals")
+    .select("id, title, stage, stage_id, companies(name)")
+    .is("deleted_at", null);
+  if (successStageIds.length > 0) {
+    wonQuery = wonQuery.or(`stage.eq.won,stage_id.in.(${successStageIds.join(",")})`);
+  } else {
+    wonQuery = wonQuery.eq("stage", "won");
+  }
+  const [{ data: users }, { data: wonDealsRaw }] = await Promise.all([
     admin.from("users").select("id, full_name").eq("is_active", true).order("full_name"),
-    admin.from("deals")
-      .select("id, title, companies(name)")
-      .eq("stage", "won")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(50),
+    wonQuery.order("created_at", { ascending: false }).limit(500),
   ]);
+  const wonDeals = (wonDealsRaw ?? []).filter((d: { id: string }) => !usedDealIds.has(d.id));
 
   return (
     <>
