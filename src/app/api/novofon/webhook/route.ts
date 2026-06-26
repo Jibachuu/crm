@@ -99,6 +99,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // v90: assignee из scenario_name СНАЧАЛА — чтобы при INSERT
+    // communication уже было правильное created_by. Иначе попап у
+    // менеджеров глохнет в первые ~3 сек (window между INSERT и UPDATE
+    // created_by) — фильтр /api/novofon/active-call отбрасывает звонок
+    // с NULL для manager-роли.
+    const scenarioNameEarly = (body.scenario_name || "").trim();
+    let earlyAssignee: string | null = null;
+    if (scenarioNameEarly) {
+      const { data: scenarioUser } = await admin.from("users")
+        .select("id")
+        .ilike("full_name", `%${scenarioNameEarly}%`)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      if (scenarioUser) earlyAssignee = scenarioUser.id;
+    }
+
     // Store call for popup
     const { error: commErr } = await admin.from("communications").insert({
       channel: "phone",
@@ -113,6 +130,7 @@ export async function POST(req: NextRequest) {
       contact_id: contactId,
       company_id: companyId,
       sender_name: dbContactName || contactName || callerPhone,
+      created_by: earlyAssignee, // null если не определили — поправим в UPDATE ниже
     });
     if (commErr) console.error("[novofon] comm insert error:", commErr.message);
 
@@ -139,7 +157,14 @@ export async function POST(req: NextRequest) {
     // active state for >30 days; treating it as expired and creating a
     // duplicate is exactly the spam pattern Рустем reported. Dedup by
     // status, not by age.
-    let assignee: string | null = null;
+    // earlyAssignee уже определён выше (по scenario_name) и записан как
+    // created_by при INSERT communication. Если scenario не дал — упадём
+    // в existing-lead/round-robin как раньше.
+    let assignee: string | null = earlyAssignee;
+    if (assignee) {
+      console.log("[novofon] assignee from scenario_name", scenarioNameEarly, "→", assignee);
+    }
+
     if (contactId) {
       const { data: existingLead } = await admin.from("leads")
         .select("id, assigned_to")
@@ -151,14 +176,18 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (existingLead) {
-        assignee = existingLead.assigned_to ?? null;
+        // Existing-лид имеет приоритет над scenario_name (юзер мог сам
+        // переназначить), но если scenario сильнее matched — оставляем
+        // того кого определили выше.
+        if (!assignee) assignee = existingLead.assigned_to ?? null;
         console.log("[novofon] reusing lead", existingLead.id, "for contact", contactId);
       } else {
         const { data: funnel } = await admin.from("funnels").select("id").eq("type", "lead").eq("is_default", true).single();
         const { data: firstStage } = funnel
           ? await admin.from("funnel_stages").select("id").eq("funnel_id", funnel.id).order("sort_order").limit(1).single()
           : { data: null };
-        assignee = await pickAutoLeadAssignee(admin);
+        // Если scenario_name не дал assignee — round-robin.
+        if (!assignee) assignee = await pickAutoLeadAssignee(admin);
         const leadTitle = `Звонок: ${dbContactName || contactName || callerPhone}`;
 
         const { data: newLead, error: leadErr } = await admin.from("leads").insert({

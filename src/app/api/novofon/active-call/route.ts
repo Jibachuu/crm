@@ -11,11 +11,26 @@ export async function GET() {
   const admin = createAdminClient();
   const since = new Date(Date.now() - 30000).toISOString();
 
-  const { data } = await admin.from("communications")
-    .select("id, channel, direction, subject, body, sender_name, from_address, contact_id, created_at")
+  // ВАЖНО (#39, Рустем 22.06.2026): фильтр по created_by = текущий юзер.
+  // Раньше endpoint возвращал последний inbound звонок ЛЮБОМУ авторизо-
+  // ванному → попап вылезал у всех у кого открыт CRM, а звонок реально
+  // принимал кто-то один. Жиба видела попап чужого звонка, Рустем
+  // принимал на ноуте звонок который пошёл на телефон.
+  // webhook ставит created_by на assignee из существующего лида или
+  // round-robin — для не-привязанных звонков created_by может быть NULL.
+  // Такие показываем admin/supervisor чтобы они могли распределить.
+  const { data: me } = await admin.from("users").select("role").eq("id", user.id).single();
+  const isLead = me?.role === "admin" || me?.role === "supervisor";
+
+  let query = admin.from("communications")
+    .select("id, channel, direction, subject, body, sender_name, from_address, contact_id, created_at, created_by")
     .eq("channel", "phone")
     .eq("direction", "inbound")
-    .gte("created_at", since)
+    .gte("created_at", since);
+  // admin/supervisor видят все звонки (включая «бесхозные» created_by=null),
+  // обычные менеджеры — только те где created_by совпадает с их id.
+  if (!isLead) query = query.eq("created_by", user.id);
+  const { data } = await query
     .order("created_at", { ascending: false })
     .limit(1)
     .single();
