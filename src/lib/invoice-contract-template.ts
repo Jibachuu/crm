@@ -63,6 +63,12 @@ export type InvoiceContractVars = {
   // в /api/contracts/generate из реквизитов supplier + суммы. Если пусто,
   // блок справа от шапки не отрисовывается. Как в обычном счёте.
   qr_img?: string;
+  // v90 (26.06.2026) — брендовая шапка одинаковая во всех счетах. Если
+  // logo_url пустой, рисуется текстовый ARTEVO как fallback. Слоган
+  // захардкожен — это фирменный текст бренда, не меняется per-документ.
+  logo_img?: string;
+  supplier_phone?: string;
+  supplier_email?: string;
 };
 
 const tdHead = 'style="border:1px solid #000;padding:5px 8px;font-size:11px;font-weight:bold;text-align:center"';
@@ -103,6 +109,27 @@ export function generateInvoiceContractHtml(v: InvoiceContractVars): string {
   @media print{body{margin:0}p{orphans:3;widows:3}#printBtn{display:none!important}}
   #printBtn button{padding:10px 30px;font-size:14px;background:#0067a5;color:#fff;border:none;border-radius:6px;cursor:pointer}
 </style></head><body>
+
+<!-- Брендовая шапка (логотип + слоган + контакты). Единый формат во всех
+     счетах (обычный, оферта, счёт-договор) — см. printInvoice в
+     /(crm)/invoices/InvoicesClient.tsx. -->
+<div style="display:flex;align-items:center;gap:24px;padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid #ddd">
+  <div style="flex-shrink:0;width:170px;display:flex;align-items:center">
+    ${v.logo_img
+      ? `<img src="${v.logo_img}" alt="ARTEVO" style="max-width:170px;max-height:60px;object-fit:contain" />`
+      : `<span style="font-size:32px;font-weight:300;color:#666;letter-spacing:4px;line-height:1">ARTEVO</span>`
+    }
+  </div>
+  <div style="flex:1;font-size:11px;color:#333;line-height:1.4">
+    <p style="font-weight:bold;margin:0">Архитектура ощущений в вашем заведении.</p>
+    <p style="margin:2px 0 0;color:#555">Парфюмированные средства, антивандальные держатели, аксессуары для интерьера.</p>
+  </div>
+  <div style="font-size:10px;color:#555;line-height:1.55;text-align:right;flex-shrink:0">
+    Служба заботы: Пн-Пт 09:00-19:00<br>
+    Телефон: ${dash(v.supplier_phone) === "—" ? "+7 (843) 297-33-22" : v.supplier_phone}<br>
+    Почта: ${dash(v.supplier_email) === "—" ? "info@art-evo.ru" : v.supplier_email}
+  </div>
+</div>
 
 <!-- Шапка: банковские реквизиты получателя (+ QR-код справа) -->
 <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px">

@@ -171,6 +171,11 @@ export async function GET(req: NextRequest) {
       stamp_img: stampSrc,
       sig_img: sigSrc,
       qr_img: qrImg,
+      // v90: брендовая шапка через image-proxy (Supabase storage URL не CORS-
+      // friendly для html2canvas, прокси отдаёт с правильными хедерами).
+      logo_img: supplier?.logo_url ? proxyUrl(supplier.logo_url) : "",
+      supplier_phone: supplier?.phone || "",
+      supplier_email: supplier?.email || "",
     });
     return NextResponse.json({ html });
   }
