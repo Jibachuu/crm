@@ -8,13 +8,15 @@ export const metadata: Metadata = { title: "Компании" };
 
 const PAGE_LIMIT = 5000;
 
-// Лейбл варианта флакона с фирменной маркировкой Havenberg на УФ-печати.
-// Запрошено отдельным фильтром «компании, которые заказывали этот вариант»,
-// чтобы маркетинг видел постоянных клиентов с co-branding'ом. Лейблы
-// формируются в InvoicesClient.expandBottleVariants — точное совпадение
-// важно (другие лейблы про Havenberg, типа «С наклейкой и логотипом
-// Havenberg», тут НЕ учитываются — спросила про УФ).
-const HAVENBERG_UV_LABEL = "С УФ-печатью и логотипом Havenberg";
+// Все варианты флаконов с фирменной маркировкой Havenberg — и с
+// УФ-печатью, и с наклейкой. Жиба 26.06.2026: «не важно с наклейкой
+// или с уф печатью, мне нужны все компании, заказавшие флаконы с
+// нашим лого». Лейблы формируются в InvoicesClient.expandBottleVariants
+// — точное совпадение важно.
+const HAVENBERG_LABELS = new Set([
+  "С УФ-печатью и логотипом Havenberg",
+  "С наклейкой и логотипом Havenberg",
+]);
 
 export default async function CompaniesPage() {
   const admin = createAdminClient();
@@ -51,7 +53,7 @@ export default async function CompaniesPage() {
     if (!deal || deal.deleted_at || !deal.company_id) continue;
     const variants = Array.isArray(row.variants) ? row.variants : [];
     for (const v of variants as Array<{ label?: string }>) {
-      if (v?.label === HAVENBERG_UV_LABEL) {
+      if (v?.label && HAVENBERG_LABELS.has(v.label)) {
         havenbergCompanyIds.add(deal.company_id);
         break;
       }

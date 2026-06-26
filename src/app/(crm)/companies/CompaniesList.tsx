@@ -115,13 +115,13 @@ export default function CompaniesList({ initialCompanies, users, totalActive = i
           ))}
         </select>
         <DateRangeFilter onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
-        {/* Фильтр «Havenberg-УФ» — показывает компании, которые хотя бы раз
-            заказывали флакон с вариантом «С УФ-печатью и логотипом Havenberg».
-            Set company_id вычисляется на сервере (см. companies/page.tsx),
-            здесь только бинарный toggle поверх него. */}
-        <label className="flex items-center gap-1.5 text-xs cursor-pointer px-2 py-1.5 rounded" style={{ border: "1px solid #d0d0d0", background: havenbergOnly ? "#fff4e5" : "#fff", color: havenbergOnly ? "#bf7600" : "#666" }} title="Показать только компании, заказывавшие флаконы с УФ-печатью и нашим логотипом">
+        {/* Фильтр «С лого Havenberg» — показывает компании, у которых хотя бы
+            одна сделка содержит вариант флакона с нашим логотипом (УФ-печать
+            ИЛИ наклейка). Set company_id вычисляется на сервере, здесь
+            бинарный toggle. Жирная обводка чтобы юзер не пропустил. */}
+        <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer px-3 py-1.5 rounded whitespace-nowrap" style={{ border: havenbergOnly ? "2px solid #e65c00" : "2px solid #ffd9a8", background: havenbergOnly ? "#fff4e5" : "#fffaf3", color: havenbergOnly ? "#bf7600" : "#bf7600" }} title="Показать только компании, заказавшие флаконы с нашим лого (УФ-печать или наклейка)">
           <input type="checkbox" checked={havenbergOnly} onChange={(e) => { setHavenbergOnly(e.target.checked); setSelected(new Set()); }} style={{ accentColor: "#e65c00" }} />
-          Havenberg-УФ ({havenbergSet.size})
+          С лого Havenberg ({havenbergSet.size})
         </label>
         <ExportImportButtons entity="companies" onImported={() => window.location.reload()} />
         <PurgeButton table="companies" onPurged={() => window.location.reload()} />
@@ -195,7 +195,7 @@ export default function CompaniesList({ initialCompanies, users, totalActive = i
                               <span className="ml-1.5 text-xs" style={{ color: "#888" }}>· {company.brand_name}</span>
                             )}
                             {hasHavenberg && (
-                              <span className="ml-1.5 inline-flex items-center text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold align-middle" style={{ background: "#fff4e5", color: "#bf7600", border: "1px solid #ffd9a8" }} title="Заказывали флакон «С УФ-печатью и логотипом Havenberg»">УФ+лого</span>
+                              <span className="ml-1.5 inline-flex items-center text-[10px] px-1.5 py-0.5 rounded uppercase font-semibold align-middle" style={{ background: "#fff4e5", color: "#bf7600", border: "1px solid #ffd9a8" }} title="Заказывали флакон с нашим лого (УФ-печать или наклейка)">Havenberg</span>
                             )}
                           </div>
                         </Link>
