@@ -1283,9 +1283,11 @@ function doPrint(){
                           Вариации
                         </button>
                       )}
-                      {/* Доставку убрать нельзя: она автоматически возвращается
-                          обратно дефолтной, поэтому крестик у неё не показываем. */}
-                      {!delivery && items.length > 1 && <button onClick={() => removeItem(i)} className="text-xs text-red-500 hover:underline">✕</button>}
+                      {/* Доставку теперь можно удалить (withDeliveryLast после
+                          фикса 15.06.2026 не возвращает её обратно). Раньше
+                          крестик у строки доставки был скрыт. items.length > 1
+                          оставляем — нельзя удалить последнюю строку счёта. */}
+                      {items.length > 1 && <button onClick={() => removeItem(i)} className="text-xs text-red-500 hover:underline">✕</button>}
                     </div>
                   </div>
                 </div>
