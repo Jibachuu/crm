@@ -41,6 +41,12 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [variants, setVariants] = useState<ItemVariant[]>([]);
+  // v90 (Жиба 29.06.2026): free-form ввод — когда товара нет в каталоге.
+  // product_id остаётся null (миграция v89 разрешает), name берётся из
+  // freeformName. UI рендеринга в DealDetail уже умеет фоллбэк на item.name
+  // и бейдж «не в каталоге».
+  const [freeformMode, setFreeformMode] = useState(false);
+  const [freeformName, setFreeformName] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -126,29 +132,40 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
   const effectiveQty = hasVariants ? variantsQty : quantity;
 
   async function handleAdd() {
-    if (!selected) return;
+    // v90: либо выбран товар из каталога, либо freeform-режим с введённым
+    // именем. Иначе нечего сохранять.
+    if (!selected && !freeformMode) return;
+    if (freeformMode && !freeformName.trim()) {
+      alert("Введите название товара");
+      return;
+    }
     setLoading(true);
     const supabase = createClient();
     const table = entityType === "lead" ? "lead_products" : "deal_products";
     const fkField = entityType === "lead" ? "lead_id" : "deal_id";
 
+    const insertRow: Record<string, unknown> = {
+      [fkField]: entityId,
+      product_id: selected?.id ?? null,
+      variant_id: null,
+      quantity: effectiveQty,
+      base_price: basePrice,
+      unit_price: unitPrice,
+      discount_percent: Number(discountPct) || 0,
+      total_price: total,
+      product_block: productBlock,
+      category: selected?.category ?? null,
+      subcategory: selected?.subcategory ?? null,
+      lifecycle_days: lifecycleDays > 0 ? lifecycleDays : null,
+      variants: hasVariants ? variants : [],
+    };
+    if (freeformMode) {
+      insertRow.name = freeformName.trim();
+    }
+
     const { data, error } = await supabase
       .from(table)
-      .insert({
-        [fkField]: entityId,
-        product_id: selected.id,
-        variant_id: null,
-        quantity: effectiveQty,
-        base_price: basePrice,
-        unit_price: unitPrice,
-        discount_percent: Number(discountPct) || 0,
-        total_price: total,
-        product_block: productBlock,
-        category: selected.category || null,
-        subcategory: selected.subcategory || null,
-        lifecycle_days: lifecycleDays > 0 ? lifecycleDays : null,
-        variants: hasVariants ? variants : [],
-      })
+      .insert(insertRow)
       .select("*, products(name, sku, image_url, liters, container)")
       .single();
 
@@ -157,9 +174,15 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
       onClose();
       setSelected(null);
       setVariants([]);
+      setFreeformMode(false);
+      setFreeformName("");
     } else if (error) {
       console.error("[AddProductModal] insert failed:", error);
-      alert("Не удалось добавить товар: " + error.message);
+      // Если упало на колонке name — миграция v89 не применена ещё.
+      const hint = /column .*name.* does not exist/i.test(error.message)
+        ? "\n\nПрименить migration_v89.sql в Supabase SQL Editor для поддержки товаров без каталога."
+        : "";
+      alert("Не удалось добавить товар: " + error.message + hint);
     }
     setLoading(false);
   }
@@ -174,7 +197,7 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
   return (
     <Modal open={open} onClose={onClose} title="Добавить товар" size="lg">
       <div className="p-6 space-y-4">
-        {!selected ? (
+        {!selected && !freeformMode ? (
           <>
             <input
               className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -201,17 +224,93 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
                   </div>
                 </button>
               ))}
-              {filtered.length === 0 && <p className="text-sm text-slate-400 text-center py-8">Товары не найдены</p>}
+              {filtered.length === 0 && (
+                <div className="text-center py-8 space-y-2">
+                  <p className="text-sm text-slate-400">Товары не найдены</p>
+                  <p className="text-xs text-slate-400">Нет нужного товара? Можно добавить его вручную как свободную позицию.</p>
+                </div>
+              )}
+            </div>
+            {/* v90 (Жиба 29.06.2026): добавление товара без каталога — для
+                разовых позиций (нестандартный заказ, эксперимент, импорт от
+                клиента). Свободная строка попадает в deal_products с
+                product_id=null и name из пользовательского ввода. */}
+            <div className="border-t pt-3 mt-3" style={{ borderColor: "#e4e4e4" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setFreeformMode(true);
+                  setFreeformName(search.trim() || "");
+                  setBasePrice(0);
+                  setSalePrice("0");
+                  setDiscountPct("0");
+                  setQuantity(1);
+                }}
+                className="w-full text-sm font-medium px-4 py-2.5 rounded-lg border-2 border-dashed hover:bg-amber-50 transition-colors flex items-center justify-center gap-2"
+                style={{ borderColor: "#ffd9a8", color: "#bf7600" }}
+              >
+                <Plus size={14} /> Добавить вручную (нет в каталоге)
+              </button>
+            </div>
+          </>
+        ) : freeformMode ? (
+          <>
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <p className="text-xs font-semibold uppercase mb-1" style={{ color: "#bf7600" }}>Свободная позиция</p>
+                <input
+                  type="text"
+                  value={freeformName}
+                  onChange={(e) => setFreeformName(e.target.value)}
+                  placeholder="Название товара (например: Доставка, Услуга, Нестандартный флакон 750мл)"
+                  className="w-full text-sm border border-amber-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  autoFocus
+                />
+                <p className="text-xs mt-1" style={{ color: "#bf7600" }}>
+                  В деталях сделки появится бейдж «не в каталоге». Без артикула, без привязки к stock.
+                </p>
+              </div>
+              <button onClick={() => { setFreeformMode(false); setFreeformName(""); }} className="text-xs text-blue-600 hover:underline ml-3 flex-shrink-0">← Каталог</button>
+            </div>
+
+            <div className="rounded-lg p-3" style={{ background: "#f8f9fa", border: "1px solid #e4e4e4" }}>
+              <div className="grid gap-3 grid-cols-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Цена</label>
+                  <input
+                    type="number" min="0" step="0.01" value={salePrice}
+                    onChange={(e) => { setSalePrice(e.target.value); setBasePrice(Number(e.target.value) || 0); }}
+                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Кол-во</label>
+                  <input
+                    type="number" min="1" value={quantity}
+                    onChange={(e) => setQuantity(Number(e.target.value))}
+                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Итого</label>
+                  <div className="text-lg font-bold pt-1.5" style={{ color: "#2e7d32" }}>{formatCurrency(unitPrice * quantity)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <Button variant="secondary" onClick={onClose}>Отмена</Button>
+              <Button onClick={handleAdd} loading={loading} disabled={!freeformName.trim()}>Добавить</Button>
             </div>
           </>
         ) : (
           <>
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-slate-900">{selected.name}</h3>
-                <p className="text-xs text-slate-400">Арт. {selected.sku}</p>
-                {(selected.category || selected.subcategory) && (
-                  <p className="text-xs mt-0.5" style={{ color: "#0067a5" }}>{[selected.category, selected.subcategory].filter(Boolean).join(" → ")}</p>
+                <h3 className="font-semibold text-slate-900">{selected!.name}</h3>
+                <p className="text-xs text-slate-400">Арт. {selected!.sku}</p>
+                {(selected!.category || selected!.subcategory) && (
+                  <p className="text-xs mt-0.5" style={{ color: "#0067a5" }}>{[selected!.category, selected!.subcategory].filter(Boolean).join(" → ")}</p>
                 )}
               </div>
               <button onClick={() => setSelected(null)} className="text-xs text-blue-600 hover:underline">← Выбрать другой</button>
@@ -339,7 +438,7 @@ export default function AddProductModal({ open, onClose, entityType, entityId, p
             </div>
 
             {/* Lifecycle days — only for Косметика */}
-            {selected.category?.toLowerCase().includes("косметик") && productBlock === "order" && (
+            {selected!.category?.toLowerCase().includes("косметик") && productBlock === "order" && (
               <div className="rounded-lg p-3" style={{ background: "#fff3e0", border: "1px solid #ffe0b2" }}>
                 <label className="block text-xs font-medium mb-1" style={{ color: "#e65c00" }}>Цикл жизни (дней)</label>
                 <input type="number" min="0" value={lifecycleDays}
