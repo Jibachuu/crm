@@ -6,7 +6,6 @@ import { Plus, Search, Building2, Globe, Phone, Mail, Trash2, CheckSquare } from
 import Button from "@/components/ui/Button";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
 import BulkTaskModal from "@/components/ui/BulkTaskModal";
-import PurgeButton from "@/components/ui/PurgeButton";
 
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
@@ -124,7 +123,6 @@ export default function CompaniesList({ initialCompanies, users, totalActive = i
           С лого Havenberg ({havenbergSet.size})
         </label>
         <ExportImportButtons entity="companies" onImported={() => window.location.reload()} />
-        <PurgeButton table="companies" onPurged={() => window.location.reload()} />
         <Button onClick={() => setShowCreate(true)} size="sm">
           <Plus size={13} /> Новая компания
         </Button>

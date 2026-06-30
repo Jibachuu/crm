@@ -8,7 +8,6 @@ import Badge from "@/components/ui/Badge";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
 import BulkTaskModal from "@/components/ui/BulkTaskModal";
 import { formatDate, getInitials, formatCurrency } from "@/lib/utils";
-import PurgeButton from "@/components/ui/PurgeButton";
 import CreateLeadModal from "./CreateLeadModal";
 import { createClient } from "@/lib/supabase/client";
 import { apiPut } from "@/lib/api/client";
@@ -226,7 +225,6 @@ export default function LeadsList({ initialLeads, users, funnelStages = [], funn
           </select>
         )}
         <ExportImportButtons entity="leads" onImported={() => window.location.reload()} />
-        <PurgeButton table="leads" onPurged={() => window.location.reload()} />
         {/* View toggle */}
         <div className="flex rounded overflow-hidden" style={{ border: "1px solid #d0d0d0" }}>
           <button

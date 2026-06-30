@@ -7,8 +7,6 @@ import Button from "@/components/ui/Button";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
 import BulkTaskModal from "@/components/ui/BulkTaskModal";
 import { formatDate, getInitials } from "@/lib/utils";
-import PurgeButton from "@/components/ui/PurgeButton";
-
 import ShowMore from "@/components/ui/ShowMore";
 import DateRangeFilter from "@/components/ui/DateRangeFilter";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -90,7 +88,6 @@ export default function ContactsList({ initialContacts, companies, users, totalA
         </div>
         <DateRangeFilter onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
         <ExportImportButtons entity="contacts" onImported={() => window.location.reload()} />
-        <PurgeButton table="contacts" onPurged={() => window.location.reload()} />
         <Button onClick={() => setShowCreate(true)} size="sm">
           <Plus size={13} /> Новый контакт
         </Button>

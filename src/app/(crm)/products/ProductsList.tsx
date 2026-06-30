@@ -5,7 +5,6 @@ import { Plus, Search, Package, Edit2, Trash2, CheckSquare, ImagePlus, FileArchi
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
-import PurgeButton from "@/components/ui/PurgeButton";
 import ProductModal from "./ProductModal";
 import { formatCurrency, formatLiters } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -181,7 +180,6 @@ async function updateField(productId: string, field: string, value: unknown) {
           <input type="file" accept=".zip" className="hidden" disabled={zipUploading}
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleZipUpload(f); e.target.value = ""; }} />
         </label>
-        <PurgeButton table="products" onPurged={() => window.location.reload()} />
         <Button size="sm" onClick={() => { setEditing(null); setModalOpen(true); }}>
           <Plus size={13} /> Новый товар
         </Button>

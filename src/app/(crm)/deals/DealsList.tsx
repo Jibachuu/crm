@@ -8,7 +8,6 @@ import Badge from "@/components/ui/Badge";
 import ExportImportButtons from "@/components/ui/ExportImportButtons";
 import BulkTaskModal from "@/components/ui/BulkTaskModal";
 import { formatDate, formatCurrency, getInitials } from "@/lib/utils";
-import PurgeButton from "@/components/ui/PurgeButton";
 import CreateDealModal from "./CreateDealModal";
 import { createClient } from "@/lib/supabase/client";
 import { apiPut } from "@/lib/api/client";
@@ -167,7 +166,6 @@ export default function DealsList({ initialDeals, users, funnelStages = [], tota
           ))}
         </div>
         <ExportImportButtons entity="deals" onImported={() => window.location.reload()} />
-        <PurgeButton table="deals" onPurged={() => window.location.reload()} />
         <Button size="sm" onClick={() => setShowCreate(true)}><Plus size={13} /> Новая сделка</Button>
       </div>
 
