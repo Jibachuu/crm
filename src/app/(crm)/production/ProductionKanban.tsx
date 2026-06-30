@@ -381,9 +381,14 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
         </Modal>
       )}
 
-      {/* Detail Panel */}
+      {/* Detail Panel — key=id, иначе при клике на другую карточку
+          без закрытия панели React переиспользует тот же экземпляр и
+          внутренние useState (trackEdit/arrivalEdit/notesEdit) держат
+          значения от предыдущей карточки → трек-номер пустой при том,
+          что на карточке он виден. */}
       {detailOrder && (
         <DetailPanel
+          key={detailOrder.id}
           order={detailOrder}
           users={users}
           userRole={userRole}
