@@ -484,19 +484,20 @@ function DetailPanel({ order, users, userRole, onClose, onUpdated, onDeleted }: 
             const p = Array.isArray(dp.products) ? dp.products[0] : dp.products;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const vs = Array.isArray(dp.variants) ? dp.variants.filter((v: any) => v && (v.label || v.quantity)) : [];
-            // Когда заполнены жёлтые варианты в сделке — это и есть «что
-            // именно делаем». Базовое имя/арт не нужно — лейбл уже содержит
-            // всё (Крем / Black pepper / флакон 500мл / арт). При пустых
-            // вариантах падаем на старое поведение.
+            // Фолбэк имени: каталожный товар → ручное имя из dp.name
+            // (v89, товары «вручную») → знак вопроса. Раньше при ручном
+            // товаре в карточке прода висело «(арт. ) × N» (Жиба 30.06).
+            const fallbackName = (p?.name ?? dp.name ?? "Без названия");
             if (vs.length > 0) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               return vs.map((v: any, j: number) => (
                 <p key={`${i}-${j}`} style={{ color: "#333" }}>
-                  {(v.label || "").trim() || (p?.name ?? "?")} × {v.quantity ?? dp.quantity}
+                  {(v.label || "").trim() || fallbackName} × {v.quantity ?? dp.quantity}
                 </p>
               ));
             }
-            return [<p key={i} style={{ color: "#333" }}>{p?.name} (арт. {p?.sku}) × {dp.quantity}</p>];
+            const artSuffix = p?.sku ? ` (арт. ${p.sku})` : "";
+            return [<p key={i} style={{ color: "#333" }}>{fallbackName}{artSuffix} × {dp.quantity}</p>];
           })}
         </div>
 
