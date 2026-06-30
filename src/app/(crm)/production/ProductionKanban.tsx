@@ -243,11 +243,12 @@ export default function ProductionKanban({ initialOrders, users, wonDeals, curre
                     // (жёлтые в сделке): они полностью заменяют базовое имя.
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const vs = Array.isArray(dp.variants) ? dp.variants.filter((v: any) => v && (v.label || v.quantity)) : [];
+                    const fallbackName = p?.name ?? dp.name ?? "Без названия";
                     if (vs.length > 0) {
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      return vs.map((v: any) => `${(v.label || "").trim() || p?.name || "?"} × ${v.quantity ?? dp.quantity}`);
+                      return vs.map((v: any) => `${(v.label || "").trim() || fallbackName} × ${v.quantity ?? dp.quantity}`);
                     }
-                    return [`${p?.name ?? "?"} × ${dp.quantity}`];
+                    return [`${fallbackName} × ${dp.quantity}`];
                   }).join(", ");
 
                   return (
