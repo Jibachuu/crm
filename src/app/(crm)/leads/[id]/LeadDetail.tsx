@@ -19,6 +19,7 @@ import CommunicationsTimeline from "@/components/ui/CommunicationsTimeline";
 import AddProductModal from "@/components/ui/AddProductModal";
 import EditProductModal from "@/components/ui/EditProductModal";
 import EditLeadModal from "../EditLeadModal";
+import RelatedInfoBlock from "@/components/info/RelatedInfoBlock";
 import { formatDate, formatDateTime, getInitials } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { apiPost, apiPut, apiDelete } from "@/lib/api/client";
@@ -71,7 +72,7 @@ const CHANNEL_ICONS: Record<string, string> = {
 const PRIORITY_LABELS: Record<string, string> = { low: "Низкий", medium: "Средний", high: "Высокий" };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function LeadDetail({ lead: initialLead, communications: initialComms, tasks: initialTasks, leadProducts: initialProducts, funnelStages: initialStages, leadFunnels }: any) {
+export default function LeadDetail({ lead: initialLead, communications: initialComms, tasks: initialTasks, leadProducts: initialProducts, funnelStages: initialStages, leadFunnels, companyContacts: initialCompanyContacts = [] }: any) {
   const router = useRouter();
   const [lead, setLead] = useState(initialLead);
   const [communications, setCommunications] = useState(initialComms);
@@ -442,16 +443,27 @@ export default function LeadDetail({ lead: initialLead, communications: initialC
             </div>
 
             {activeTab === "info" && (
-              <div className="text-sm space-y-2" style={{ color: "#555" }}>
-                <p>Создан: {formatDateTime(lead.created_at)}</p>
-                <p>Обновлён: {formatDateTime(lead.updated_at)}</p>
-                {lead.source && <p>Источник: {lead.source}</p>}
-                {lead.telegram_username && (
-                  <p>💬 Telegram: <span style={{ color: "#0067a5" }}>@{lead.telegram_username}</span></p>
-                )}
-                {lead.had_call && (
-                  <p>📞 Был ли звонок: <strong>{lead.had_call}</strong></p>
-                )}
+              <div className="space-y-4">
+                <RelatedInfoBlock
+                  entityType="lead"
+                  entityId={lead.id}
+                  entityDescription={lead.description}
+                  company={lead.companies ?? null}
+                  contacts={initialCompanyContacts}
+                  onEntityDescriptionChanged={(v) => setLead((p: Record<string, unknown>) => ({ ...p, description: v }))}
+                />
+
+                <div className="text-xs space-y-0.5 px-1" style={{ color: "#888" }}>
+                  <p>Создан: {formatDateTime(lead.created_at)}</p>
+                  <p>Обновлён: {formatDateTime(lead.updated_at)}</p>
+                  {lead.source && <p>Источник: {lead.source}</p>}
+                  {lead.telegram_username && (
+                    <p>💬 Telegram: <span style={{ color: "#0067a5" }}>@{lead.telegram_username}</span></p>
+                  )}
+                  {lead.had_call && (
+                    <p>📞 Был ли звонок: <strong>{lead.had_call}</strong></p>
+                  )}
+                </div>
               </div>
             )}
 

@@ -12,7 +12,13 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     .select(`
       *,
       contacts(id, full_name, phone, email, telegram_id, telegram_username, maks_id),
-      companies(id, name, city, region, timezone, legal_address),
+      companies(
+        id, name, brand_name, inn, kpp, ogrn, director, edo_id,
+        legal_address, actual_address, city, region, timezone,
+        phone, email, website, description,
+        bank_name, bik, bank_account, corr_account,
+        venue_types(id, name)
+      ),
       users!leads_assigned_to_fkey(id, full_name)
     `)
     .eq("id", id)
@@ -20,6 +26,16 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     .single();
 
   if (!lead) notFound();
+
+  // Все контакты привязанной компании — для блока «Связанная информация».
+  const { data: companyContacts } = lead.company_id
+    ? await admin
+        .from("contacts")
+        .select("id, full_name, position, phone, email, telegram_id, telegram_username")
+        .eq("company_id", lead.company_id)
+        .is("deleted_at", null)
+        .order("full_name")
+    : { data: [] };
 
   // Load funnel stages for this lead's funnel
   const { data: funnelStages } = lead.funnel_id
@@ -67,6 +83,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           leadProducts={leadProducts ?? []}
           funnelStages={funnelStages ?? []}
           leadFunnels={leadFunnels ?? []}
+          companyContacts={companyContacts ?? []}
         />
       </main>
     </>

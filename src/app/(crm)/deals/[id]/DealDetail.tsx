@@ -20,6 +20,7 @@ import EditProductModal from "@/components/ui/EditProductModal";
 import ContractsClient from "@/app/(crm)/contracts/ContractsClient";
 import EditDealModal from "../EditDealModal";
 import AddressList from "@/components/ui/AddressList";
+import RelatedInfoBlock from "@/components/info/RelatedInfoBlock";
 import { formatDate, formatDateTime, formatCurrency, getInitials } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { apiPost, apiPut, apiDelete } from "@/lib/api/client";
@@ -44,7 +45,7 @@ const CHANNEL_LABELS: Record<string, string> = { email: "Email", telegram: "Tele
 interface FunnelStage { id: string; funnel_id: string; name: string; slug: string; color: string; sort_order: number; is_final: boolean; is_success: boolean; }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function DealDetail({ deal: initialDeal, communications: initialComms, tasks: initialTasks, dealProducts: initialDealProducts, funnelStages: initialFunnelStages }: any) {
+export default function DealDetail({ deal: initialDeal, communications: initialComms, tasks: initialTasks, dealProducts: initialDealProducts, funnelStages: initialFunnelStages, companyContacts: initialCompanyContacts = [] }: any) {
   const router = useRouter();
   const [deal, setDeal] = useState(initialDeal);
   const [communications, setCommunications] = useState(initialComms);
@@ -422,32 +423,49 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
             </div>
 
             {activeTab === "info" && (
-              <div className="text-sm space-y-2" style={{ color: "#555" }}>
-                <p>Создана: {formatDateTime(deal.created_at)}</p>
-                <p>Обновлена: {formatDateTime(deal.updated_at)}</p>
-                {deal.source && <p>Источник: {deal.source}</p>}
-                {deal.closed_at && <p>Закрыта: {formatDate(deal.closed_at)}</p>}
-                <div className="mt-2">
-                  <p className="text-xs font-semibold mb-1" style={{ color: "#888" }}>Адреса:</p>
-                  <AddressList
-                    addresses={deal.addresses ?? []}
-                    onChange={async (addresses) => {
-                      const prev = deal.addresses ?? [];
-                      setDeal((p: Record<string, unknown>) => ({ ...p, addresses }));
-                      const { error } = await apiPut("/api/deals", { id: deal.id, addresses });
-                      if (error) {
-                        setDeal((p: Record<string, unknown>) => ({ ...p, addresses: prev }));
-                        alert("Не удалось сохранить адреса: " + error);
-                      }
-                    }}
-                  />
-                </div>
+              <div className="space-y-4">
+                <RelatedInfoBlock
+                  entityType="deal"
+                  entityId={deal.id}
+                  entityDescription={deal.description}
+                  company={deal.companies ?? null}
+                  contacts={initialCompanyContacts}
+                  onEntityDescriptionChanged={(v) => setDeal((p: Record<string, unknown>) => ({ ...p, description: v }))}
+                />
+
+                <Card>
+                  <CardBody>
+                    <h3 className="text-sm font-semibold text-slate-700 mb-2">Адреса доставки</h3>
+                    <AddressList
+                      addresses={deal.addresses ?? []}
+                      onChange={async (addresses) => {
+                        const prev = deal.addresses ?? [];
+                        setDeal((p: Record<string, unknown>) => ({ ...p, addresses }));
+                        const { error } = await apiPut("/api/deals", { id: deal.id, addresses });
+                        if (error) {
+                          setDeal((p: Record<string, unknown>) => ({ ...p, addresses: prev }));
+                          alert("Не удалось сохранить адреса: " + error);
+                        }
+                      }}
+                    />
+                  </CardBody>
+                </Card>
+
                 {deal.objections && (
-                  <div className="mt-3">
-                    <p className="font-medium mb-1" style={{ color: "#333" }}>Возражения:</p>
-                    <p className="whitespace-pre-wrap" style={{ color: "#555" }}>{deal.objections}</p>
-                  </div>
+                  <Card>
+                    <CardBody>
+                      <h3 className="text-sm font-semibold text-slate-700 mb-1">Возражения</h3>
+                      <p className="text-sm whitespace-pre-wrap" style={{ color: "#555" }}>{deal.objections}</p>
+                    </CardBody>
+                  </Card>
                 )}
+
+                <div className="text-xs space-y-0.5 px-1" style={{ color: "#888" }}>
+                  <p>Создана: {formatDateTime(deal.created_at)}</p>
+                  <p>Обновлена: {formatDateTime(deal.updated_at)}</p>
+                  {deal.source && <p>Источник: {deal.source}</p>}
+                  {deal.closed_at && <p>Закрыта: {formatDate(deal.closed_at)}</p>}
+                </div>
               </div>
             )}
 

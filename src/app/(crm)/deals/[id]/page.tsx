@@ -12,7 +12,13 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     .select(`
       *,
       contacts(id, full_name, phone, email, telegram_id, telegram_username, maks_id),
-      companies(id, name, city, region, timezone, legal_address),
+      companies(
+        id, name, brand_name, inn, kpp, ogrn, director, edo_id,
+        legal_address, actual_address, city, region, timezone,
+        phone, email, website, description,
+        bank_name, bik, bank_account, corr_account,
+        venue_types(id, name)
+      ),
       users!deals_assigned_to_fkey(id, full_name)
     `)
     .eq("id", id)
@@ -20,6 +26,18 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     .single();
 
   if (!deal) notFound();
+
+  // Все контакты привязанной компании — нужны для блока «Связанная
+  // информация» во вкладке «Информация» сделки. Если компании нет,
+  // используем только deal.contacts (один primary-контакт).
+  const { data: companyContacts } = deal.company_id
+    ? await admin
+        .from("contacts")
+        .select("id, full_name, position, phone, email, telegram_id, telegram_username")
+        .eq("company_id", deal.company_id)
+        .is("deleted_at", null)
+        .order("full_name")
+    : { data: [] };
 
   // Load funnel stages for this deal's funnel
   const { data: funnelStages } = deal.funnel_id
@@ -63,6 +81,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           tasks={tasks ?? []}
           dealProducts={dealProducts ?? []}
           funnelStages={funnelStages ?? []}
+          companyContacts={companyContacts ?? []}
         />
       </main>
     </>
