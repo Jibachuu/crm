@@ -101,5 +101,40 @@ export async function PUT(req: NextRequest) {
     }
   }
 
+  // Пробрасываем адреса доставки сделки в карточку компании.
+  // Менеджер: «все адреса доставки должны передаваться со сделок в
+  // компании к которым они привязаны». Пишем в public.addresses
+  // (kind='delivery', notes=comment). Дубли по company_id+address
+  // не создаём — обновляем notes если изменился.
+  if (body.addresses !== undefined && d?.company_id && Array.isArray(body.addresses)) {
+    const incoming = (body.addresses as Array<{ type?: string; address?: string; comment?: string }>)
+      .filter((a) => (a?.type ?? "delivery") === "delivery" && typeof a.address === "string" && a.address.trim().length > 0)
+      .map((a) => ({ address: a.address!.trim(), comment: a.comment?.trim() || null }));
+
+    if (incoming.length > 0) {
+      const { data: existing } = await admin
+        .from("addresses")
+        .select("id, address, notes")
+        .eq("company_id", d.company_id)
+        .eq("kind", "delivery");
+      const byAddr = new Map((existing ?? []).map((r) => [r.address.trim().toLowerCase(), r]));
+      for (const a of incoming) {
+        const key = a.address.toLowerCase();
+        const found = byAddr.get(key);
+        if (!found) {
+          await admin.from("addresses").insert({
+            company_id: d.company_id,
+            address: a.address,
+            kind: "delivery",
+            is_default: !existing || existing.length === 0,
+            notes: a.comment,
+          });
+        } else if ((found.notes ?? "") !== (a.comment ?? "")) {
+          await admin.from("addresses").update({ notes: a.comment }).eq("id", found.id);
+        }
+      }
+    }
+  }
+
   return NextResponse.json(data);
 }
