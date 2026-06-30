@@ -29,6 +29,12 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
   const [products, setProducts] = useState<any[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [pdfParsing, setPdfParsing] = useState(false);
+  // Поиск по компаниям в выпадашке покупателя (договор). Раньше был
+  // голый <select> на 1000+ позиций — Ctrl+F браузера тоже не помогал
+  // (нативный select не индексируется). Теперь inline-комбобокс с
+  // фильтром по name/brand/inn.
+  const [companyQuery, setCompanyQuery] = useState("");
+  const [companyOpen, setCompanyOpen] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingContract, setEditingContract] = useState<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,7 +60,7 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
     const supabase = createClient();
     // 19.05.2026 — миграция browser→VPS, этап 1. Компании/сделки/товары
     // — через VPS-API. Invoices/quotes ещё прямо из supabase (этап 2).
-    fetch("/api/companies?limit=5000&fields=" + encodeURIComponent("id, name, inn, kpp, ogrn, legal_address, director, phone, email"))
+    fetch("/api/companies?limit=5000&fields=" + encodeURIComponent("id, name, brand_name, inn, kpp, ogrn, legal_address, director, phone, email, bank_name, bank_account, bik, corr_account"))
       .then((r) => r.ok ? r.json() : { companies: [] })
       .then((d) => setCompanies(d.companies ?? []));
     fetch("/api/deals?limit=200&fields=" + encodeURIComponent("id, title"))
@@ -475,13 +481,76 @@ export default function ContractsClient({ companyId, dealId }: { companyId?: str
               </div>
             </div>
 
-            <div className="mb-2">
+            <div className="mb-2 relative">
               <label style={lblStyle}>Компания (из CRM)</label>
-              <select value={form.buyer_company_id || companyId || ""} onChange={(e) => fillFromCompany(e.target.value)} style={inputStyle}>
-                <option value="">Выберите или загрузите PDF</option>
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                {companies.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              {(() => {
+                const selectedId = form.buyer_company_id || companyId || "";
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const selected = companies.find((c: any) => c.id === selectedId);
+                const q = companyQuery.trim().toLowerCase();
+                const digits = q.replace(/\D/g, "");
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const filtered = !q ? companies : companies.filter((c: any) => {
+                  const name = (c.name ?? "").toLowerCase();
+                  const brand = (c.brand_name ?? "").toLowerCase();
+                  const inn = (c.inn ?? "").toString();
+                  return name.includes(q) || brand.includes(q) || (digits.length >= 3 && inn.includes(digits));
+                });
+                return (
+                  <>
+                    {selected && !companyOpen ? (
+                      <div className="flex items-center justify-between gap-2 px-3 py-2" style={{ border: "1px solid #d0d0d0", borderRadius: 4, background: "#f8f9fa" }}>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm truncate" style={{ color: "#333" }}>{selected.brand_name ? `${selected.brand_name} / ${selected.name}` : selected.name}</div>
+                          {selected.inn && <div className="text-xs" style={{ color: "#888" }}>ИНН {selected.inn}</div>}
+                        </div>
+                        <button type="button" onClick={() => { setCompanyOpen(true); setCompanyQuery(""); }} className="text-xs px-2 py-1 rounded" style={{ color: "#0067a5", border: "1px solid #d0d0d0", background: "#fff" }}>
+                          Изменить
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          value={companyQuery}
+                          onChange={(e) => { setCompanyQuery(e.target.value); setCompanyOpen(true); }}
+                          onFocus={() => setCompanyOpen(true)}
+                          onBlur={() => setTimeout(() => setCompanyOpen(false), 150)}
+                          placeholder="Начните вводить название, бренд или ИНН..."
+                          style={inputStyle}
+                          autoFocus={!selected}
+                        />
+                        {companyOpen && (
+                          <div className="absolute left-0 right-0 z-30 mt-1 max-h-72 overflow-y-auto bg-white shadow-lg" style={{ border: "1px solid #d0d0d0", borderRadius: 4 }}>
+                            {filtered.length === 0 ? (
+                              <div className="px-3 py-2 text-xs" style={{ color: "#aaa" }}>Ничего не найдено. Введите ИНН чтобы загрузить из DaData или используйте «Загрузить реквизиты».</div>
+                            ) : (
+                              filtered.slice(0, 100).map((c: { id: string; name: string; brand_name?: string; inn?: string }) => (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  onMouseDown={(e) => { e.preventDefault(); fillFromCompany(c.id); setCompanyOpen(false); setCompanyQuery(""); }}
+                                  className="w-full text-left px-3 py-1.5 text-sm hover:bg-blue-50 flex items-center justify-between gap-2"
+                                  style={{ borderBottom: "1px solid #f0f0f0" }}
+                                >
+                                  <span className="truncate min-w-0 flex-1" style={{ color: "#333" }}>
+                                    {c.brand_name ? <><span className="font-medium">{c.brand_name}</span> <span style={{ color: "#888" }}>/ {c.name}</span></> : c.name}
+                                  </span>
+                                  {c.inn && <span className="text-xs flex-shrink-0" style={{ color: "#888" }}>ИНН {c.inn}</span>}
+                                </button>
+                              ))
+                            )}
+                            {filtered.length > 100 && (
+                              <div className="px-3 py-1.5 text-xs text-center" style={{ color: "#888", background: "#fafafa" }}>
+                                Показаны первые 100. Уточните запрос — найдено {filtered.length}.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             <div className="grid grid-cols-2 gap-2">
