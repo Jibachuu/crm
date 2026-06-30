@@ -65,13 +65,29 @@ export async function POST(req: NextRequest) {
 
   const admin = createAdminClient();
   // Все колонки которые имеет смысл копировать. id/created_at БД заполнит сама.
-  const colsWithKind = "deal_id, product_id, variant_id, quantity, unit_price, base_price, discount_percent, total_price, variants, category, subcategory, volume_ml, flavor, kind, lifecycle_days";
+  // v90 (Жиба 30.06.2026): добавлен `name` — free-form позиции из v89 имеют
+  // product_id=null и хранят имя в колонке name. Без неё копия в «Заказ»
+  // показывалась как «Без названия». Fallback к pre-v89 (без name) и
+  // pre-v82 (без kind) ловится через regex по error.message.
+  const colsFull = "deal_id, product_id, variant_id, quantity, unit_price, base_price, discount_percent, total_price, variants, category, subcategory, volume_ml, flavor, kind, lifecycle_days, name";
+  const colsNoName = "deal_id, product_id, variant_id, quantity, unit_price, base_price, discount_percent, total_price, variants, category, subcategory, volume_ml, flavor, kind, lifecycle_days";
   const colsNoKind = "deal_id, product_id, variant_id, quantity, unit_price, base_price, discount_percent, total_price, variants, category, subcategory, volume_ml, flavor, lifecycle_days";
   let readData: Record<string, unknown>[] | null = null;
   let readErr: { message?: string } | null = null;
   {
-    const r = await admin.from("deal_products").select(colsWithKind).in("id", ids);
-    if (r.error && /column.*kind.*does not exist|42703/i.test(r.error.message || "")) {
+    const r = await admin.from("deal_products").select(colsFull).in("id", ids);
+    if (r.error && /column.*name.*does not exist|42703.*name/i.test(r.error.message || "")) {
+      // pre-v89: name отсутствует, тянем без него.
+      const fb1 = await admin.from("deal_products").select(colsNoName).in("id", ids);
+      if (fb1.error && /column.*kind.*does not exist|42703/i.test(fb1.error.message || "")) {
+        const fb2 = await admin.from("deal_products").select(colsNoKind).in("id", ids);
+        readData = (fb2.data as unknown as Record<string, unknown>[] | null) ?? null;
+        readErr = fb2.error;
+      } else {
+        readData = (fb1.data as unknown as Record<string, unknown>[] | null) ?? null;
+        readErr = fb1.error;
+      }
+    } else if (r.error && /column.*kind.*does not exist|42703/i.test(r.error.message || "")) {
       const fallback = await admin.from("deal_products").select(colsNoKind).in("id", ids);
       readData = (fallback.data as unknown as Record<string, unknown>[] | null) ?? null;
       readErr = fallback.error;
