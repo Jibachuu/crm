@@ -16,17 +16,6 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
   const [innLoading, setInnLoading] = useState(false);
   const [venueTypeId, setVenueTypeId] = useState<string | null>(null);
   const [supplierId, setSupplierId] = useState<string | null>(null);
-  const [venueTypeName, setVenueTypeName] = useState<string>("");
-
-  async function handleVenueTypeChange(id: string | null) {
-    setVenueTypeId(id);
-    if (id) {
-      const { data } = await createClient().from("venue_types").select("name").eq("id", id).single();
-      setVenueTypeName(data?.name ?? "");
-    } else {
-      setVenueTypeName("");
-    }
-  }
 
   async function lookupInn(inn: string) {
     if (inn.length < 10) return;
@@ -81,9 +70,6 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
         region: (fd.get("region") as string) || null,
         legal_address: (fd.get("legal_address") as string) || null,
         actual_address: (fd.get("actual_address") as string) || null,
-        activity: (fd.get("activity") as string) || null,
-        need: (fd.get("need") as string) || null,
-        company_type: (fd.get("company_type") as string) || null,
         phone: (fd.get("phone") as string) || null,
         email: (fd.get("email") as string) || null,
         website: (fd.get("website") as string) || null,
@@ -95,10 +81,6 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
         corr_account: (fd.get("corr_account") as string) || null,
         venue_type_id: venueTypeId || null,
         supplier_id: supplierId || null,
-        bathrooms_count: fd.get("bathrooms_count") ? Number(fd.get("bathrooms_count")) : null,
-        rooms_count: fd.get("rooms_count") ? Number(fd.get("rooms_count")) : null,
-        masters_count: fd.get("masters_count") ? Number(fd.get("masters_count")) : null,
-        cabinets_count: fd.get("cabinets_count") ? Number(fd.get("cabinets_count")) : null,
         created_by: user.id,
       })
       .select("*, users!companies_assigned_to_fkey(id, full_name), venue_types(id, name), suppliers(id, name)")
@@ -110,10 +92,6 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
   }
 
   const userOptions = users.map((u: { id: string; full_name?: string }) => ({ value: u.id, label: u.full_name }));
-  const showBathrooms = venueTypeName === "Ресторан" || venueTypeName === "Салон красоты";
-  const showRooms = venueTypeName === "Отель";
-  const showMasters = venueTypeName === "Салон красоты";
-  const showCabinets = venueTypeName === "Спа";
 
   return (
     <Modal open={open} onClose={onClose} title="Новая компания" size="lg">
@@ -125,14 +103,7 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
             <Input label="ИНН" name="inn" placeholder="0000000000" maxLength={12} onChange={(e) => lookupInn(e.target.value)} />
             {innLoading && <span className="absolute right-3 bottom-2 text-xs animate-pulse" style={{ color: "#0067a5" }}>Поиск...</span>}
           </div>
-          <Select label="Вид компании" name="company_type" options={[
-            { value: "restaurant", label: "Ресторан" },
-            { value: "hotel", label: "Отель" },
-            { value: "salon", label: "Салон" },
-            { value: "retail", label: "Розница" },
-            { value: "wholesale", label: "Опт" },
-            { value: "other", label: "Другое" },
-          ]} placeholder="Выберите вид" />
+          <DirectorySelect table="venue_types" label="Тип заведения" name="venue_type_id" onChange={setVenueTypeId} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -141,19 +112,9 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
           <Input label="Бренд / заведение" name="brand_name" placeholder="как известно клиентам" />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <DirectorySelect table="venue_types" label="Тип заведения" name="venue_type_id" onChange={handleVenueTypeChange} />
+        <div className="grid grid-cols-1">
           <DirectorySelect table="suppliers" label="Текущий поставщик" name="supplier_id" onChange={setSupplierId} />
         </div>
-
-        {(showBathrooms || showRooms || showMasters || showCabinets) && (
-          <div className="grid grid-cols-2 gap-3">
-            {showBathrooms && <Input label="Количество санузлов" name="bathrooms_count" type="number" min="0" />}
-            {showRooms && <Input label="Количество номеров" name="rooms_count" type="number" min="0" />}
-            {showMasters && <Input label="Рабочих мест мастеров" name="masters_count" type="number" min="0" />}
-            {showCabinets && <Input label="Количество кабинетов" name="cabinets_count" type="number" min="0" />}
-          </div>
-        )}
 
         <div className="grid grid-cols-3 gap-3">
           <Input label="ОГРН" name="ogrn" />
@@ -191,11 +152,8 @@ export default function CreateCompanyModal({ open, onClose, users, onCreated }: 
           </div>
         </div>
 
-        <Textarea label="Деятельность компании" name="activity" />
-        <Textarea label="Потребность" name="need" />
-
         <Select label="Ответственный" name="assigned_to" options={userOptions} placeholder="Выберите сотрудника" />
-        <Textarea label="Описание" name="description" />
+        <Textarea label="Комментарий" name="description" />
 
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Отмена</Button>

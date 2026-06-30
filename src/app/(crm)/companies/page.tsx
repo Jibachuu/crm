@@ -22,7 +22,7 @@ export default async function CompaniesPage() {
   const admin = createAdminClient();
 
   const [companies, users, totalActive, havenbergRows] = await Promise.all([
-    fetchAll(admin, "companies", `*, users!companies_assigned_to_fkey(id, full_name)`, {
+    fetchAll(admin, "companies", `*, users!companies_assigned_to_fkey(id, full_name), venue_types(id, name)`, {
       order: { column: "name" }, notDeleted: true, limit: PAGE_LIMIT,
     }),
     fetchAll(admin, "users", "id, full_name", {

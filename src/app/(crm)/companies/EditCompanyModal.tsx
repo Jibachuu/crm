@@ -31,7 +31,6 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
   const [dataReady, setDataReady] = useState(false);
   const [venueTypeId, setVenueTypeId] = useState<string | null>(company?.venue_type_id ?? null);
   const [supplierId, setSupplierId] = useState<string | null>(company?.supplier_id ?? null);
-  const [venueTypeName, setVenueTypeName] = useState<string>("");
 
   useEffect(() => {
     if (!open) { setDataReady(false); return; }
@@ -41,13 +40,6 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
     }).catch(() => { setDataReady(true); });
     setVenueTypeId(company?.venue_type_id ?? null);
     setSupplierId(company?.supplier_id ?? null);
-    // Fetch venue type name for dynamic fields
-    if (company?.venue_type_id) {
-      createClient().from("venue_types").select("name").eq("id", company.venue_type_id).single()
-        .then(({ data }) => setVenueTypeName(data?.name ?? ""));
-    } else {
-      setVenueTypeName("");
-    }
   }, [open, company]);
 
   async function lookupInn(inn: string) {
@@ -79,16 +71,6 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
     setInnLoading(false);
   }
 
-  async function handleVenueTypeChange(id: string | null) {
-    setVenueTypeId(id);
-    if (id) {
-      const { data } = await createClient().from("venue_types").select("name").eq("id", id).single();
-      setVenueTypeName(data?.name ?? "");
-    } else {
-      setVenueTypeName("");
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
@@ -109,9 +91,6 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
       legal_address: (fd.get("legal_address") as string) || null,
       actual_address: (fd.get("actual_address") as string) || null,
       delivery_address: (fd.get("delivery_address") as string) || null,
-      activity: (fd.get("activity") as string) || null,
-      need: (fd.get("need") as string) || null,
-      company_type: (fd.get("company_type") as string) || null,
       phone: (fd.get("phone") as string) || null,
       email: (fd.get("email") as string) || null,
       website: (fd.get("website") as string) || null,
@@ -119,14 +98,9 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
       assigned_to: (fd.get("assigned_to") as string) || null,
       venue_type_id: venueTypeId || null,
       supplier_id: supplierId || null,
-      bathrooms_count: fd.get("bathrooms_count") ? Number(fd.get("bathrooms_count")) : null,
-      rooms_count: fd.get("rooms_count") ? Number(fd.get("rooms_count")) : null,
-      masters_count: fd.get("masters_count") ? Number(fd.get("masters_count")) : null,
-      cabinets_count: fd.get("cabinets_count") ? Number(fd.get("cabinets_count")) : null,
       is_network: fd.get("is_network") === "on",
       network_count: fd.get("network_count") ? Number(fd.get("network_count")) : null,
       opened_recently: (fd.get("opened_recently") as string) || null,
-      avg_check: fd.get("avg_check") ? Number(fd.get("avg_check")) : null,
       // If user picked a TZ manually, respect it; otherwise auto-derive
       // from city/region (now also covers regions, not just cities).
       timezone: (fd.get("timezone") as string) || getTimezoneFromRegion((fd.get("city") as string) || (fd.get("region") as string) || ""),
@@ -153,11 +127,6 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
     setLoading(false);
   }
 
-  const showBathrooms = venueTypeName === "Ресторан" || venueTypeName === "Салон красоты";
-  const showRooms = venueTypeName === "Отель";
-  const showMasters = venueTypeName === "Салон красоты";
-  const showCabinets = venueTypeName === "Спа";
-
   return (
     <Modal open={open} onClose={onClose} title="Редактировать компанию" size="lg">
       {!dataReady ? (
@@ -171,14 +140,7 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
             <Input label="ИНН" name="inn" defaultValue={company?.inn ?? ""} maxLength={12} onChange={(e) => lookupInn(e.target.value)} />
             {innLoading && <span className="absolute right-3 bottom-2 text-xs animate-pulse" style={{ color: "#0067a5" }}>Поиск...</span>}
           </div>
-          <Select label="Вид компании" name="company_type" options={[
-            { value: "restaurant", label: "Ресторан" },
-            { value: "hotel", label: "Отель" },
-            { value: "salon", label: "Салон" },
-            { value: "retail", label: "Розница" },
-            { value: "wholesale", label: "Опт" },
-            { value: "other", label: "Другое" },
-          ]} placeholder="Выберите вид" defaultValue={company?.company_type ?? ""} />
+          <DirectorySelect table="venue_types" label="Тип заведения" name="venue_type_id" defaultValue={company?.venue_type_id ?? null} onChange={setVenueTypeId} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -188,20 +150,9 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
           <Input label="Бренд / заведение" name="brand_name" defaultValue={company?.brand_name ?? ""} placeholder="как известно клиентам" />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <DirectorySelect table="venue_types" label="Тип заведения" name="venue_type_id" defaultValue={company?.venue_type_id ?? null} onChange={handleVenueTypeChange} />
+        <div className="grid grid-cols-1">
           <DirectorySelect table="suppliers" label="Текущий поставщик" name="supplier_id" defaultValue={company?.supplier_id ?? null} onChange={setSupplierId} />
         </div>
-
-        {/* Dynamic fields based on venue type */}
-        {(showBathrooms || showRooms || showMasters || showCabinets) && (
-          <div className="grid grid-cols-2 gap-3">
-            {showBathrooms && <Input label="Количество санузлов" name="bathrooms_count" type="number" min="0" defaultValue={company?.bathrooms_count ?? ""} />}
-            {showRooms && <Input label="Количество номеров" name="rooms_count" type="number" min="0" defaultValue={company?.rooms_count ?? ""} />}
-            {showMasters && <Input label="Рабочих мест мастеров" name="masters_count" type="number" min="0" defaultValue={company?.masters_count ?? ""} />}
-            {showCabinets && <Input label="Количество кабинетов" name="cabinets_count" type="number" min="0" defaultValue={company?.cabinets_count ?? ""} />}
-          </div>
-        )}
 
         <div className="grid grid-cols-3 gap-3">
           <Input label="ОГРН" name="ogrn" defaultValue={company?.ogrn ?? ""} />
@@ -248,10 +199,6 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
             </select>
           </div>
         </div>
-        {(company?.company_type === "restaurant" || venueTypeName === "Ресторан") && (
-          <Input label="Средний чек (₽)" name="avg_check" type="number" min="0" defaultValue={company?.avg_check ?? ""} />
-        )}
-
         {/* v86: банковские реквизиты — нужны для автоподстановки в договоры
             и счета. Когда заполнено хоть одно поле, оно подтянется в форму
             создания договора/счёта при выборе этой компании покупателем. */}
@@ -266,9 +213,6 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
             <Input label="К/с" name="corr_account" defaultValue={company?.corr_account ?? ""} placeholder="30101..." />
           </div>
         </div>
-
-        <Textarea label="Деятельность компании" name="activity" defaultValue={company?.activity ?? ""} />
-        <Textarea label="Потребность" name="need" defaultValue={company?.need ?? ""} />
 
         <div className="grid grid-cols-2 gap-3">
           <Select
@@ -286,7 +230,7 @@ export default function EditCompanyModal({ open, onClose, company, onSaved }: { 
             defaultValue={company?.timezone ?? ""}
           />
         </div>
-        <Textarea label="Описание" name="description" defaultValue={company?.description ?? ""} />
+        <Textarea label="Комментарий" name="description" defaultValue={company?.description ?? ""} />
 
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Отмена</Button>

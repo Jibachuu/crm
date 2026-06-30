@@ -29,7 +29,6 @@ const CHANNEL_ICONS: Record<string, string> = { email: "✉️", telegram: "💬
 const CHANNEL_LABELS: Record<string, string> = { email: "Email", telegram: "Telegram", phone: "Звонок", maks: "МАКС", note: "Заметка" };
 const PRIORITY_LABELS: Record<string, string> = { low: "Низкий", medium: "Средний", high: "Высокий" };
 const DEAL_STAGE: Record<string, string> = { lead: "Лид", proposal: "Предложение", negotiation: "Переговоры", order_assembly: "Сборка заказа", won: "Выиграна", lost: "Проиграна" };
-const COMPANY_TYPE: Record<string, string> = { restaurant: "Ресторан", hotel: "Отель", salon: "Салон", retail: "Розница", wholesale: "Опт", other: "Другое" };
 const CONTRACT_STATUS: Record<string, string> = { none: "Нет договора", pending: "На согласовании", signed: "Подписан", terminated: "Расторгнут" };
 const CONTRACT_COLORS: Record<string, string> = { none: "#c62828", pending: "#e65c00", signed: "#2e7d32", terminated: "#888" };
 
@@ -527,10 +526,10 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                 </div>
               )}
               <div className="space-y-2 text-sm">
-                {company.company_type && (
+                {company.venue_types?.name && (
                   <div className="flex justify-between">
                     <span className="text-slate-500">Тип</span>
-                    <span className="text-slate-700">{COMPANY_TYPE[company.company_type] ?? company.company_type}</span>
+                    <span className="text-slate-700">{company.venue_types.name}</span>
                   </div>
                 )}
                 {company.inn && <div className="flex justify-between"><span className="text-slate-500">ИНН</span><span className="text-slate-700">{company.inn}</span></div>}
@@ -559,14 +558,9 @@ export default function CompanyDetail({ company: initialCompany, contacts, deals
                   <span className="text-slate-700">{deals?.length ?? 0}</span>
                 </div>
               </div>
-              {(company.activity || company.need) && (
+              {company.description && (
                 <div className="mt-3 pt-3 space-y-2 text-sm" style={{ borderTop: "1px solid #f0f0f0" }}>
-                  {company.activity && (
-                    <div><p className="text-xs font-semibold text-slate-500 mb-0.5">Деятельность</p><p className="text-slate-700">{company.activity}</p></div>
-                  )}
-                  {company.need && (
-                    <div><p className="text-xs font-semibold text-slate-500 mb-0.5">Потребность</p><p className="text-slate-700">{company.need}</p></div>
-                  )}
+                  <div><p className="text-xs font-semibold text-slate-500 mb-0.5">Комментарий</p><p className="text-slate-700 whitespace-pre-wrap">{company.description}</p></div>
                 </div>
               )}
             </CardBody>

@@ -9,7 +9,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
 
   const { data: company } = await admin
     .from("companies")
-    .select("*")
+    .select("*, venue_types(id, name)")
     .eq("id", id)
     .is("deleted_at", null)
     .single();

@@ -13,10 +13,6 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import PhoneLink from "@/components/ui/PhoneLink";
 import CreateCompanyModal from "./CreateCompanyModal";
 
-const COMPANY_TYPE_LABELS: Record<string, string> = {
-  restaurant: "Ресторан", hotel: "Отель", salon: "Салон",
-  retail: "Розница", wholesale: "Опт", other: "Другое",
-};
 const CONTRACT_LABELS: Record<string, string> = { none: "Нет договора", pending: "На согласовании", signed: "Подписан", terminated: "Расторгнут" };
 const CONTRACT_COLORS: Record<string, { bg: string; color: string }> = {
   none: { bg: "#fdecea", color: "#c62828" },
@@ -42,12 +38,12 @@ export default function CompaniesList({ initialCompanies, users, totalActive = i
   const [havenbergOnly, setHavenbergOnly] = useState(false);
   const havenbergSet = useState<Set<string>>(() => new Set(havenbergCompanyIds as string[]))[0];
 
-  const filtered = companies.filter((c: { id: string; name: string; brand_name?: string; inn?: string; company_type?: string; contract_status?: string; created_at?: string }) => {
+  const filtered = companies.filter((c: { id: string; name: string; brand_name?: string; inn?: string; venue_types?: { name?: string } | null; contract_status?: string; created_at?: string }) => {
     const matchSearch = !search ||
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.brand_name?.toLowerCase().includes(search.toLowerCase()) ||
       c.inn?.includes(search) ||
-      COMPANY_TYPE_LABELS[c.company_type ?? ""]?.toLowerCase().includes(search.toLowerCase());
+      (c.venue_types?.name ?? "").toLowerCase().includes(search.toLowerCase());
     const matchContract = !contractFilter || (c.contract_status ?? "none") === contractFilter;
     const matchesDate = (!dateFrom || (c.created_at ?? "") >= dateFrom) && (!dateTo || (c.created_at ?? "") <= dateTo + "T23:59:59");
     const matchesOwner = !isManager || !currentUser || (c as any).assigned_to === currentUser.id;
@@ -169,7 +165,7 @@ export default function CompaniesList({ initialCompanies, users, totalActive = i
               </thead>
               <tbody>
                 {(paginatedCompanies as any[]).map((company: {
-                  id: string; name: string; brand_name?: string; inn?: string; company_type?: string; contract_status?: string;
+                  id: string; name: string; brand_name?: string; inn?: string; venue_types?: { name?: string } | null; contract_status?: string;
                   phone?: string; email?: string; website?: string; users?: { full_name: string };
                 }) => {
                   const isSel = selected.has(company.id);
@@ -200,7 +196,7 @@ export default function CompaniesList({ initialCompanies, users, totalActive = i
                       </td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>{company.inn ?? "—"}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: "#666" }}>
-                        {COMPANY_TYPE_LABELS[company.company_type ?? ""] ?? company.company_type ?? "—"}
+                        {company.venue_types?.name ?? "—"}
                       </td>
                       <td className="px-4 py-2.5">
                         {(() => {
