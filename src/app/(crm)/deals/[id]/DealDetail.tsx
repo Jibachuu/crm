@@ -424,6 +424,22 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
 
             {activeTab === "info" && (
               <div className="space-y-4">
+                <div className="text-sm" style={{ color: "#555" }}>
+                  <p className="text-xs font-semibold mb-1" style={{ color: "#888" }}>Адреса:</p>
+                  <AddressList
+                    addresses={deal.addresses ?? []}
+                    onChange={async (addresses) => {
+                      const prev = deal.addresses ?? [];
+                      setDeal((p: Record<string, unknown>) => ({ ...p, addresses }));
+                      const { error } = await apiPut("/api/deals", { id: deal.id, addresses });
+                      if (error) {
+                        setDeal((p: Record<string, unknown>) => ({ ...p, addresses: prev }));
+                        alert("Не удалось сохранить адреса: " + error);
+                      }
+                    }}
+                  />
+                </div>
+
                 <RelatedInfoBlock
                   entityType="deal"
                   entityId={deal.id}
@@ -432,24 +448,6 @@ export default function DealDetail({ deal: initialDeal, communications: initialC
                   contacts={initialCompanyContacts}
                   onEntityDescriptionChanged={(v) => setDeal((p: Record<string, unknown>) => ({ ...p, description: v }))}
                 />
-
-                <Card>
-                  <CardBody>
-                    <h3 className="text-sm font-semibold text-slate-700 mb-2">Адреса доставки</h3>
-                    <AddressList
-                      addresses={deal.addresses ?? []}
-                      onChange={async (addresses) => {
-                        const prev = deal.addresses ?? [];
-                        setDeal((p: Record<string, unknown>) => ({ ...p, addresses }));
-                        const { error } = await apiPut("/api/deals", { id: deal.id, addresses });
-                        if (error) {
-                          setDeal((p: Record<string, unknown>) => ({ ...p, addresses: prev }));
-                          alert("Не удалось сохранить адреса: " + error);
-                        }
-                      }}
-                    />
-                  </CardBody>
-                </Card>
 
                 {deal.objections && (
                   <Card>
