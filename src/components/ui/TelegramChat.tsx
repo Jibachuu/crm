@@ -14,6 +14,7 @@ import { useChatSearch } from "@/components/inbox/useChatSearch";
 import JumpToBottom from "@/components/inbox/JumpToBottom";
 import { useToast } from "@/components/inbox/Toaster";
 import { formatMessageText } from "@/components/inbox/formatText";
+import ComposerAttachments from "@/components/inbox/ComposerAttachments";
 
 interface TgMessage {
   id: number;
@@ -150,6 +151,8 @@ function MediaBubble({ media, peer, msgId, onLightbox }: { media: NonNullable<Tg
 export default function TelegramChat({ peer, compact = false, pollInterval = 8000, readOnly = false, senderName, entityType, entityId, phone }: Props & { entityType?: string; entityId?: string; phone?: string }) {
   const toast = useToast();
   const [messages, setMessages] = useState<TgMessage[]>([]);
+  // R6: очередь аттачей — файл сначала висит в composer'е, уходит по Send
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // R2: черновик на чат — сохраняется в localStorage под ключом
@@ -362,6 +365,25 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   }, [messages]);
 
   async function sendMessage() {
+    // Если в очереди аттачи — отправляем их (с caption если есть текст)
+    if (pendingFiles.length > 0 && !sending) {
+      setSending(true);
+      const files = pendingFiles;
+      const caption = text.trim();
+      setPendingFiles([]);
+      clearText();
+      setReplyTo(null);
+      try {
+        for (let i = 0; i < files.length; i++) {
+          // caption только к последнему файлу — так в TG видно текст
+          // сразу после последней картинки
+          const isLast = i === files.length - 1;
+          await sendFile(files[i], isLast ? caption : "");
+        }
+      } catch { toast.error("Не удалось отправить файлы"); }
+      setSending(false);
+      return;
+    }
     if (!text.trim() || sending) return;
     setSending(true);
     let body = text.trim();
@@ -394,7 +416,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
     }
   }
 
-  async function sendFile(file: File) {
+  async function sendFile(file: File, caption = "") {
     setUploading(true);
     const fd = new FormData();
     // Browser hands us File objects with empty .name when the user pastes
@@ -407,9 +429,17 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
     const named = file.name === safeName ? file : new File([file], safeName, { type: file.type });
     fd.append("file", named);
     fd.append("peer", peer);
+    if (caption) fd.append("caption", caption);
     await fetch("/api/telegram/upload", { method: "POST", body: fd });
     await fetchMessages(true);
     setUploading(false);
+  }
+
+  // Добавление в очередь (не отправляет сразу — уходит по Send)
+  function enqueueFiles(files: File[] | FileList) {
+    const arr = Array.from(files);
+    if (arr.length === 0) return;
+    setPendingFiles((p) => [...p, ...arr]);
   }
 
   async function startRecording() {
@@ -473,10 +503,9 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
       style={{ display: "flex", flexDirection: "column", height, overflow: "hidden", background: "var(--tg-bg)", position: "relative" }}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
-      onDrop={async (e) => {
+      onDrop={(e) => {
         e.preventDefault(); setDragOver(false);
-        const files = Array.from(e.dataTransfer.files);
-        for (const f of files) await sendFile(f);
+        enqueueFiles(e.dataTransfer.files);
       }}
     >
       {dragOver && (
@@ -614,6 +643,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
               onCancel={() => setReplyTo(null)}
             />
           )}
+          <ComposerAttachments files={pendingFiles} onRemove={(i) => setPendingFiles((p) => p.filter((_, idx) => idx !== i))} />
           <div className="inbox-composer" style={{ position: "relative" }}>
           {emojiOpen && (
             <EmojiPicker
@@ -627,7 +657,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
               for (const f of files) {
                 fetch(f.url).then((r) => r.blob()).then((blob) => {
                   const file = new File([blob], f.name, { type: f.type || "application/octet-stream" });
-                  sendFile(file);
+                  enqueueFiles([file]);
                 }).catch(() => {});
               }
             }} />
@@ -641,7 +671,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
               <Paperclip size={18} />
             </button>
             <input ref={fileInputRef} type="file" className="hidden" multiple
-              onChange={async (e) => { const files = e.target.files; if (files) { for (let i = 0; i < files.length; i++) await sendFile(files[i]); } e.target.value = ""; }} />
+              onChange={(e) => { if (e.target.files) enqueueFiles(e.target.files); e.target.value = ""; }} />
             <button
               ref={emojiBtnRef}
               onClick={() => setEmojiOpen((v) => !v)}
@@ -660,8 +690,6 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                 else if (e.key === "Escape" && replyTo) { e.preventDefault(); setReplyTo(null); }
               }}
               onPaste={(e) => {
-                // Приоритет: файлы (Ctrl+V из проводника — картинки, pdf,
-                // docx, что угодно) → HTML/text уходит в textarea дефолтом.
                 const items = e.clipboardData?.items;
                 if (!items) return;
                 const files: File[] = [];
@@ -673,7 +701,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                 }
                 if (files.length > 0) {
                   e.preventDefault();
-                  (async () => { for (const f of files) await sendFile(f); })();
+                  enqueueFiles(files);
                 }
               }}
               placeholder="Сообщение"
@@ -681,7 +709,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
               rows={1}
             />
 
-            {text.trim() ? (
+            {text.trim() || pendingFiles.length > 0 ? (
               <button
                 onClick={sendMessage}
                 disabled={sending || uploading}

@@ -14,12 +14,19 @@ import { useChatSearch } from "@/components/inbox/useChatSearch";
 import JumpToBottom from "@/components/inbox/JumpToBottom";
 import { useToast } from "@/components/inbox/Toaster";
 import { formatMessageText } from "@/components/inbox/formatText";
+import ComposerAttachments from "@/components/inbox/ComposerAttachments";
 
 // linkify/formatting теперь общий — см. formatMessageText
 
 export default function MaxChat({ chatId, compact = false, entityType, entityId, phone }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string; phone?: string; }) {
   const toast = useToast();
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  function enqueueFiles(files: File[] | FileList) {
+    const arr = Array.from(files);
+    if (arr.length === 0) return;
+    setPendingFiles((p) => [...p, ...arr]);
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[]; chatId?: string; reactions?: { emoji: string; count: number }[]; forwardedFrom?: { senderName?: string; text?: string } | null; replyTo?: { id: string; senderName?: string; text?: string } | null; read?: boolean | null }[]>([]);
   // R2: черновик на чат — сохраняется в localStorage.
@@ -262,6 +269,28 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   }, [chatId, myId]);
 
   async function sendMessage() {
+    if (pendingFiles.length > 0 && !sending) {
+      setSending(true);
+      const files = pendingFiles;
+      setPendingFiles([]);
+      const savedText = text.trim();
+      try {
+        for (const f of files) await sendFile(f);
+        // Текст если был — отдельным сообщением после файлов
+        if (savedText) {
+          await fetch("/api/max", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "send", chat_id: chatId, text: savedText }),
+          }).catch(() => {});
+        }
+        clearText();
+        setReplyTo(null);
+        setTimeout(loadMessages, 1000);
+      } catch { toast.error("Не удалось отправить файлы"); }
+      setSending(false);
+      return;
+    }
     if (!text.trim() || sending) return;
     setSending(true);
     let body = text.trim();
@@ -377,8 +406,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
       onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
       onDrop={async (e) => {
         e.preventDefault(); setDragOver(false);
-        const files = Array.from(e.dataTransfer.files);
-        for (const f of files) await sendFile(f);
+        enqueueFiles(e.dataTransfer.files);
       }}
     >
       {dragOver && (
@@ -636,6 +664,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
           onCancel={() => setReplyTo(null)}
         />
       )}
+      <ComposerAttachments files={pendingFiles} onRemove={(i) => setPendingFiles((p) => p.filter((_, idx) => idx !== i))} />
       <div className="inbox-composer" style={{ position: "relative" }}>
         {emojiOpen && (
           <EmojiPicker
@@ -649,7 +678,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
             for (const f of files) {
               fetch(f.url).then((r) => r.blob()).then((blob) => {
                 const file = new File([blob], f.name, { type: f.type || "application/octet-stream" });
-                sendFile(file);
+                enqueueFiles([file]);
               }).catch(() => {});
             }
           }} />
@@ -657,7 +686,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
             <Paperclip size={18} />
           </button>
           <input ref={fileRef} type="file" className="hidden" multiple
-            onChange={async (e) => { const files = e.target.files; if (files) { for (let i = 0; i < files.length; i++) await sendFile(files[i]); } e.target.value = ""; }} />
+            onChange={(e) => { if (e.target.files) enqueueFiles(e.target.files); e.target.value = ""; }} />
           <button
             ref={emojiBtnRef}
             onClick={() => setEmojiOpen((v) => !v)}
@@ -686,7 +715,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
               }
               if (files.length > 0) {
                 e.preventDefault();
-                (async () => { for (const f of files) await sendFile(f); })();
+                enqueueFiles(files);
               }
             }}
             placeholder={uploading ? "Загрузка..." : "Сообщение в МАКС..."}
@@ -694,7 +723,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
             rows={1}
           />
 
-          {text.trim() ? (
+          {text.trim() || pendingFiles.length > 0 ? (
             <button onClick={sendMessage} disabled={sending} className="inbox-composer-btn inbox-composer-send" title="Отправить (Enter)">
               <Send size={16} />
             </button>

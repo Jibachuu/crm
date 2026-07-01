@@ -383,22 +383,24 @@
 
 /* ── Messages area ─────────────────────────────────── */
 
+/* Простое block-scroll — flex-трюки с justify-content:flex-end иногда
+   ломают overflow в разных браузерах. Здесь скроллер — обычный div
+   с overflow-y:auto и min-height:0. Пуш-сообщения-вниз реализован
+   отдельным bottomRef в JS. */
 .inbox-messages {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
   overflow-y: auto;
-  padding: 8px 0 8px 0;
-  display: flex;
-  flex-direction: column;
+  overflow-x: hidden;
+  padding: 8px 0;
   scroll-behavior: smooth;
+  overscroll-behavior: contain;
 }
 .inbox-messages-inner {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+  display: block;
   padding: 0 12px;
-  gap: 2px;
+  min-height: 100%;
 }
 
 /* Date sticker */
