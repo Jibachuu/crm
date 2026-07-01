@@ -70,10 +70,24 @@ export default function AllMessengersInbox() {
         e.preventDefault();
         setQuickOpen(true);
       }
+      // R5: Alt+↑ / Alt+↓ — прыжки по непрочитанным
+      else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        setSelected((current: typeof selected) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const unread = (dialogs as any[]).filter((d) => d.unread || (d.unreadCount ?? 0) > 0);
+          if (unread.length === 0) return current;
+          const idx = current ? unread.findIndex((d) => d.id === current.id) : -1;
+          const nextIdx = e.key === "ArrowDown"
+            ? (idx + 1) % unread.length
+            : (idx - 1 + unread.length) % unread.length;
+          return unread[nextIdx];
+        });
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [dialogs]);
 
   // R3b: SSE поток обновлений. При delta мержим lastMessage/unread/lastTime
   // в существующие диалоги. Enrichment (CRM-имена, аватарки) сохраняется —

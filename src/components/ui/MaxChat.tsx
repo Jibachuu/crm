@@ -9,6 +9,9 @@ import MessageContextMenu, { MenuIcons } from "@/components/inbox/MessageContext
 import ReplyBar from "@/components/inbox/ReplyBar";
 import EmojiPicker from "@/components/inbox/EmojiPicker";
 import { Smile } from "lucide-react";
+import ChatSearchBar from "@/components/inbox/ChatSearchBar";
+import { useChatSearch } from "@/components/inbox/useChatSearch";
+import JumpToBottom from "@/components/inbox/JumpToBottom";
 
 const URL_REGEX = /(https?:\/\/[^\s<>"')\]]+)/g;
 
@@ -52,7 +55,31 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   const [emojiOpen, setEmojiOpen] = useState(false);
   const emojiBtnRef = useRef<HTMLButtonElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  useEffect(() => { setReplyTo(null); setCtxMenu(null); setEmojiOpen(false); }, [chatId]);
+  // R5
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const searchContainerRef = useRef<HTMLElement | null>(null);
+  const search = useChatSearch({
+    messages,
+    getText: (m) => m.text || (m.attaches?.length ? "[медиа]" : ""),
+    getId: (m) => m.id,
+    enabled: searchOpen,
+    containerRef: searchContainerRef,
+  });
+  useEffect(() => { setReplyTo(null); setCtxMenu(null); setEmojiOpen(false); setSearchOpen(false); }, [chatId]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        const target = e.target as HTMLElement | null;
+        if (!target?.closest?.(".inbox-scope")) return;
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function insertEmoji(e: string) {
     const el = composerRef.current;
@@ -200,9 +227,12 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
+    searchContainerRef.current = container;
     const handleScroll = () => {
       const threshold = 80;
-      wasAtBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+      const atB = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+      wasAtBottomRef.current = atB;
+      setAtBottom(atB);
     };
     container.addEventListener("scroll", handleScroll);
     return () => container.removeEventListener("scroll", handleScroll);
@@ -357,6 +387,21 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
           Отпустите файл чтобы отправить
         </div>
       )}
+      {searchOpen && (
+        <ChatSearchBar
+          query={search.query}
+          onQuery={search.setQuery}
+          activeIdx={search.activeIdx}
+          matchCount={search.matchIds.length}
+          onPrev={search.prev}
+          onNext={search.next}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
+      <JumpToBottom
+        visible={!atBottom}
+        onClick={() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }}
+      />
       <div ref={scrollContainerRef} className="inbox-messages" style={{ padding: "0 12px" }}>
         <div className="inbox-messages-inner">
           {loading && messages.length === 0 && <div style={{ margin: "auto", color: "var(--tg-text-secondary)", fontSize: 13 }}>Загрузка...</div>}
@@ -402,7 +447,12 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
                   return <div className="inbox-date-sticker">{label}</div>;
                 })()}
                 <div
-                  className={`inbox-msg-row ${msg.isMe ? "is-own" : ""} ${isFirstOfGroup ? "first-of-group" : ""}`}
+                  data-msg-id={msg.id}
+                  className={
+                    `inbox-msg-row ${msg.isMe ? "is-own" : ""} ${isFirstOfGroup ? "first-of-group" : ""}` +
+                    (search.matchIdSet.has(String(msg.id)) ? " is-search-match" : "") +
+                    (search.activeId === String(msg.id) ? " is-search-active" : "")
+                  }
                   onMouseEnter={() => setHoveredId(msg.id)}
                   onMouseLeave={() => setHoveredId((p) => p === msg.id ? null : p)}
                   onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, msg }); }}

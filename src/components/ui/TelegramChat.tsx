@@ -9,6 +9,9 @@ import MessageContextMenu, { MenuIcons } from "@/components/inbox/MessageContext
 import ReplyBar from "@/components/inbox/ReplyBar";
 import EmojiPicker from "@/components/inbox/EmojiPicker";
 import { Smile } from "lucide-react";
+import ChatSearchBar from "@/components/inbox/ChatSearchBar";
+import { useChatSearch } from "@/components/inbox/useChatSearch";
+import JumpToBottom from "@/components/inbox/JumpToBottom";
 
 interface TgMessage {
   id: number;
@@ -175,7 +178,38 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   const [emojiOpen, setEmojiOpen] = useState(false);
   const emojiBtnRef = useRef<HTMLButtonElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  useEffect(() => { setReplyTo(null); setCtxMenu(null); setEmojiOpen(false); }, [peer]);
+  useEffect(() => { setReplyTo(null); setCtxMenu(null); setEmojiOpen(false); setSearchOpen(false); }, [peer]);
+
+  // R5: поиск в чате + jump-to-bottom
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  // Ссылка на скроллер — объявлена ниже, но search-хук требует её при
+  // инициализации. Держим отдельный ref-контейнер и связываем через
+  // useEffect после того как scrollContainerRef заполнится.
+  const searchContainerRef = useRef<HTMLElement | null>(null);
+  const search = useChatSearch({
+    messages,
+    getText: (m) => m.text || (m.media ? "[медиа]" : ""),
+    getId: (m) => m.id,
+    enabled: searchOpen,
+    containerRef: searchContainerRef,
+  });
+
+  // Ctrl+F внутри чата — открыть поиск
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        // Не глотаем если фокус в input вне инбокса
+        const target = e.target as HTMLElement | null;
+        const inInbox = target?.closest?.(".inbox-scope");
+        if (!inInbox) return;
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function insertEmoji(e: string) {
     const el = composerRef.current;
@@ -289,6 +323,8 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   }, [fetchMessages, pollInterval]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Прокидываем ссылку в search-хук
+  useEffect(() => { searchContainerRef.current = scrollContainerRef.current; });
   const wasAtBottomRef = useRef(true);
 
   // Track whether user is at bottom before new messages arrive
@@ -297,7 +333,9 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
     if (!container) return;
     const handleScroll = () => {
       const threshold = 80;
-      wasAtBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+      const atB = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+      wasAtBottomRef.current = atB;
+      setAtBottom(atB);
     };
     container.addEventListener("scroll", handleScroll);
     return () => container.removeEventListener("scroll", handleScroll);
@@ -446,6 +484,21 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
           Отпустите файл чтобы отправить
         </div>
       )}
+      {searchOpen && (
+        <ChatSearchBar
+          query={search.query}
+          onQuery={search.setQuery}
+          activeIdx={search.activeIdx}
+          matchCount={search.matchIds.length}
+          onPrev={search.prev}
+          onNext={search.next}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
+      <JumpToBottom
+        visible={!atBottom}
+        onClick={() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }}
+      />
       <div ref={scrollContainerRef} className="inbox-messages" style={{ padding: "0 12px" }}>
         <div className="inbox-messages-inner">
           {messages.length === 0 && (
@@ -467,7 +520,12 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                 {showDateSep && <div className="inbox-date-sticker">{formatDateSep(msg.date)}</div>}
 
                 <div
-                  className={`inbox-msg-row ${msg.out ? "is-own" : ""} ${isFirstOfGroup ? "first-of-group" : ""}`}
+                  data-msg-id={msg.id}
+                  className={
+                    `inbox-msg-row ${msg.out ? "is-own" : ""} ${isFirstOfGroup ? "first-of-group" : ""}` +
+                    (search.matchIdSet.has(String(msg.id)) ? " is-search-match" : "") +
+                    (search.activeId === String(msg.id) ? " is-search-active" : "")
+                  }
                   onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, msg }); }}
                   onDoubleClick={() => { if (msg.text) { setReplyTo(msg); composerRef.current?.focus(); } }}
                 >

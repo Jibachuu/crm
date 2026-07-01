@@ -706,6 +706,17 @@
   animation: msg-highlight 2s ease-out;
 }
 
+/* R5: подсветка совпадений in-chat search */
+.inbox-msg-row.is-search-match .inbox-msg-bubble {
+  outline: 1px solid var(--tg-accent);
+  outline-offset: 1px;
+}
+.inbox-msg-row.is-search-active .inbox-msg-bubble {
+  background: var(--tg-accent) !important;
+  color: #fff !important;
+  outline: 2px solid var(--tg-accent-strong);
+}
+
 /* ── Mobile ────────────────────────────────────────── */
 
 @media (max-width: 900px) {
