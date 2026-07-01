@@ -600,7 +600,7 @@ export default function AllMessengersInbox() {
               }
             />
             <div className="inbox-chat-area">
-              <TelegramChat peer={selected.peer} compact phone={selected.phone} />
+              <TelegramChat peer={selected.peer} phone={selected.phone} />
             </div>
           </>
         ) : selected.channel === "maks" && selected.chatId ? (
@@ -634,7 +634,7 @@ export default function AllMessengersInbox() {
               }
             />
             <div className="inbox-chat-area">
-              <MaxChat chatId={selected.chatId} compact phone={selected.phone} />
+              <MaxChat chatId={selected.chatId} phone={selected.phone} />
             </div>
           </>
         ) : null}

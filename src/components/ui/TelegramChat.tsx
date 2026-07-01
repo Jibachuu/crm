@@ -315,6 +315,17 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
     };
   }, [fetchMessages, pollInterval]);
 
+  // Автоотметка «прочитано» при открытии чата — уходят синие галочки
+  // клиента и обнуляется unreadCount в его карточке.
+  useEffect(() => {
+    if (!peer) return;
+    fetch("/api/telegram/mark-read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ peer }),
+    }).catch(() => { /* тихо, не критично */ });
+  }, [peer]);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   // Прокидываем ссылку в search-хук
   useEffect(() => { searchContainerRef.current = scrollContainerRef.current; });
@@ -649,13 +660,20 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                 else if (e.key === "Escape" && replyTo) { e.preventDefault(); setReplyTo(null); }
               }}
               onPaste={(e) => {
+                // Приоритет: файлы (Ctrl+V из проводника — картинки, pdf,
+                // docx, что угодно) → HTML/text уходит в textarea дефолтом.
                 const items = e.clipboardData?.items;
                 if (!items) return;
+                const files: File[] = [];
                 for (let i = 0; i < items.length; i++) {
-                  if (items[i].type.startsWith("image/")) {
-                    const file = items[i].getAsFile();
-                    if (file) { e.preventDefault(); sendFile(file); return; }
+                  if (items[i].kind === "file") {
+                    const f = items[i].getAsFile();
+                    if (f) files.push(f);
                   }
+                }
+                if (files.length > 0) {
+                  e.preventDefault();
+                  (async () => { for (const f of files) await sendFile(f); })();
                 }
               }}
               placeholder="Сообщение"

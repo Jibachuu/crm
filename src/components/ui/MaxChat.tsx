@@ -214,6 +214,16 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   }
 
   useEffect(() => { if (chatId && myId !== null) refreshAndLoad(); }, [chatId, myId]);
+
+  // Автоотметка «прочитано» при открытии чата
+  useEffect(() => {
+    if (!chatId) return;
+    fetch("/api/max", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "mark_read", chat_id: chatId }),
+    }).catch(() => { /* тихо */ });
+  }, [chatId]);
   // Only scroll when last message ID changes AND user was at bottom
   const lastMsgIdRef = useRef("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -667,11 +677,16 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
             onPaste={(e) => {
               const items = e.clipboardData?.items;
               if (!items) return;
+              const files: File[] = [];
               for (let i = 0; i < items.length; i++) {
-                if (items[i].type.startsWith("image/")) {
-                  const file = items[i].getAsFile();
-                  if (file) { e.preventDefault(); sendFile(file); return; }
+                if (items[i].kind === "file") {
+                  const f = items[i].getAsFile();
+                  if (f) files.push(f);
                 }
+              }
+              if (files.length > 0) {
+                e.preventDefault();
+                (async () => { for (const f of files) await sendFile(f); })();
               }
             }}
             placeholder={uploading ? "Загрузка..." : "Сообщение в МАКС..."}

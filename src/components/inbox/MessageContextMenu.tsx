@@ -55,12 +55,20 @@ export default function MessageContextMenu({ x, y, items, onClose }: Props) {
         ...style,
         background: "var(--tg-bg-panel)",
         border: "1px solid var(--tg-border-subtle)",
-        borderRadius: 8,
-        boxShadow: "0 6px 24px rgba(0,0,0,0.35)",
+        borderRadius: 10,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
         padding: 4,
-        minWidth: 180,
+        minWidth: 200,
+        transformOrigin: "top left",
+        animation: "ctx-menu-in 0.16s cubic-bezier(0.16, 1, 0.3, 1)",
       }}
     >
+      <style>{`
+        @keyframes ctx-menu-in {
+          from { opacity: 0; transform: scale(0.85); }
+          to { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
       {items.map((it, i) => {
         const Icon = it.icon;
         return (
@@ -70,15 +78,15 @@ export default function MessageContextMenu({ x, y, items, onClose }: Props) {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              padding: "8px 12px",
+              gap: 12,
+              padding: "9px 14px",
               width: "100%",
               background: "transparent",
               border: "none",
               cursor: "pointer",
               color: it.danger ? "#ff6b6b" : "var(--tg-text)",
               fontSize: 14,
-              borderRadius: 6,
+              borderRadius: 7,
               textAlign: "left",
               transition: "background-color 0.1s",
             }}
