@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, Paperclip, Mic, MicOff, Edit2, Trash2, Check, CheckCheck, X } from "lucide-react";
+import { Send, Paperclip, Mic, MicOff, Edit2, Trash2, Check, CheckCheck, X, FileText, Image as ImageIcon, Music, Video, Download } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import ImageLightbox from "./ImageLightbox";
 import { useDraft } from "@/components/inbox/useDraft";
@@ -17,6 +17,23 @@ import { formatMessageText } from "@/components/inbox/formatText";
 import ComposerAttachments from "@/components/inbox/ComposerAttachments";
 
 // linkify/formatting теперь общий — см. formatMessageText
+
+function formatBytes(bytes: number | null | undefined): string {
+  if (!bytes || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} ГБ`;
+}
+
+function iconForMaxAttach(name: string | undefined, type: string): React.ComponentType<{ size?: number }> {
+  const n = (name || "").toLowerCase();
+  const t = type.toUpperCase();
+  if (t === "PHOTO" || t === "IMAGE") return ImageIcon;
+  if (t === "AUDIO" || /\.(mp3|wav|ogg|m4a|flac)$/i.test(n)) return Music;
+  if (t === "VIDEO" || /\.(mp4|mov|avi|mkv|webm)$/i.test(n)) return Video;
+  return FileText;
+}
 
 export default function MaxChat({ chatId, compact = false, entityType, entityId, phone }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string; phone?: string; }) {
   const toast = useToast();
@@ -566,45 +583,62 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
                               {(a.url || a.fileId) && <audio controls src={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.url} style={{ maxWidth: 250, height: 36, width: "100%" }} />}
                             </div>
                           ) : a.type === "FILE" ? (
-                            <div
-                              style={{
-                                display: "flex", alignItems: "center", gap: 8,
-                                padding: "6px 8px", borderRadius: 8, cursor: "pointer",
-                                background: "rgba(255,255,255,0.06)",
-                              }}
-                              onClick={() => {
-                                const url = `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}`;
-                                const link = document.createElement("a");
-                                link.href = url;
-                                link.download = a.name || "file";
-                                link.click();
-                              }}
-                            >
-                              <span style={{ fontSize: 18 }}>📄</span>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name || "Файл"}</div>
-                                {a.size && <div style={{ fontSize: 11, opacity: 0.7 }}>{a.size > 1048576 ? (a.size / 1048576).toFixed(1) + " МБ" : (a.size / 1024).toFixed(0) + " КБ"}</div>}
-                              </div>
-                            </div>
+                            (() => {
+                              const url = `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}`;
+                              const Icon = iconForMaxAttach(a.name, a.type);
+                              return (
+                                <a
+                                  href={url}
+                                  download={a.name || "file"}
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 10,
+                                    padding: "8px 10px", borderRadius: 10,
+                                    background: "rgba(255,255,255,0.06)",
+                                    textDecoration: "none", color: "inherit",
+                                    minWidth: 220, maxWidth: 340,
+                                    transition: "background-color 0.1s",
+                                  }}
+                                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.10)")}
+                                  onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+                                >
+                                  <div style={{
+                                    width: 40, height: 40, borderRadius: "50%",
+                                    background: "var(--tg-accent)",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    flexShrink: 0, color: "#fff",
+                                  }}>
+                                    <Icon size={20} />
+                                  </div>
+                                  <div style={{ minWidth: 0, flex: 1 }}>
+                                    <div style={{ fontSize: 14, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name || "Файл"}</div>
+                                    <div style={{ fontSize: 12, opacity: 0.7 }}>{formatBytes(a.size)}</div>
+                                  </div>
+                                  <Download size={16} style={{ opacity: 0.6, flexShrink: 0 }} />
+                                </a>
+                              );
+                            })()
                           ) : (
                             (a.url || a.fileId) ? (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 <audio
                                   controls
                                   src={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.url}
-                                  style={{ maxWidth: 250, height: 36, width: "100%" }}
+                                  style={{ maxWidth: 260, height: 34, width: "100%" }}
                                   onError={(e) => { (e.currentTarget.style as CSSStyleDeclaration).display = "none"; }}
                                 />
                                 <a
                                   href={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.url}
                                   download={a.name || `attachment_${msg.id}`}
-                                  style={{ fontSize: 12, textDecoration: "underline", color: "var(--tg-text-link)" }}
+                                  style={{
+                                    display: "inline-flex", alignItems: "center", gap: 6,
+                                    fontSize: 12, color: "var(--tg-text-link)", textDecoration: "none",
+                                  }}
                                 >
-                                  📎 {a.name || `Вложение (${a.type})`} — скачать
+                                  <Download size={12} /> {a.name || `Вложение`} {a.size ? `· ${formatBytes(a.size)}` : ""}
                                 </a>
                               </div>
                             ) : (
-                              <p style={{ fontSize: 12, fontStyle: "italic" }}>📎 {a.type}: {a.name || "вложение"}</p>
+                              <p style={{ fontSize: 12, fontStyle: "italic", opacity: 0.7 }}>📎 {a.type}: {a.name || "вложение"}</p>
                             )
                           )}
                         </div>
