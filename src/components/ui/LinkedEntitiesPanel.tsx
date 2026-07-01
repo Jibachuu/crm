@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Building2, User, Briefcase, Tag, X, Phone, Mail, Plus } from "lucide-react";
+import { Building2, User, Briefcase, Tag, X, Phone, Mail, Plus, MessageSquare, Send, CheckSquare } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import CreateTaskModal from "./CreateTaskModal";
 
 interface Props {
   phone?: string;
@@ -32,6 +33,8 @@ export default function LinkedEntitiesPanel({ phone, telegramId, telegramUsernam
   const [tab, setTab] = useState<"contacts" | "companies" | "leads" | "deals">("contacts");
   const [creating, setCreating] = useState(false);
   const [createMsg, setCreateMsg] = useState("");
+  // R4: модалка создания задачи привязанной к найденной сущности
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
 
   async function handleCreateLead() {
     setCreating(true);
@@ -140,20 +143,108 @@ export default function LinkedEntitiesPanel({ phone, telegramId, telegramUsernam
     { id: "deals" as const, label: "Сделки", count: deals.length, icon: Briefcase },
   ].filter((t) => t.count > 0);
 
+  const primaryContact = contacts[0];
+  const primaryCompany = companies[0];
+  const primaryPhone = primaryContact?.phone || phone;
+  const primaryEmail = primaryContact?.email || email;
+  const heroName = primaryContact?.full_name || displayName || primaryPhone || "Без имени";
+  const heroInitials = heroName.split(/[\s·]/).map((w) => w[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
+  const channelColor = channel === "telegram" ? "#28a5f5" : channel === "maks" ? "#4b8fd1" : "#7d8b99";
+
+  // Приоритетная сущность для «Создать задачу» — контакт, потом компания.
+  const taskEntity = primaryContact ? { type: "contact" as const, id: primaryContact.id } :
+                     primaryCompany ? { type: "company" as const, id: primaryCompany.id } : null;
+
   return (
-    <div className="flex flex-col h-full" style={{ background: "#fff" }}>
-      <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: "1px solid #e4e4e4" }}>
-        <span className="text-sm font-semibold" style={{ color: "#333" }}>Связанные данные</span>
-        <button onClick={onClose} className="p-1 rounded hover:bg-gray-100"><X size={14} style={{ color: "#888" }} /></button>
+    <div className="inbox-scope" style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--tg-bg-panel)" }}>
+      {/* Hero card */}
+      <div style={{ padding: "16px 16px 12px 16px", borderBottom: "1px solid var(--tg-border)" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0, flex: 1 }}>
+            <div style={{
+              width: 52, height: 52, borderRadius: "50%",
+              background: `linear-gradient(135deg, ${channelColor}dd, ${channelColor}88)`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 20, fontWeight: 500, color: "#fff", flexShrink: 0,
+            }}>{heroInitials}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 500, color: "var(--tg-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{heroName}</div>
+              <div style={{ fontSize: 12, color: "var(--tg-text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {primaryCompany?.name || (channel === "telegram" ? "Telegram" : channel === "maks" ? "МАКС" : "Контакт")}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="inbox-sidebar-btn" title="Закрыть"><X size={16} /></button>
+        </div>
+
+        {/* Быстрые действия */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+          {primaryPhone && (
+            <a
+              href={`tel:${primaryPhone}`}
+              style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                padding: "10px 4px", background: "var(--tg-bg-panel-hover)", borderRadius: 8,
+                color: "var(--tg-text)", textDecoration: "none", fontSize: 11,
+              }}
+              title={`Позвонить ${primaryPhone}`}
+            >
+              <Phone size={18} style={{ color: "var(--tg-accent)" }} />
+              Звонок
+            </a>
+          )}
+          {primaryEmail && (
+            <a
+              href={`mailto:${primaryEmail}`}
+              style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                padding: "10px 4px", background: "var(--tg-bg-panel-hover)", borderRadius: 8,
+                color: "var(--tg-text)", textDecoration: "none", fontSize: 11,
+              }}
+              title={`Написать ${primaryEmail}`}
+            >
+              <Mail size={18} style={{ color: "var(--tg-accent)" }} />
+              Email
+            </a>
+          )}
+          {taskEntity && (
+            <button
+              onClick={() => setTaskModalOpen(true)}
+              style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                padding: "10px 4px", background: "var(--tg-bg-panel-hover)", borderRadius: 8,
+                color: "var(--tg-text)", border: "none", cursor: "pointer", fontSize: 11,
+              }}
+              title="Создать задачу"
+            >
+              <CheckSquare size={18} style={{ color: "var(--tg-accent)" }} />
+              Задача
+            </button>
+          )}
+          {primaryContact && (
+            <Link
+              href={`/contacts/${primaryContact.id}`}
+              style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                padding: "10px 4px", background: "var(--tg-bg-panel-hover)", borderRadius: 8,
+                color: "var(--tg-text)", textDecoration: "none", fontSize: 11,
+              }}
+              title="Открыть карточку контакта"
+            >
+              <User size={18} style={{ color: "var(--tg-accent)" }} />
+              Карточка
+            </Link>
+          )}
+        </div>
       </div>
 
       {loading ? (
-        <p className="text-xs text-center py-8" style={{ color: "#aaa" }}>Загрузка...</p>
+        <p style={{ fontSize: 12, textAlign: "center", padding: 32, color: "var(--tg-text-secondary)" }}>Загрузка...</p>
       ) : tabs.length === 0 ? (
-        <div className="text-center py-8 px-4">
-          <p className="text-sm" style={{ color: "#888" }}>Нет связанных записей</p>
-          <p className="text-xs mt-2" style={{ color: "#aaa" }}>
-            {displayName && <>👤 {displayName}<br/></>}
+        <div style={{ padding: 24, textAlign: "center" }}>
+          <div style={{ marginBottom: 12, fontSize: 34, opacity: 0.35 }}>🔍</div>
+          <p style={{ fontSize: 13, color: "var(--tg-text-secondary)", marginBottom: 6 }}>Контакт не найден в CRM</p>
+          <p style={{ fontSize: 11, color: "var(--tg-text-tertiary)", marginBottom: 16 }}>
             {phone && <>📞 {phone}<br/></>}
             {telegramUsername && <>💬 @{telegramUsername}<br/></>}
             {maksId && <>🅼 {maksId}<br/></>}
@@ -162,74 +253,118 @@ export default function LinkedEntitiesPanel({ phone, telegramId, telegramUsernam
           <button
             onClick={handleCreateLead}
             disabled={creating}
-            className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium disabled:opacity-50"
-            style={{ background: "#0067a5", color: "#fff" }}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "8px 14px", borderRadius: 8, fontSize: 13,
+              background: "var(--tg-accent)", color: "#fff", border: "none",
+              cursor: creating ? "default" : "pointer", opacity: creating ? 0.5 : 1,
+            }}
           >
-            <Plus size={12} /> {creating ? "Создание…" : "Создать лид"}
+            <Plus size={13} /> {creating ? "Создание…" : "Создать лид"}
           </button>
-          {createMsg && <p className="text-xs mt-2" style={{ color: createMsg.startsWith("Ошибка") ? "#c62828" : "#2e7d32" }}>{createMsg}</p>}
+          {createMsg && <p style={{ fontSize: 11, marginTop: 8, color: createMsg.startsWith("Ошибка") ? "#e57373" : "#a8dc9c" }}>{createMsg}</p>}
         </div>
       ) : (
         <>
-          <div className="flex" style={{ borderBottom: "1px solid #f0f0f0" }}>
+          <div style={{ display: "flex", borderBottom: "1px solid var(--tg-border-subtle)" }}>
             {tabs.map((t) => {
               const Icon = t.icon;
+              const active = tab === t.id;
               return (
-                <button key={t.id} onClick={() => setTab(t.id)}
-                  className="flex-1 flex items-center justify-center gap-1 py-2 text-xs"
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
                   style={{
-                    color: tab === t.id ? "#0067a5" : "#888",
-                    borderBottom: tab === t.id ? "2px solid #0067a5" : "2px solid transparent",
-                    fontWeight: tab === t.id ? 600 : 400,
-                  }}>
-                  <Icon size={12} /> {t.label} <span style={{ background: "#e8f4fd", borderRadius: 8, padding: "0 5px", color: "#0067a5" }}>{t.count}</span>
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+                    padding: "10px 4px", fontSize: 12, background: "transparent",
+                    color: active ? "var(--tg-accent)" : "var(--tg-text-secondary)",
+                    borderTop: "none", borderLeft: "none", borderRight: "none",
+                    borderBottom: active ? "2px solid var(--tg-accent)" : "2px solid transparent",
+                    marginBottom: -1, cursor: "pointer",
+                  }}
+                >
+                  <Icon size={13} /> {t.label} <span style={{ padding: "0 5px", borderRadius: 8, background: active ? "var(--tg-accent-dim)" : "var(--tg-bg-panel-hover)", fontSize: 11 }}>{t.count}</span>
                 </button>
               );
             })}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
             {tab === "contacts" && contacts.map((c) => (
-              <Link key={c.id} href={`/contacts/${c.id}`} className="block p-3 rounded-lg hover:bg-blue-50 transition-colors" style={{ border: "1px solid #e0e0e0" }}>
-                <p className="text-sm font-medium" style={{ color: "#0067a5" }}>{c.full_name}</p>
-                {c.phone && <p className="text-xs flex items-center gap-1 mt-1" style={{ color: "#666" }}><Phone size={10} /> {c.phone}</p>}
-                {c.email && <p className="text-xs flex items-center gap-1" style={{ color: "#666" }}><Mail size={10} /> {c.email}</p>}
+              <Link key={c.id} href={`/contacts/${c.id}`} style={{
+                display: "block", padding: 10, borderRadius: 8,
+                background: "var(--tg-bg-panel-hover)", color: "var(--tg-text)",
+                textDecoration: "none", transition: "background-color 0.1s",
+              }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--tg-bg-input)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--tg-bg-panel-hover)")}
+              >
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--tg-accent)" }}>{c.full_name}</div>
+                {c.phone && <div style={{ fontSize: 11, marginTop: 3, color: "var(--tg-text-secondary)", display: "flex", alignItems: "center", gap: 4 }}><Phone size={10} /> {c.phone}</div>}
+                {c.email && <div style={{ fontSize: 11, color: "var(--tg-text-secondary)", display: "flex", alignItems: "center", gap: 4 }}><Mail size={10} /> {c.email}</div>}
               </Link>
             ))}
 
             {tab === "companies" && companies.map((c) => (
-              <Link key={c.id} href={`/companies/${c.id}`} className="block p-3 rounded-lg hover:bg-blue-50 transition-colors" style={{ border: "1px solid #e0e0e0" }}>
-                <p className="text-sm font-medium" style={{ color: "#0067a5" }}>{c.name}</p>
-                {c.inn && <p className="text-xs mt-1" style={{ color: "#666" }}>ИНН: {c.inn}</p>}
-                {c.phone && <p className="text-xs" style={{ color: "#666" }}>📞 {c.phone}</p>}
-                {c.email && <p className="text-xs" style={{ color: "#666" }}>✉️ {c.email}</p>}
-                {c.legal_address && <p className="text-xs mt-1" style={{ color: "#888" }}>{c.legal_address}</p>}
+              <Link key={c.id} href={`/companies/${c.id}`} style={{
+                display: "block", padding: 10, borderRadius: 8,
+                background: "var(--tg-bg-panel-hover)", color: "var(--tg-text)",
+                textDecoration: "none", transition: "background-color 0.1s",
+              }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--tg-bg-input)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--tg-bg-panel-hover)")}
+              >
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--tg-accent)" }}>{c.name}</div>
+                {c.inn && <div style={{ fontSize: 11, marginTop: 3, color: "var(--tg-text-secondary)" }}>ИНН: {c.inn}</div>}
+                {c.legal_address && <div style={{ fontSize: 11, marginTop: 3, color: "var(--tg-text-tertiary)" }}>{c.legal_address}</div>}
               </Link>
             ))}
 
             {tab === "leads" && leads.map((l) => (
-              <Link key={l.id} href={`/leads/${l.id}`} className="block p-3 rounded-lg hover:bg-blue-50 transition-colors" style={{ border: "1px solid #e0e0e0" }}>
-                <p className="text-sm font-medium" style={{ color: "#0067a5" }}>{l.title}</p>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs" style={{ color: "#888" }}>{new Date(l.created_at).toLocaleDateString("ru-RU")}</span>
-                  {l.status && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#e8f4fd", color: "#0067a5" }}>{l.status}</span>}
+              <Link key={l.id} href={`/leads/${l.id}`} style={{
+                display: "block", padding: 10, borderRadius: 8,
+                background: "var(--tg-bg-panel-hover)", color: "var(--tg-text)",
+                textDecoration: "none",
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--tg-accent)" }}>{l.title}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: "var(--tg-text-tertiary)" }}>{new Date(l.created_at).toLocaleDateString("ru-RU")}</span>
+                  {l.status && <span style={{ fontSize: 10, padding: "1px 8px", borderRadius: 8, background: "var(--tg-accent-dim)", color: "var(--tg-accent)" }}>{l.status}</span>}
                 </div>
               </Link>
             ))}
 
             {tab === "deals" && deals.map((d) => (
-              <Link key={d.id} href={`/deals/${d.id}`} className="block p-3 rounded-lg hover:bg-blue-50 transition-colors" style={{ border: "1px solid #e0e0e0" }}>
-                <p className="text-sm font-medium" style={{ color: "#0067a5" }}>{d.title}</p>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-xs" style={{ color: "#888" }}>{new Date(d.created_at).toLocaleDateString("ru-RU")}</span>
-                  {d.amount && d.amount > 0 && <span className="text-xs font-semibold" style={{ color: "#2e7d32" }}>{d.amount.toLocaleString("ru-RU")} ₽</span>}
+              <Link key={d.id} href={`/deals/${d.id}`} style={{
+                display: "block", padding: 10, borderRadius: 8,
+                background: "var(--tg-bg-panel-hover)", color: "var(--tg-text)",
+                textDecoration: "none",
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--tg-accent)" }}>{d.title}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: "var(--tg-text-tertiary)" }}>{new Date(d.created_at).toLocaleDateString("ru-RU")}</span>
+                  {d.amount && d.amount > 0 ? <span style={{ fontSize: 11, fontWeight: 500, color: "#a8dc9c" }}>{d.amount.toLocaleString("ru-RU")} ₽</span> : null}
                 </div>
-                {d.stage && <span className="inline-block text-xs px-2 py-0.5 rounded-full mt-1" style={{ background: "#fff3e0", color: "#e65c00" }}>{d.stage}</span>}
+                {d.stage && <span style={{ display: "inline-block", marginTop: 4, fontSize: 10, padding: "1px 8px", borderRadius: 8, background: "rgba(230, 92, 0, 0.18)", color: "#ffab6b" }}>{d.stage}</span>}
               </Link>
             ))}
           </div>
         </>
       )}
+
+      {taskModalOpen && taskEntity && (
+        <CreateTaskModal
+          open={taskModalOpen}
+          onClose={() => setTaskModalOpen(false)}
+          entityType={taskEntity.type}
+          entityId={taskEntity.id}
+          onCreated={() => setTaskModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
+
+// Заглушка чтобы eslint не жаловался на неиспользованный импорт из R2-context menu.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _unused = { MessageSquare, Send };
