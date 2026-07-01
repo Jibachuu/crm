@@ -13,6 +13,8 @@ import QuickSearchOverlay from "@/components/inbox/QuickSearchOverlay";
 import { useInboxNotifications, useNewMessageDetector } from "@/components/inbox/useInboxNotifications";
 import { useTabBadge } from "@/components/inbox/useTabBadge";
 import InboxSettings from "@/components/inbox/InboxSettings";
+import { useInboxStream } from "@/components/inbox/useInboxStream";
+import ConnectionBanner from "@/components/inbox/ConnectionBanner";
 import { createClient } from "@/lib/supabase/client";
 
 interface UnifiedDialog {
@@ -72,6 +74,43 @@ export default function AllMessengersInbox() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // R3b: SSE поток обновлений. При delta мержим lastMessage/unread/lastTime
+  // в существующие диалоги. Enrichment (CRM-имена, аватарки) сохраняется —
+  // stream отдаёт сырой набор, а loadAll подтянет обогащение при первом
+  // холодном рендере и по клику Refresh.
+  const { state: streamState } = useInboxStream({
+    enabled: true,
+    onFullSync: (fresh: UnifiedDialog[]) => {
+      setDialogs((prev: UnifiedDialog[]) => {
+        const byId = new Map(prev.map((d) => [d.id, d]));
+        const next: UnifiedDialog[] = [];
+        for (const f of fresh) {
+          const old = byId.get(f.id);
+          if (old) next.push({ ...old, lastMessage: f.lastMessage, lastTime: f.lastTime, unread: f.unread, unreadCount: f.unreadCount });
+          else next.push(f);
+        }
+        return next.sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
+      });
+    },
+    onDelta: (changed: UnifiedDialog[], removed: string[]) => {
+      if (changed.length === 0 && removed.length === 0) return;
+      setDialogs((prev: UnifiedDialog[]) => {
+        const removedSet = new Set(removed);
+        const changedById = new Map(changed.map((c) => [c.id, c]));
+        const next: UnifiedDialog[] = prev
+          .filter((d) => !removedSet.has(d.id))
+          .map((d) => {
+            const c = changedById.get(d.id);
+            if (!c) return d;
+            changedById.delete(d.id);
+            return { ...d, lastMessage: c.lastMessage, lastTime: c.lastTime, unread: c.unread, unreadCount: c.unreadCount };
+          });
+        for (const [, c] of changedById) next.push(c);
+        return next.sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
+      });
+    },
+  });
 
   // R3a: пуш + звук + счётчик на favicon/title
   const notif = useInboxNotifications();
@@ -405,7 +444,9 @@ export default function AllMessengersInbox() {
   });
 
   return (
-    <div className="inbox-scope inbox-shell">
+    <div className="inbox-scope inbox-shell" style={{ flexDirection: "column" }}>
+      <ConnectionBanner state={streamState} />
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
       {/* — Sidebar — */}
       <aside className="inbox-sidebar">
         <div className="inbox-sidebar-header">
@@ -585,15 +626,6 @@ export default function AllMessengersInbox() {
         ) : null}
       </div>
 
-      {quickOpen && (
-        <QuickSearchOverlay
-          dialogs={dialogs}
-          formatTime={formatTime}
-          onPick={(d) => setSelected(d)}
-          onClose={() => setQuickOpen(false)}
-        />
-      )}
-
       {/* — Right panel — */}
       {linkedOpen && selected && (
         <aside className="inbox-rightpanel">
@@ -607,6 +639,16 @@ export default function AllMessengersInbox() {
             onClose={() => setLinkedOpen(false)}
           />
         </aside>
+      )}
+      </div>
+
+      {quickOpen && (
+        <QuickSearchOverlay
+          dialogs={dialogs}
+          formatTime={formatTime}
+          onPick={(d) => setSelected(d)}
+          onClose={() => setQuickOpen(false)}
+        />
       )}
     </div>
   );
