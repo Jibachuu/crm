@@ -1,4 +1,5 @@
 import React from "react";
+import { emojify } from "./emojify";
 
 // Простой markdown-подобный парсер сообщений — bold/italic/code/strike
 // плюс URL-ссылки. Достаточно для «дорогого» ощущения без грузных
@@ -40,8 +41,8 @@ function splitByUrls(input: string): Segment[] {
 
 // Обрабатывает одну текстовую пачку — разбирает жирный/курсив/код/зачёркн/спойлер
 function renderFormatted(text: string, keyPrefix: string): React.ReactNode[] {
-  // Правильный порядок:  ~~s~~  ||spoiler||  **b**  __i__  `c`
-  // Для простоты: пройдём массивом regex'ов, каждый раз оборачивая match.
+  // Порядок: сначала markdown-разметка, потом эмодзи. Emoji-parser
+  // работает над плоскими текстовыми пачками — html-разметку не трогает.
   const rules: { re: RegExp; wrap: (inner: React.ReactNode, k: string) => React.ReactNode }[] = [
     { re: /\*\*([^*][^*]*)\*\*/, wrap: (inner, k) => <b key={k}>{inner}</b> },
     { re: /__([^_][^_]*)__/, wrap: (inner, k) => <i key={k}>{inner}</i> },
@@ -65,7 +66,8 @@ function renderFormatted(text: string, keyPrefix: string): React.ReactNode[] {
         ];
       }
     }
-    return [str];
+    // Финальная фаза — заменяем нативные emoji на Apple-PNG
+    return emojify(str);
   }
 
   return inner(text, keyPrefix);

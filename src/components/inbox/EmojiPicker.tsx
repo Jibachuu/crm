@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { emojify } from "./emojify";
 
 // Компактный emoji-picker без внешних зависимостей. Список отобран
 // вручную (это то что нужно менеджеру для общения с клиентом,
@@ -144,11 +145,12 @@ export default function EmojiPicker({ onPick, onClose, anchorEl }: Props) {
               padding: 4, fontSize: 22, background: "transparent",
               border: "none", cursor: "pointer", borderRadius: 6,
               transition: "background-color 0.1s",
+              lineHeight: 1,
             }}
             onMouseEnter={(ev) => (ev.currentTarget.style.background = "var(--tg-bg-panel-hover)")}
             onMouseLeave={(ev) => (ev.currentTarget.style.background = "transparent")}
           >
-            {e}
+            {emojify(e)}
           </button>
         ))}
       </div>

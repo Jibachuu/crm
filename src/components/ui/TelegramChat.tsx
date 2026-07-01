@@ -742,8 +742,35 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
         const items = [] as { icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void; danger?: boolean }[];
         if (!readOnly) items.push({ icon: MenuIcons.Reply, label: "Ответить", onClick: () => { setReplyTo(m); composerRef.current?.focus(); } });
         if (m.text) items.push({ icon: MenuIcons.Copy, label: "Копировать текст", onClick: () => { navigator.clipboard.writeText(m.text).then(() => toast.success("Скопировано")).catch(() => toast.error("Не удалось скопировать")); } });
-        // TG-side edit/delete requires MTProto opcodes we haven't
-        // proxied yet (backlog v7). Кладём заглушки-подсказку.
+        if (m.out && !readOnly) {
+          items.push({ icon: MenuIcons.Trash2, label: "Удалить у всех", danger: true, onClick: async () => {
+            if (!confirm("Удалить это сообщение у всех? Действие необратимо.")) return;
+            const res = await fetch("/api/telegram/delete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ peer, message_ids: [m.id], revoke: true }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data?.ok) {
+              setMessages((prev) => prev.filter((x) => x.id !== m.id));
+              toast.success("Сообщение удалено");
+            } else {
+              toast.error("Не удалось удалить: " + (data?.error ?? res.status));
+            }
+          } });
+          items.push({ icon: MenuIcons.Trash2, label: "Удалить только у меня", onClick: async () => {
+            const res = await fetch("/api/telegram/delete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ peer, message_ids: [m.id], revoke: false }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data?.ok) {
+              setMessages((prev) => prev.filter((x) => x.id !== m.id));
+              toast.success("Удалено у себя");
+            } else toast.error("Не удалось: " + (data?.error ?? res.status));
+          } });
+        }
         return <MessageContextMenu x={ctxMenu.x} y={ctxMenu.y} items={items} onClose={() => setCtxMenu(null)} />;
       })()}
     </div>
