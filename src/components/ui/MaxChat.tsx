@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, Paperclip, Mic, MicOff, Edit2, Trash2, Check, X } from "lucide-react";
+import { Send, Paperclip, Mic, MicOff, Edit2, Trash2, Check, CheckCheck, X } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import ImageLightbox from "./ImageLightbox";
 import { useDraft } from "@/components/inbox/useDraft";
@@ -262,17 +262,22 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
     }
   }, [messages]);
 
-  // Форс-скролл в самый низ при открытии чата (первый рендер сообщений).
-  const initialScrolledRef = useRef(false);
-  useEffect(() => { initialScrolledRef.current = false; }, [chatId]);
+  // Форс-скролл в самый низ при открытии чата — многократный пин
+  // потому что картинки/файлы догружаются и меняют scrollHeight.
+  const scrolledForChatRef = useRef<string | null>(null);
   useEffect(() => {
-    if (initialScrolledRef.current) return;
+    if (!chatId) return;
     if (messages.length === 0) return;
+    if (scrolledForChatRef.current === chatId) return;
+    scrolledForChatRef.current = chatId;
     const el = scrollContainerRef.current;
     if (!el) return;
-    initialScrolledRef.current = true;
-    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
-    setTimeout(() => { el.scrollTop = el.scrollHeight; }, 300);
+    const pin = () => { const c = scrollContainerRef.current; if (c) c.scrollTop = c.scrollHeight; };
+    requestAnimationFrame(pin);
+    setTimeout(pin, 60);
+    setTimeout(pin, 200);
+    setTimeout(pin, 600);
+    setTimeout(pin, 1200);
   }, [messages.length, chatId]);
   useEffect(() => {
     if (!chatId) return;
@@ -626,7 +631,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
                           {formatMessageText(msg.text)}
                           <span className="inbox-msg-meta">
                             {formatTime(msg.time)}
-                            {msg.isMe && <span className={`inbox-msg-tick ${msg.read ? "is-read" : ""}`}>{msg.read ? "✓✓" : "✓"}</span>}
+                            {msg.isMe && (msg.read ? <CheckCheck size={14} className="inbox-msg-tick is-read" /> : <Check size={14} className="inbox-msg-tick" />)}
                           </span>
                         </div>
                       )
@@ -635,7 +640,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
                     {!msg.text && (msg.attaches?.length ?? 0) > 0 && (
                       <div className="inbox-msg-meta" style={{ padding: "2px 6px 0" }}>
                         {formatTime(msg.time)}
-                        {msg.isMe && <span className={`inbox-msg-tick ${msg.read ? "is-read" : ""}`}>{msg.read ? "✓✓" : "✓"}</span>}
+                        {msg.isMe && (msg.read ? <CheckCheck size={14} className="inbox-msg-tick is-read" /> : <Check size={14} className="inbox-msg-tick" />)}
                       </div>
                     )}
 

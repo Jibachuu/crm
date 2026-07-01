@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Send, Paperclip, Mic, MicOff, Download, FileText, Image, Music, Video, X } from "lucide-react";
+import { Send, Paperclip, Mic, MicOff, Download, FileText, Image, Music, Video, X, Check, CheckCheck } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import ImageLightbox from "./ImageLightbox";
 import { useDraft } from "@/components/inbox/useDraft";
@@ -334,22 +334,24 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   // Прокидываем ссылку в search-хук
   useEffect(() => { searchContainerRef.current = scrollContainerRef.current; });
 
-  // При смене чата — форсим скролл в самый низ как только придут сообщения.
-  // Раньше видно было самое старое сообщение сверху и приходилось листать
-  // вниз к актуальным (жалоба Жибы 01.07). Флаг сбрасывается на новом peer.
-  const initialScrolledRef = useRef(false);
-  useEffect(() => { initialScrolledRef.current = false; }, [peer]);
+  // При смене чата — форсим скролл в самый низ. Многократный пин
+  // потому что медиа (картинки/видео) прогружаются позже и поднимают
+  // scrollHeight — если пинуть один раз, пользователь оказывается
+  // не совсем внизу.
+  const scrolledForPeerRef = useRef<string | null>(null);
   useEffect(() => {
-    if (initialScrolledRef.current) return;
+    if (!peer) return;
     if (messages.length === 0) return;
+    if (scrolledForPeerRef.current === peer) return;
+    scrolledForPeerRef.current = peer;
     const el = scrollContainerRef.current;
     if (!el) return;
-    initialScrolledRef.current = true;
-    // Отложенный scroll — ждём фактического рендера пузырей и media
-    // (у картинок onLoad поднимает scrollHeight, поэтому делаем ещё
-    // один финальный пинок через 300 мс).
-    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
-    setTimeout(() => { el.scrollTop = el.scrollHeight; }, 300);
+    const pin = () => { const c = scrollContainerRef.current; if (c) c.scrollTop = c.scrollHeight; };
+    requestAnimationFrame(pin);
+    setTimeout(pin, 60);
+    setTimeout(pin, 200);
+    setTimeout(pin, 600);
+    setTimeout(pin, 1200);
   }, [messages.length, peer]);
   const wasAtBottomRef = useRef(true);
 
@@ -602,7 +604,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                         {formatMessageText(msg.text)}
                         <span className="inbox-msg-meta">
                           {formatMsgTime(msg.date)}
-                          {msg.out && <span className={`inbox-msg-tick ${msg.read ? "is-read" : ""}`}>{msg.read ? "✓✓" : "✓"}</span>}
+                          {msg.out && (msg.read ? <CheckCheck size={14} className="inbox-msg-tick is-read" /> : <Check size={14} className="inbox-msg-tick" />)}
                         </span>
                       </div>
                     )}
@@ -610,7 +612,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
                     {!msg.text && msg.media && (
                       <div className="inbox-msg-meta" style={{ padding: "2px 6px 0" }}>
                         {formatMsgTime(msg.date)}
-                        {msg.out && <span className={`inbox-msg-tick ${msg.read ? "is-read" : ""}`}>{msg.read ? "✓✓" : "✓"}</span>}
+                        {msg.out && (msg.read ? <CheckCheck size={14} className="inbox-msg-tick is-read" /> : <Check size={14} className="inbox-msg-tick" />)}
                       </div>
                     )}
 
