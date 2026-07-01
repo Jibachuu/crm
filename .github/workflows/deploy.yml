@@ -14,33 +14,26 @@ jobs:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
         with:
-          host: 72.56.243.123
+          # 2026-07-01: миграция с Timeweb (72.56.243.123, был заблокирован
+          # РКН из-за AWS/Supabase) на AEZA Amsterdam (45.94.37.151).
+          # max-proxy/telegram-proxy теперь живут прямо на этом же VPS,
+          # whisper-server пока не переехал — если приедет, обернуть
+          # билд в systemctl stop/start как раньше.
+          host: 45.94.37.151
           username: root
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           command_timeout: 15m
           script: |
             set -euo pipefail
-            # Без set -e bash продолжает на следующую строку при ошибке —
-            # 15.05.2026 это привело к loop из 93 рестартов crm-app:
-            # next build упал (OOM на 1024 MB heap), .next/BUILD_ID не
-            # появился, а systemctl restart crm-app всё равно отработал
-            # → сайт лёг с 502 Bad Gateway.
             cd /opt/crm-app
             git fetch origin main
             git reset --hard origin/main
             npm install
-            # 22.05.2026 next build съел всю RAM (whisper-server 600 МБ +
-            # crm-app + apt-daily) → OOM killer прибил whisper, BUILD_ID
-            # не записался, сервер 2 дня сидел на старом билде. Останавливаем
-            # whisper на время билда (он переживёт 3-минутный простой),
-            # затем поднимаем обратно — даже если билд упадёт.
-            WHISPER_RESTORED=0
-            restore_whisper() { if [ "$WHISPER_RESTORED" = "0" ]; then WHISPER_RESTORED=1; systemctl start whisper-server || true; fi; }
-            trap restore_whisper EXIT
-            systemctl stop whisper-server || true
-            NODE_OPTIONS="--max-old-space-size=1536" npx next build
-            restore_whisper
+            # AEZA NLs-2 = 4 GB RAM, hoister 1.5 GB нам мало —
+            # разгоняем до 3 GB (у нас есть запас: proxy-сервисы
+            # едят ~120 MB, nginx ~10 MB, ФС cache остаётся).
+            NODE_OPTIONS="--max-old-space-size=3072" npx next build
             # Двойная защита: рестартим только если билд реально на диске.
             test -f .next/BUILD_ID
             systemctl restart crm-app
