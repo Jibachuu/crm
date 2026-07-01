@@ -31,24 +31,37 @@ export default function InboxTabsClient() {
   }, [tabParam]);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex" style={{ borderBottom: "1px solid #e4e4e4", background: "#fff" }}>
+    <div className="inbox-scope" style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--tg-bg)" }}>
+      <div style={{ display: "flex", borderBottom: "1px solid var(--tg-border)", background: "var(--tg-bg-panel)", flexShrink: 0 }}>
         {TABS.map((t) => {
           const Icon = t.icon;
+          const active = tab === t.id;
           return (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors"
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
               style={{
-                borderBottom: tab === t.id ? "2px solid #0067a5" : "2px solid transparent",
-                color: tab === t.id ? "#0067a5" : "#888",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "12px 20px",
+                fontSize: 14,
+                fontWeight: 500,
+                color: active ? "var(--tg-accent)" : "var(--tg-text-secondary)",
+                background: "transparent",
+                border: "none",
+                borderBottom: active ? "2px solid var(--tg-accent)" : "2px solid transparent",
                 marginBottom: -1,
-              }}>
+                cursor: "pointer",
+                transition: "color 0.12s",
+              }}
+            >
               <Icon size={14} /> {t.label}
             </button>
           );
         })}
       </div>
-      <div className="flex-1 min-h-0">
+      <div style={{ flex: 1, minHeight: 0 }}>
         {tab === "all" && <AllMessengersInbox />}
         {tab === "telegram" && <InboxClient />}
         {tab === "maks" && <MaxInbox />}

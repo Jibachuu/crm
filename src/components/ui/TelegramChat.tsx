@@ -365,192 +365,181 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center" style={{ height: compact ? 200 : 300 }}>
-        <div className="text-sm" style={{ color: "#aaa" }}>Загрузка сообщений...</div>
+      <div className="inbox-scope" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: compact ? 200 : 300, background: "var(--tg-bg)" }}>
+        <div style={{ fontSize: 13, color: "var(--tg-text-secondary)" }}>Загрузка сообщений...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2" style={{ height: compact ? 200 : 300 }}>
-        <p className="text-sm" style={{ color: "#d32f2f" }}>{error}</p>
-        <button onClick={() => fetchMessages()} className="text-xs underline" style={{ color: "#0067a5" }}>Повторить</button>
+      <div className="inbox-scope" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, height: compact ? 200 : 300, background: "var(--tg-bg)" }}>
+        <p style={{ fontSize: 13, color: "#e57373", textAlign: "center", padding: "0 16px" }}>{error}</p>
+        <button onClick={() => fetchMessages()} style={{ fontSize: 12, textDecoration: "underline", background: "transparent", border: "none", color: "var(--tg-accent)", cursor: "pointer" }}>Повторить</button>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col" style={{ height, border: compact ? "1px solid #e4e4e4" : "none", borderRadius: compact ? 6 : 0, overflow: "hidden", background: "#fff" }}>
-      {/* Messages */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-3" style={{ background: "#f5f5f5", overflowAnchor: "none", overscrollBehavior: "contain" }}>
-        {messages.length === 0 && (
-          <div className="text-center text-sm py-8" style={{ color: "#aaa" }}>Нет сообщений</div>
-        )}
-        {messages.map((msg, idx) => {
-          const prev = messages[idx - 1];
-          const showDateSep = !prev || !isSameDay(prev.date, msg.date);
+    <div className="inbox-scope" style={{ display: "flex", flexDirection: "column", height, overflow: "hidden", background: "var(--tg-bg)" }}>
+      <div ref={scrollContainerRef} className="inbox-messages" style={{ padding: "0 12px" }}>
+        <div className="inbox-messages-inner">
+          {messages.length === 0 && (
+            <div style={{ margin: "auto", fontSize: 13, color: "var(--tg-text-secondary)" }}>Нет сообщений</div>
+          )}
+          {messages.map((msg, idx) => {
+            const prev = idx > 0 ? messages[idx - 1] : null;
+            const next = idx < messages.length - 1 ? messages[idx + 1] : null;
+            const sameSenderAsPrev = prev && prev.out === msg.out;
+            const sameSenderAsNext = next && next.out === msg.out;
+            const closeToPrev = prev && Math.abs(msg.date - prev.date) < 5 * 60;
+            const closeToNext = next && Math.abs(next.date - msg.date) < 5 * 60;
+            const isFirstOfGroup = !prev || !sameSenderAsPrev || !closeToPrev;
+            const isLastOfGroup = !next || !sameSenderAsNext || !closeToNext;
+            const showDateSep = !prev || !isSameDay(prev.date, msg.date);
 
-          return (
-            <div key={msg.id}>
-              {showDateSep && (
-                <div className="flex justify-center my-3">
-                  <span className="text-xs px-3 py-1 rounded-full" style={{ background: "#e0e0e0", color: "#666" }}>
-                    {formatDateSep(msg.date)}
-                  </span>
-                </div>
-              )}
-              <div className={`flex mb-1 ${msg.out ? "justify-end" : "justify-start"}`}>
-                <div
-                  className="max-w-[70%] px-3 py-2 rounded-2xl"
-                  style={{
-                    background: msg.out ? "#dcf8c6" : "#fff",
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
-                    borderRadius: msg.out ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-                  }}
-                >
-                  {!msg.out && msg.fromName && (
-                    <p className="text-xs font-semibold mb-0.5" style={{ color: "#0067a5" }}>{msg.fromName}</p>
-                  )}
-                  {msg.out && senderName && (sentByRef.current.has(msg.text) || !msg.fromName) && (
-                    <p className="text-xs font-semibold mb-0.5" style={{ color: "#2e7d32" }}>{sentByRef.current.get(msg.text) || senderName}</p>
-                  )}
-                  {msg.forwardedFrom && (
-                    <div className="mb-1 pl-2 text-xs" style={{ borderLeft: "2px solid #0067a5", opacity: 0.85 }}>
-                      <p className="text-xs italic" style={{ color: "#0067a5" }}>
-                        ↪ Переслано{msg.forwardedFrom.senderName ? ` от ${msg.forwardedFrom.senderName}` : ""}
-                      </p>
-                    </div>
-                  )}
-                  {msg.media && <MediaBubble media={msg.media} peer={peer} msgId={msg.id} onLightbox={setLightbox} />}
-                  {msg.text && (
-                    <p className="text-sm whitespace-pre-wrap leading-snug" style={{ color: "#222" }}>{linkifyText(msg.text)}</p>
-                  )}
-                  {msg.reactions && msg.reactions.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {msg.reactions.map((r, ri) => (
-                        <span key={ri} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs"
-                          style={{ background: "#f0f0f0", color: "#555" }}>
-                          <span style={{ fontSize: 12 }}>{r.emoji}</span>
-                          {r.count > 1 && <span style={{ fontSize: 10 }}>{r.count}</span>}
+            return (
+              <div key={msg.id}>
+                {showDateSep && <div className="inbox-date-sticker">{formatDateSep(msg.date)}</div>}
+
+                <div className={`inbox-msg-row ${msg.out ? "is-own" : ""} ${isFirstOfGroup ? "first-of-group" : ""}`}>
+                  <div className={`inbox-msg-bubble ${isLastOfGroup ? "has-tail" : ""} ${msg.media && !msg.text ? "is-media" : ""}`}>
+                    {!msg.out && isFirstOfGroup && msg.fromName && (
+                      <div className="inbox-msg-sender">{msg.fromName}</div>
+                    )}
+                    {msg.out && isFirstOfGroup && senderName && (sentByRef.current.has(msg.text) || !msg.fromName) && (
+                      <div className="inbox-msg-sender" style={{ color: "#a8dc9c" }}>{sentByRef.current.get(msg.text) || senderName}</div>
+                    )}
+
+                    {msg.forwardedFrom && (
+                      <div className="inbox-msg-forwarded">↪ Переслано{msg.forwardedFrom.senderName ? ` от ${msg.forwardedFrom.senderName}` : ""}</div>
+                    )}
+
+                    {msg.media && <MediaBubble media={msg.media} peer={peer} msgId={msg.id} onLightbox={setLightbox} />}
+
+                    {msg.text && (
+                      <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.35 }}>
+                        {linkifyText(msg.text)}
+                        <span className="inbox-msg-meta">
+                          {formatMsgTime(msg.date)}
+                          {msg.out && <span className={`inbox-msg-tick ${msg.read ? "is-read" : ""}`}>{msg.read ? "✓✓" : "✓"}</span>}
                         </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className={`flex items-center gap-1 mt-0.5 ${msg.out ? "justify-end" : "justify-start"}`}>
-                    <span className="text-xs" style={{ color: "#aaa" }}>{formatMsgTime(msg.date)}</span>
-                    {msg.out && (
-                      <span className="text-xs" style={{ color: msg.read ? "#0067a5" : "#aaa" }} title={msg.read ? "Прочитано" : "Доставлено"}>
-                        {msg.read ? "✓✓" : "✓"}
-                      </span>
+                      </div>
+                    )}
+
+                    {!msg.text && msg.media && (
+                      <div className="inbox-msg-meta" style={{ padding: "2px 6px 0" }}>
+                        {formatMsgTime(msg.date)}
+                        {msg.out && <span className={`inbox-msg-tick ${msg.read ? "is-read" : ""}`}>{msg.read ? "✓✓" : "✓"}</span>}
+                      </div>
+                    )}
+
+                    {msg.reactions && msg.reactions.length > 0 && (
+                      <div className="inbox-msg-reactions">
+                        {msg.reactions.map((r, ri) => (
+                          <span key={ri} className="inbox-msg-reaction">
+                            <span>{r.emoji}</span>
+                            {r.count > 1 && <span>{r.count}</span>}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-        <div ref={bottomRef} />
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
       </div>
 
-      {/* Status bar */}
       {(uploading || recording) && (
-        <div className="px-4 py-1.5 text-xs flex items-center gap-2" style={{ background: "#e8f4fd", color: "#0067a5" }}>
+        <div style={{ padding: "6px 16px", fontSize: 12, display: "flex", alignItems: "center", gap: 8, background: recording ? "rgba(220, 76, 76, 0.15)" : "var(--tg-bg-panel)", color: recording ? "#ff9a9a" : "var(--tg-accent)" }}>
           {recording ? (
             <>
-              <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span className="animate-pulse" style={{ width: 8, height: 8, borderRadius: "50%", background: "#e57373" }} />
               Запись {formatDuration(recordingTime)} — нажмите ещё раз чтобы отправить
             </>
           ) : (
             <>
-              <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <span className="animate-pulse" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--tg-accent)" }} />
               Отправка файла...
             </>
           )}
         </div>
       )}
 
-      {/* Input bar */}
       {readOnly ? (
-        <div className="flex items-center justify-center px-3 py-3" style={{ borderTop: "1px solid #e4e4e4", background: "#fafafa" }}>
-          <span className="text-xs" style={{ color: "#aaa" }}>Это канал — отправка сообщений недоступна</span>
+        <div style={{ display: "flex", justifyContent: "center", padding: "12px", borderTop: "1px solid var(--tg-border)", background: "var(--tg-bg-panel)" }}>
+          <span style={{ fontSize: 12, color: "var(--tg-text-secondary)" }}>Это канал — отправка сообщений недоступна</span>
         </div>
       ) : (
-      <div className="flex items-center gap-2 px-3 py-2 relative" style={{ borderTop: "1px solid #e4e4e4", background: "#fff" }}>
-        {/* File templates */}
-        <FileTemplatesPanel onInsert={(files) => {
-          for (const f of files) {
-            fetch(f.url).then((r) => r.blob()).then((blob) => {
-              const file = new File([blob], f.name, { type: f.type || "application/octet-stream" });
-              sendFile(file);
-            }).catch(() => {});
-          }
-        }} />
-        {/* File picker */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading || recording}
-          className="p-1.5 rounded-full hover:bg-slate-100 transition-colors disabled:opacity-40"
-          title="Прикрепить файл"
-        >
-          <Paperclip size={18} style={{ color: "#888" }} />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="hidden"
-          multiple
-          onChange={async (e) => { const files = e.target.files; if (files) { for (let i = 0; i < files.length; i++) await sendFile(files[i]); } e.target.value = ""; }}
-        />
-
-        {/* Text input */}
-        <textarea
-          value={text}
-          onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"; }}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-          onPaste={(e) => {
-            const items = e.clipboardData?.items;
-            if (!items) return;
-            for (let i = 0; i < items.length; i++) {
-              if (items[i].type.startsWith("image/")) {
-                const file = items[i].getAsFile();
-                if (file) { e.preventDefault(); sendFile(file); return; }
+        <div className="inbox-composer">
+          <div className="inbox-composer-row">
+            <FileTemplatesPanel onInsert={(files) => {
+              for (const f of files) {
+                fetch(f.url).then((r) => r.blob()).then((blob) => {
+                  const file = new File([blob], f.name, { type: f.type || "application/octet-stream" });
+                  sendFile(file);
+                }).catch(() => {});
               }
-            }
-          }}
-          placeholder="Введите сообщение..."
-          disabled={recording || uploading}
-          rows={1}
-          className="flex-1 text-sm px-3 py-2 focus:outline-none rounded-2xl resize-none"
-          style={{ border: "1px solid #e0e0e0", background: "#f5f5f5", maxHeight: 120 }}
-        />
+            }} />
 
-        {/* Send or mic */}
-        {text.trim() ? (
-          <button
-            onClick={sendMessage}
-            disabled={sending || uploading}
-            className="p-2 rounded-full transition-colors disabled:opacity-40"
-            style={{ background: "#0067a5" }}
-            title="Отправить"
-          >
-            <Send size={16} style={{ color: "#fff" }} />
-          </button>
-        ) : (
-          <button
-            onClick={recording ? stopRecording : startRecording}
-            disabled={uploading}
-            className="p-2 rounded-full transition-colors disabled:opacity-40"
-            style={{ background: recording ? "#d32f2f" : "#0067a5" }}
-            title={recording ? "Остановить запись" : "Записать голосовое"}
-          >
-            {recording ? <MicOff size={16} style={{ color: "#fff" }} /> : <Mic size={16} style={{ color: "#fff" }} />}
-          </button>
-        )}
-      </div>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading || recording}
+              className="inbox-composer-btn"
+              title="Прикрепить файл"
+            >
+              <Paperclip size={18} />
+            </button>
+            <input ref={fileInputRef} type="file" className="hidden" multiple
+              onChange={async (e) => { const files = e.target.files; if (files) { for (let i = 0; i < files.length; i++) await sendFile(files[i]); } e.target.value = ""; }} />
+
+            <textarea
+              value={text}
+              onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px"; }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+              onPaste={(e) => {
+                const items = e.clipboardData?.items;
+                if (!items) return;
+                for (let i = 0; i < items.length; i++) {
+                  if (items[i].type.startsWith("image/")) {
+                    const file = items[i].getAsFile();
+                    if (file) { e.preventDefault(); sendFile(file); return; }
+                  }
+                }
+              }}
+              placeholder="Сообщение"
+              disabled={recording || uploading}
+              rows={1}
+            />
+
+            {text.trim() ? (
+              <button
+                onClick={sendMessage}
+                disabled={sending || uploading}
+                className="inbox-composer-btn inbox-composer-send"
+                title="Отправить (Enter)"
+              >
+                <Send size={16} />
+              </button>
+            ) : (
+              <button
+                onClick={recording ? stopRecording : startRecording}
+                disabled={uploading}
+                className="inbox-composer-btn inbox-composer-send"
+                style={{ background: recording ? "#e57373" : "var(--tg-accent)" }}
+                title={recording ? "Остановить запись" : "Голосовое"}
+              >
+                {recording ? <MicOff size={16} /> : <Mic size={16} />}
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
-      {/* Hidden media icons used by MediaBubble - keeps lucide from tree-shaking */}
+      {/* Скрытые иконки MediaBubble от tree-shake */}
       <span className="hidden"><Image size={1} /><Video size={1} /><X size={1} /></span>
       {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
     </div>

@@ -1,10 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RefreshCw, Search, MessageSquare, UserPlus, Link2 } from "lucide-react";
+import { RefreshCw, Search, UserPlus, Link2, MoreVertical, BellOff } from "lucide-react";
 import TelegramChat from "@/components/ui/TelegramChat";
 import MaxChat from "@/components/ui/MaxChat";
 import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
+import ChatListItem from "@/components/inbox/ChatListItem";
+import ChatListSkeleton from "@/components/inbox/ChatListSkeleton";
+import EmptyChat from "@/components/inbox/EmptyChat";
+import ChatHeader from "@/components/inbox/ChatHeader";
 import { createClient } from "@/lib/supabase/client";
 
 interface UnifiedDialog {
@@ -366,182 +370,181 @@ export default function AllMessengersInbox() {
   });
 
   return (
-    <div className="flex h-full">
-      {/* Dialog list */}
-      <div className="flex flex-col" style={{ width: 350, borderRight: "1px solid #e4e4e4", background: "#fff" }}>
-        <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: "1px solid #f0f0f0" }}>
-          <div className="relative flex-1">
-            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2" style={{ color: "#aaa" }} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск..."
-              className="w-full pl-7 pr-2 py-1.5 text-xs rounded focus:outline-none"
-              style={{ border: "1px solid #e0e0e0" }} />
+    <div className="inbox-scope inbox-shell">
+      {/* — Sidebar — */}
+      <aside className="inbox-sidebar">
+        <div className="inbox-sidebar-header">
+          <div className="inbox-search">
+            <Search size={15} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск"
+              autoComplete="off"
+            />
           </div>
-          <button onClick={() => setShowNewChat(true)} className="p-1.5 rounded hover:bg-blue-50" title="Новый чат по номеру">
-            <UserPlus size={13} style={{ color: "#0067a5" }} />
+          <button onClick={() => setShowNewChat(true)} className="inbox-sidebar-btn" title="Новый чат по номеру или @username">
+            <UserPlus size={17} />
           </button>
-          <button onClick={refresh} disabled={refreshing} className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-40">
-            <RefreshCw size={13} style={{ color: "#888" }} className={refreshing ? "animate-spin" : ""} />
+          <button onClick={refresh} disabled={refreshing} className="inbox-sidebar-btn" title="Обновить">
+            <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
           </button>
         </div>
 
-        {/* New chat by phone */}
         {showNewChat && (
-          <div className="px-3 py-3" style={{ borderBottom: "1px solid #f0f0f0", background: "#f8f9fa" }}>
-            <p className="text-xs font-medium mb-2" style={{ color: "#555" }}>Начать чат: номер телефона или @username</p>
-            <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)}
+          <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--tg-border)", background: "var(--tg-bg-panel)" }}>
+            <p style={{ fontSize: 12, marginBottom: 8, color: "var(--tg-text-secondary)" }}>Начать чат — номер или @username</p>
+            <input
+              value={newPhone}
+              onChange={(e) => setNewPhone(e.target.value)}
               placeholder="+7 999 123 45 67  или  @username"
-              className="w-full text-sm px-3 py-1.5 rounded mb-2 focus:outline-none"
-              style={{ border: "1px solid #d0d0d0" }} />
-            <p className="text-[10px] mb-2" style={{ color: "#aaa" }}>МАКС работает только по номеру. Telegram — и то, и другое.</p>
-            <div className="flex gap-2">
-              <button onClick={() => addContact("telegram")} disabled={!!addingContact || !newPhone.trim()}
-                className="flex-1 text-xs py-1.5 rounded font-medium disabled:opacity-40"
-                style={{ background: "#0088cc", color: "#fff" }}>
+              style={{ width: "100%", fontSize: 14, marginBottom: 8 }}
+            />
+            <p style={{ fontSize: 10.5, marginBottom: 10, color: "var(--tg-text-tertiary)" }}>МАКС — только по номеру. Telegram — и то, и другое.</p>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={() => addContact("telegram")}
+                disabled={!!addingContact || !newPhone.trim()}
+                style={{
+                  flex: 1, fontSize: 13, padding: "8px 0", borderRadius: 8, border: "none",
+                  background: addingContact ? "var(--tg-bg-input)" : "#28a5f5", color: "#fff",
+                  cursor: !!addingContact || !newPhone.trim() ? "default" : "pointer",
+                  opacity: !!addingContact || !newPhone.trim() ? 0.5 : 1,
+                }}
+              >
                 {addingContact === "telegram" ? "..." : "Telegram"}
               </button>
-              <button onClick={() => addContact("maks")} disabled={!!addingContact || !newPhone.trim()}
-                className="flex-1 text-xs py-1.5 rounded font-medium disabled:opacity-40"
-                style={{ background: "#0067a5", color: "#fff" }}>
+              <button
+                onClick={() => addContact("maks")}
+                disabled={!!addingContact || !newPhone.trim()}
+                style={{
+                  flex: 1, fontSize: 13, padding: "8px 0", borderRadius: 8, border: "none",
+                  background: addingContact ? "var(--tg-bg-input)" : "#4b8fd1", color: "#fff",
+                  cursor: !!addingContact || !newPhone.trim() ? "default" : "pointer",
+                  opacity: !!addingContact || !newPhone.trim() ? 0.5 : 1,
+                }}
+              >
                 {addingContact === "maks" ? "..." : "МАКС"}
               </button>
-              <button onClick={() => { setShowNewChat(false); setNewPhone(""); }} className="text-xs px-2" style={{ color: "#888" }}>
+              <button
+                onClick={() => { setShowNewChat(false); setNewPhone(""); }}
+                style={{ fontSize: 13, padding: "8px 12px", background: "transparent", color: "var(--tg-text-secondary)", border: "none", cursor: "pointer" }}
+              >
                 Отмена
               </button>
             </div>
-            {addError && <p className="text-xs mt-1" style={{ color: "#e74c3c" }}>{addError}</p>}
+            {addError && <p style={{ fontSize: 12, marginTop: 6, color: "#e57373" }}>{addError}</p>}
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto">
-          {loading && <p className="text-xs text-center py-12" style={{ color: "#aaa" }}>Загрузка чатов...</p>}
+        <div className="inbox-chatlist">
+          {loading && <ChatListSkeleton />}
           {!loading && loadError && (
-            <div className="text-center py-12 px-4">
-              <p className="text-xs mb-2" style={{ color: "#c62828" }}>{loadError}</p>
-              <button onClick={refresh} className="text-xs underline" style={{ color: "#0067a5" }}>Попробовать снова</button>
+            <div style={{ textAlign: "center", padding: "48px 16px" }}>
+              <p style={{ fontSize: 13, marginBottom: 8, color: "#e57373" }}>{loadError}</p>
+              <button onClick={refresh} style={{ fontSize: 12, background: "transparent", border: "none", color: "var(--tg-accent)", cursor: "pointer", textDecoration: "underline" }}>
+                Попробовать снова
+              </button>
             </div>
           )}
           {!loading && !loadError && filtered.length === 0 && (
-            <p className="text-xs text-center py-12" style={{ color: "#aaa" }}>Нет диалогов</p>
+            <p style={{ fontSize: 13, textAlign: "center", padding: "48px 16px", color: "var(--tg-text-secondary)" }}>Нет диалогов</p>
           )}
-          {filtered.map((d) => {
-            const isSelected = selected?.id === d.id;
-            const cfg = CHANNEL_COLORS[d.channel];
-            return (
-              <button key={d.id} onClick={() => setSelected(d)}
-                className="w-full text-left px-3 py-2.5 transition-colors hover:bg-gray-50"
-                style={{ borderBottom: "1px solid #f5f5f5", background: isSelected ? "#e8f4fd" : "transparent" }}>
-                <div className="flex items-center gap-3">
-                  {/* Avatar with channel badge */}
-                  <div className="relative flex-shrink-0">
-                    {d.avatar ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={d.avatar} alt={d.name} className="w-10 h-10 rounded-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                        style={{ background: cfg.bg + "cc" }}>
-                        {getInitials(d.name)}
-                      </div>
-                    )}
-                    <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-white border-2 border-white"
-                      style={{ background: cfg.badge, fontSize: 7, fontWeight: 700 }}>
-                      {cfg.label}
-                    </div>
-                  </div>
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-sm truncate" style={{ color: d.unread ? "#0067a5" : "#333", fontWeight: d.unread ? 700 : 500 }}>{d.name}</span>
-                      <span className="text-xs flex-shrink-0 ml-2" style={{ color: d.unread ? "#0067a5" : "#aaa", fontWeight: d.unread ? 600 : 400 }}>{formatTime(d.lastTime)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs truncate" style={{ color: d.unread ? "#333" : "#888", fontWeight: d.unread ? 600 : 400 }}>{d.lastMessage || "..."}</p>
-                      {d.unread && (
-                        <span className="rounded-full flex-shrink-0 ml-1" style={{ background: cfg.badge, width: 8, height: 8 }} />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+          {filtered.map((d) => (
+            <ChatListItem
+              key={d.id}
+              name={d.name}
+              preview={d.lastMessage || "…"}
+              time={formatTime(d.lastTime)}
+              unreadCount={d.unreadCount}
+              isUnread={d.unread || (d.unreadCount ?? 0) > 0}
+              isSelected={selected?.id === d.id}
+              avatarUrl={d.avatar}
+              channel={d.channel}
+              onClick={() => setSelected(d)}
+            />
+          ))}
         </div>
-      </div>
+      </aside>
 
-      {/* Chat area */}
-      <div className="flex-1 flex min-w-0" style={{ background: "#f5f5f5" }}>
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* — Main chat area — */}
+      <div className="inbox-main">
         {!selected ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            <MessageSquare size={40} style={{ color: "#ddd" }} />
-            <p className="text-sm" style={{ color: "#aaa" }}>Выберите диалог</p>
-          </div>
+          <EmptyChat />
         ) : selected.channel === "telegram" && selected.peer ? (
-          <div className="flex flex-col h-full">
-            <div className="flex items-center gap-2 px-4 py-2" style={{ background: "#fff", borderBottom: "1px solid #e4e4e4" }}>
-              <div className="w-3 h-3 rounded-full" style={{ background: "#0088cc" }} />
-              <span className="text-sm font-medium" style={{ color: "#333" }}>{selected.name}</span>
-              <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "#0088cc20", color: "#0088cc" }}>Telegram</span>
-              <div className="flex-1" />
-              <button
-                onClick={() => setLinkedOpen(!linkedOpen)}
-                className="text-xs px-2 py-1 rounded hover:bg-blue-50 flex items-center gap-1"
-                style={{ color: "#0088cc", border: "1px solid #b3e0f5" }}
-                title="Связанные данные"
-              >
-                <Link2 size={11} /> Связи
-              </button>
-              <button
-                onClick={async () => {
-                  await fetch("/api/telegram/mark-unread", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ peer: selected.peer }) });
-                  refresh();
-                }}
-                className="text-xs px-2 py-1 rounded hover:bg-blue-50"
-                style={{ color: "#0088cc", border: "1px solid #b3e0f5" }}
-                title="Пометить как непрочитанное"
-              >
-                Не прочитано
-              </button>
-            </div>
-            <div className="flex-1 min-h-0">
+          <>
+            <ChatHeader
+              name={selected.name}
+              avatarUrl={selected.avatar}
+              channel="telegram"
+              subtitle="Telegram"
+              actions={
+                <>
+                  <button
+                    onClick={() => setLinkedOpen(!linkedOpen)}
+                    className="inbox-sidebar-btn"
+                    title="Связанные данные"
+                  >
+                    <Link2 size={16} />
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await fetch("/api/telegram/mark-unread", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ peer: selected.peer }) });
+                      refresh();
+                    }}
+                    className="inbox-sidebar-btn"
+                    title="Пометить как непрочитанное"
+                  >
+                    <BellOff size={16} />
+                  </button>
+                  <button className="inbox-sidebar-btn" title="Меню"><MoreVertical size={16} /></button>
+                </>
+              }
+            />
+            <div className="inbox-chat-area">
               <TelegramChat peer={selected.peer} compact phone={selected.phone} />
             </div>
-          </div>
+          </>
         ) : selected.channel === "maks" && selected.chatId ? (
-          <div className="flex flex-col h-full">
-            <div className="flex items-center gap-2 px-4 py-2" style={{ background: "#fff", borderBottom: "1px solid #e4e4e4" }}>
-              <div className="w-3 h-3 rounded-full" style={{ background: "#0067a5" }} />
-              <span className="text-sm font-medium" style={{ color: "#333" }}>{selected.name}</span>
-              <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "#0067a520", color: "#0067a5" }}>МАКС</span>
-              <div className="flex-1" />
-              <button
-                onClick={() => setLinkedOpen(!linkedOpen)}
-                className="text-xs px-2 py-1 rounded hover:bg-blue-50 flex items-center gap-1"
-                style={{ color: "#0067a5", border: "1px solid #d0e8f5" }}
-                title="Связанные данные"
-              >
-                <Link2 size={11} /> Связи
-              </button>
-              <button
-                onClick={async () => {
-                  await fetch("/api/max", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark_unread", chat_id: selected.chatId }) });
-                  refresh();
-                }}
-                className="text-xs px-2 py-1 rounded hover:bg-blue-50"
-                style={{ color: "#0067a5", border: "1px solid #d0e8f5" }}
-                title="Пометить как непрочитанное"
-              >
-                Не прочитано
-              </button>
-            </div>
-            <div className="flex-1 min-h-0">
+          <>
+            <ChatHeader
+              name={selected.name}
+              avatarUrl={selected.avatar}
+              channel="maks"
+              subtitle="МАКС"
+              actions={
+                <>
+                  <button
+                    onClick={() => setLinkedOpen(!linkedOpen)}
+                    className="inbox-sidebar-btn"
+                    title="Связанные данные"
+                  >
+                    <Link2 size={16} />
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await fetch("/api/max", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "mark_unread", chat_id: selected.chatId }) });
+                      refresh();
+                    }}
+                    className="inbox-sidebar-btn"
+                    title="Пометить как непрочитанное"
+                  >
+                    <BellOff size={16} />
+                  </button>
+                  <button className="inbox-sidebar-btn" title="Меню"><MoreVertical size={16} /></button>
+                </>
+              }
+            />
+            <div className="inbox-chat-area">
               <MaxChat chatId={selected.chatId} compact phone={selected.phone} />
             </div>
-          </div>
+          </>
         ) : null}
       </div>
+
+      {/* — Right panel — */}
       {linkedOpen && selected && (
-        <div style={{ width: 320, borderLeft: "1px solid #e4e4e4" }}>
+        <aside className="inbox-rightpanel">
           <LinkedEntitiesPanel
             phone={selected.phone}
             telegramId={selected.channel === "telegram" ? selected.id.replace("tg_", "") : undefined}
@@ -551,9 +554,8 @@ export default function AllMessengersInbox() {
             channel={selected.channel}
             onClose={() => setLinkedOpen(false)}
           />
-        </div>
+        </aside>
       )}
-      </div>
     </div>
   );
 }

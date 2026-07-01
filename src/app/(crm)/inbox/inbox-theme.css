@@ -1,0 +1,715 @@
+/* R1 (2026-07-01): дизайн инбокса как Telegram Web (dark theme).
+   Все цвета/размеры собраны в CSS-переменные — если менеджер
+   попросит подтянуть оттенок, правим здесь один раз, а не по 20
+   местам. Переменные срываю с Telegram Web A / tdesktop night_accent
+   палитры — родные значения. */
+
+.inbox-scope {
+  /* — Фон и поверхности — */
+  --tg-bg: #0e1621;                    /* фон окна чата */
+  --tg-bg-panel: #17212b;              /* фон левой колонки + шапки */
+  --tg-bg-panel-hover: #202b36;        /* hover на элементе списка */
+  --tg-bg-panel-selected: #2b5278;     /* выделенный чат */
+  --tg-bg-input: #242f3d;              /* поле ввода / composer */
+  --tg-bg-secondary: #182533;          /* чужие пузыри */
+  --tg-bg-own: #2b5278;                /* свои пузыри */
+  --tg-bg-search: #242f3d;             /* строка поиска */
+  --tg-bg-overlay: rgba(14, 22, 33, 0.72); /* модалки/lightbox */
+  --tg-bg-date-sticker: rgba(24, 37, 51, 0.85); /* floating дата */
+
+  /* — Текст — */
+  --tg-text: #ffffff;                  /* основной */
+  --tg-text-secondary: #7d8b99;        /* подпись / время / preview */
+  --tg-text-tertiary: #5b6b7a;         /* совсем тусклый */
+  --tg-text-muted: #6c7883;            /* превью в списке */
+  --tg-text-link: #6ab7ff;             /* ссылки */
+  --tg-text-mention: #6ab7ff;          /* @упоминание */
+  --tg-text-own: #ffffff;              /* внутри своих пузырей */
+
+  /* — Акценты — */
+  --tg-accent: #6ab7ff;                /* синий акцент (кнопки/бейджи) */
+  --tg-accent-strong: #4ea1f0;
+  --tg-accent-dim: rgba(106, 183, 255, 0.16);
+  --tg-badge-unread: #6ab7ff;          /* бейдж непрочитанных */
+  --tg-badge-muted: #6c7883;           /* бейдж для muted-чатов */
+  --tg-status-online: #4dcd5e;
+  --tg-status-read: #4fc0f0;           /* синие галочки */
+
+  /* — Границы и разделители — */
+  --tg-border: #101921;                /* тонкий разделитель */
+  --tg-border-subtle: rgba(255, 255, 255, 0.06);
+
+  /* — Размеры — */
+  --tg-radius-bubble: 12px;            /* пузырь сообщения */
+  --tg-radius-input: 20px;             /* composer */
+  --tg-radius-avatar: 50%;
+  --tg-sidebar-width: 350px;
+  --tg-rightpanel-width: 340px;
+  --tg-header-height: 56px;
+  --tg-composer-height-min: 48px;
+
+  /* — Шрифты — Roboto подгружается через next/font (см. inbox/layout.tsx),
+     выставляет CSS-переменную --font-roboto. Fallback — системный. */
+  --tg-font: var(--font-roboto), "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+
+  color-scheme: dark;
+  color: var(--tg-text);
+  background: var(--tg-bg);
+  font-family: var(--tg-font);
+}
+
+/* ── Общее ─────────────────────────────────────────── */
+
+.inbox-scope * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+.inbox-scope *::-webkit-scrollbar { width: 7px; height: 7px; }
+.inbox-scope *::-webkit-scrollbar-track { background: transparent; }
+.inbox-scope *::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+}
+.inbox-scope *::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
+
+.inbox-scope input,
+.inbox-scope textarea,
+.inbox-scope select {
+  color: var(--tg-text);
+  background: var(--tg-bg-input);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.inbox-scope input:focus,
+.inbox-scope textarea:focus {
+  border-color: var(--tg-accent);
+}
+.inbox-scope input::placeholder,
+.inbox-scope textarea::placeholder {
+  color: var(--tg-text-tertiary);
+}
+
+/* ── Шелл ──────────────────────────────────────────── */
+
+.inbox-shell {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  background: var(--tg-bg);
+}
+
+.inbox-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: var(--tg-sidebar-width);
+  background: var(--tg-bg-panel);
+  border-right: 1px solid var(--tg-border);
+  min-height: 0;
+}
+
+.inbox-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--tg-bg);
+  position: relative;
+}
+
+.inbox-rightpanel {
+  width: var(--tg-rightpanel-width);
+  background: var(--tg-bg-panel);
+  border-left: 1px solid var(--tg-border);
+  overflow-y: auto;
+}
+
+/* Фон окна чата — тонкий паттерн как в TG (сплошной темный, паттерн опустим) */
+.inbox-chat-area {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--tg-bg);
+  position: relative;
+}
+
+/* ── Chat list ─────────────────────────────────────── */
+
+.inbox-sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--tg-bg-panel);
+  border-bottom: 1px solid var(--tg-border);
+  flex-shrink: 0;
+}
+
+.inbox-search {
+  flex: 1;
+  position: relative;
+}
+.inbox-search input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  background: var(--tg-bg-search);
+  border-radius: 20px;
+  font-size: 14px;
+}
+.inbox-search svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--tg-text-tertiary);
+}
+
+.inbox-sidebar-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--tg-text-secondary);
+  transition: background-color 0.12s, color 0.12s;
+  cursor: pointer;
+  border: none;
+}
+.inbox-sidebar-btn:hover:not(:disabled) {
+  background: var(--tg-bg-panel-hover);
+  color: var(--tg-text);
+  opacity: 1;
+}
+
+.inbox-chatlist {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.inbox-chat-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  transition: background-color 0.1s;
+}
+.inbox-chat-item:hover {
+  background: var(--tg-bg-panel-hover);
+  opacity: 1;
+}
+.inbox-chat-item.is-selected,
+.inbox-chat-item.is-selected:hover {
+  background: var(--tg-bg-panel-selected);
+}
+
+.inbox-chat-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.inbox-chat-avatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: linear-gradient(135deg, #4b8fd1, #2b5278);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 500;
+  font-size: 20px;
+}
+.inbox-chat-channel-badge {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--tg-bg-panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  color: #fff;
+}
+.inbox-chat-item.is-selected .inbox-chat-channel-badge {
+  border-color: var(--tg-bg-panel-selected);
+}
+
+.inbox-chat-body {
+  flex: 1;
+  min-width: 0;
+}
+.inbox-chat-toprow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+.inbox-chat-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--tg-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inbox-chat-time {
+  font-size: 12px;
+  color: var(--tg-text-secondary);
+  flex-shrink: 0;
+}
+.inbox-chat-item.is-selected .inbox-chat-time,
+.inbox-chat-item.is-selected .inbox-chat-preview {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.inbox-chat-bottomrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 2px;
+}
+.inbox-chat-preview {
+  font-size: 13px;
+  color: var(--tg-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+.inbox-chat-preview b {
+  color: var(--tg-text-secondary);
+  font-weight: 400;
+}
+
+.inbox-chat-unread {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--tg-badge-unread);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+}
+.inbox-chat-item.is-selected .inbox-chat-unread {
+  background: #fff;
+  color: var(--tg-bg-panel-selected);
+}
+.inbox-chat-unread.is-dot {
+  min-width: 10px;
+  height: 10px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.inbox-chat-item.is-unread .inbox-chat-preview {
+  color: var(--tg-text);
+}
+
+/* ── Header чата ───────────────────────────────────── */
+
+.inbox-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  height: var(--tg-header-height);
+  background: var(--tg-bg-panel);
+  border-bottom: 1px solid var(--tg-border);
+  flex-shrink: 0;
+}
+.inbox-chat-header-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4b8fd1, #2b5278);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 500;
+  font-size: 15px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.inbox-chat-header-body {
+  flex: 1;
+  min-width: 0;
+}
+.inbox-chat-header-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--tg-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inbox-chat-header-sub {
+  font-size: 13px;
+  color: var(--tg-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inbox-chat-header-sub.is-online { color: var(--tg-accent); }
+
+.inbox-chat-header-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Messages area ─────────────────────────────────── */
+
+.inbox-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 0 8px 0;
+  display: flex;
+  flex-direction: column;
+  scroll-behavior: smooth;
+}
+.inbox-messages-inner {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 12px;
+  gap: 2px;
+}
+
+/* Date sticker */
+.inbox-date-sticker {
+  align-self: center;
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: var(--tg-bg-date-sticker);
+  color: var(--tg-text);
+  font-size: 12px;
+  font-weight: 500;
+  margin: 12px 0 8px 0;
+  backdrop-filter: blur(8px);
+}
+
+.inbox-date-floating {
+  position: absolute;
+  top: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: var(--tg-bg-date-sticker);
+  color: var(--tg-text);
+  font-size: 12px;
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.inbox-date-floating.is-visible { opacity: 1; }
+
+/* Bubble */
+.inbox-msg-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-top: 2px;
+}
+.inbox-msg-row.is-own {
+  justify-content: flex-end;
+}
+.inbox-msg-row.first-of-group {
+  margin-top: 8px;
+}
+
+.inbox-msg-bubble {
+  max-width: min(560px, 72%);
+  padding: 6px 10px 6px 12px;
+  border-radius: var(--tg-radius-bubble);
+  background: var(--tg-bg-secondary);
+  color: var(--tg-text);
+  font-size: 14.5px;
+  line-height: 1.35;
+  word-break: break-word;
+  position: relative;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  animation: bubble-in 0.14s ease-out;
+}
+.inbox-msg-row.is-own .inbox-msg-bubble {
+  background: var(--tg-bg-own);
+  color: var(--tg-text-own);
+}
+
+/* Хвостик (tail) у последнего в группе — как в TG */
+.inbox-msg-bubble.has-tail {
+  border-radius: var(--tg-radius-bubble) var(--tg-radius-bubble) var(--tg-radius-bubble) 4px;
+}
+.inbox-msg-row.is-own .inbox-msg-bubble.has-tail {
+  border-radius: var(--tg-radius-bubble) var(--tg-radius-bubble) 4px var(--tg-radius-bubble);
+}
+
+/* От/имя в чужих (для групп/каналов) */
+.inbox-msg-sender {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tg-accent);
+  margin-bottom: 2px;
+  cursor: pointer;
+}
+
+/* Время + галочки */
+.inbox-msg-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--tg-text-secondary);
+  margin-left: 6px;
+  vertical-align: bottom;
+  float: right;
+  margin-top: 4px;
+  padding-left: 6px;
+  user-select: none;
+}
+.inbox-msg-row.is-own .inbox-msg-meta {
+  color: rgba(255, 255, 255, 0.72);
+}
+.inbox-msg-tick { display: inline-flex; align-items: center; }
+.inbox-msg-tick.is-read { color: var(--tg-status-read); }
+.inbox-msg-row.is-own .inbox-msg-tick.is-read { color: #7fd7ff; }
+
+/* Медиа-обёртка */
+.inbox-msg-bubble.is-media {
+  padding: 3px 3px 6px 3px;
+  overflow: hidden;
+}
+.inbox-msg-media-image {
+  max-width: 100%;
+  border-radius: 10px;
+  display: block;
+  cursor: zoom-in;
+  max-height: 320px;
+}
+
+/* Reply */
+.inbox-msg-reply {
+  border-left: 3px solid var(--tg-accent);
+  padding: 2px 8px;
+  margin-bottom: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--tg-text-secondary);
+  cursor: pointer;
+}
+.inbox-msg-reply-name {
+  font-weight: 500;
+  color: var(--tg-accent);
+}
+
+/* Forwarded */
+.inbox-msg-forwarded {
+  font-size: 12px;
+  color: var(--tg-text-secondary);
+  margin-bottom: 2px;
+  font-style: italic;
+}
+
+/* Реакции */
+.inbox-msg-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.inbox-msg-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+.inbox-msg-reaction:hover { background: rgba(255, 255, 255, 0.14); }
+
+/* ── Composer ──────────────────────────────────────── */
+
+.inbox-composer {
+  padding: 8px 12px 12px 12px;
+  background: var(--tg-bg-panel);
+  border-top: 1px solid var(--tg-border);
+  flex-shrink: 0;
+}
+.inbox-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--tg-bg-input);
+  border-radius: var(--tg-radius-input);
+  padding: 6px 8px 6px 12px;
+}
+.inbox-composer textarea {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--tg-text);
+  font-size: 14.5px;
+  line-height: 1.4;
+  resize: none;
+  min-height: 20px;
+  max-height: 200px;
+  padding: 6px 4px;
+  font-family: inherit;
+}
+.inbox-composer textarea:focus { border: none; }
+.inbox-composer-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tg-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.1s, color 0.1s;
+  flex-shrink: 0;
+}
+.inbox-composer-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--tg-text);
+  opacity: 1;
+}
+.inbox-composer-send {
+  background: var(--tg-accent);
+  color: #fff;
+}
+.inbox-composer-send:hover {
+  background: var(--tg-accent-strong);
+  color: #fff;
+}
+.inbox-composer-send:disabled {
+  background: transparent;
+  color: var(--tg-text-tertiary);
+  cursor: default;
+}
+
+/* ── Empty state ───────────────────────────────────── */
+
+.inbox-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--tg-text-secondary);
+}
+.inbox-empty-badge {
+  padding: 6px 16px;
+  background: var(--tg-bg-panel);
+  border-radius: 14px;
+  font-size: 13px;
+  color: var(--tg-text-secondary);
+}
+
+/* ── Skeleton loaders ──────────────────────────────── */
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+}
+.inbox-skeleton {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+.inbox-skel-chat {
+  display: flex;
+  gap: 10px;
+  padding: 8px 12px;
+  align-items: center;
+}
+.inbox-skel-chat .inbox-skeleton.avatar { width: 54px; height: 54px; border-radius: 50%; flex-shrink: 0; }
+.inbox-skel-chat .lines { flex: 1; }
+.inbox-skel-chat .lines .inbox-skeleton { height: 12px; margin-bottom: 8px; width: 60%; }
+.inbox-skel-chat .lines .inbox-skeleton:last-child { width: 90%; margin-bottom: 0; }
+
+/* ── Typing dots ───────────────────────────────────── */
+
+.inbox-typing {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  padding: 4px 0;
+}
+.inbox-typing span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+.inbox-typing span:nth-child(2) { animation-delay: 0.18s; }
+.inbox-typing span:nth-child(3) { animation-delay: 0.36s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ── Анимации ──────────────────────────────────────── */
+
+@keyframes bubble-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.inbox-fade-in { animation: fade-in 0.18s ease-out; }
+
+/* Highlight — при переходе к сообщению из поиска/reply */
+@keyframes msg-highlight {
+  0% { background: var(--tg-accent-dim); }
+  100% { background: transparent; }
+}
+.inbox-msg-row.is-highlight .inbox-msg-bubble {
+  animation: msg-highlight 2s ease-out;
+}
+
+/* ── Mobile ────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .inbox-shell { flex-direction: column; }
+  .inbox-sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--tg-border); max-height: 40vh; }
+  .inbox-rightpanel { display: none; }
+}

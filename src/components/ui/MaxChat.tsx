@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, RefreshCw, Paperclip, Mic, MicOff, Edit2, Trash2, Check, X } from "lucide-react";
+import { Send, Paperclip, Mic, MicOff, Edit2, Trash2, Check, X } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import ImageLightbox from "./ImageLightbox";
 
@@ -288,266 +288,279 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
 
   if (error) return <div className="text-xs p-3 rounded" style={{ background: "#fdecea", color: "#c62828" }}>{error}</div>;
 
+  // Внутренний render — R1 (2026-07-01): пузыри как в TG-Web (тёмная тема),
+  // группировка и хвостики через inbox-theme.css. Компактный режим
+  // (внутри карточки контакта/сделки) держит высоту 500px, полный
+  // (в /inbox) — 100% доступной. См. [[inbox-theme]].
   return (
-    <div className="flex flex-col" style={{ height: compact ? 500 : "100%" }}>
-      <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid #f0f0f0" }}>
-        <span className="text-xs font-semibold" style={{ color: "#888" }}>МАКС</span>
-        <button onClick={refreshAndLoad} className="p-1 rounded hover:bg-gray-100" title="Обновить"><RefreshCw size={12} style={{ color: "#888" }} /></button>
-      </div>
+    <div className="inbox-scope" style={{ display: "flex", flexDirection: "column", height: compact ? 500 : "100%", background: "var(--tg-bg)" }}>
+      <div ref={scrollContainerRef} className="inbox-messages" style={{ padding: "0 12px" }}>
+        <div className="inbox-messages-inner">
+          {loading && messages.length === 0 && <div style={{ margin: "auto", color: "var(--tg-text-secondary)", fontSize: 13 }}>Загрузка...</div>}
+          {!loading && messages.length === 0 && <div style={{ margin: "auto", color: "var(--tg-text-secondary)", fontSize: 13 }}>Отправьте первое сообщение</div>}
+          {!loading && hasMore && messages.length > 0 && (
+            <div style={{ textAlign: "center", padding: "8px 0" }}>
+              <button
+                onClick={loadOlderMessages}
+                disabled={loadingMore}
+                style={{
+                  fontSize: 12, padding: "6px 14px", borderRadius: 14,
+                  background: "var(--tg-bg-panel)", color: "var(--tg-accent)",
+                  border: "1px solid transparent", cursor: loadingMore ? "default" : "pointer",
+                  opacity: loadingMore ? 0.5 : 1,
+                }}
+              >
+                {loadingMore ? "Загрузка..." : "Загрузить ещё"}
+              </button>
+            </div>
+          )}
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2" style={{ background: "#f8f9fa", overflowAnchor: "none", overscrollBehavior: "contain" }}>
-        {loading && messages.length === 0 && <p className="text-xs text-center py-4" style={{ color: "#aaa" }}>Загрузка...</p>}
-        {!loading && messages.length === 0 && <p className="text-xs text-center py-4" style={{ color: "#aaa" }}>Отправьте первое сообщение</p>}
-        {!loading && hasMore && messages.length > 0 && (
-          <div className="text-center py-2">
-            <button onClick={loadOlderMessages} disabled={loadingMore}
-              className="text-xs px-3 py-1.5 rounded hover:bg-white disabled:opacity-50"
-              style={{ color: "#0067a5", border: "1px solid #d0e8f5" }}>
-              {loadingMore ? "Загрузка..." : "Загрузить ещё"}
-            </button>
-          </div>
-        )}
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className="flex"
-            style={{ justifyContent: msg.isMe ? "flex-end" : "flex-start" }}
-            onMouseEnter={() => setHoveredId(msg.id)}
-            onMouseLeave={() => setHoveredId((p) => p === msg.id ? null : p)}
-          >
-            {/* Hover actions for own messages: edit (text only) / delete */}
-            {msg.isMe && hoveredId === msg.id && editingId !== msg.id && (
-              <div className="flex items-center gap-1 mr-2 self-center">
-                {msg.text && (
-                  <button
-                    onClick={() => { setEditingId(msg.id); setEditText(msg.text); }}
-                    className="p-1 rounded bg-white shadow hover:bg-blue-50"
-                    title="Редактировать"
-                  >
-                    <Edit2 size={11} style={{ color: "#0067a5" }} />
-                  </button>
-                )}
-                <button
-                  onClick={() => deleteMessage(msg.id, false)}
-                  className="p-1 rounded bg-white shadow hover:bg-red-50"
-                  title="Удалить у всех"
+          {messages.map((msg, idx) => {
+            const prev = idx > 0 ? messages[idx - 1] : null;
+            const next = idx < messages.length - 1 ? messages[idx + 1] : null;
+            const sameSenderAsPrev = prev && prev.isMe === msg.isMe;
+            const sameSenderAsNext = next && next.isMe === msg.isMe;
+            const closeToPrev = prev && Math.abs(msg.time - prev.time) < 5 * 60;
+            const closeToNext = next && Math.abs(next.time - msg.time) < 5 * 60;
+            const isFirstOfGroup = !prev || !sameSenderAsPrev || !closeToPrev;
+            const isLastOfGroup = !next || !sameSenderAsNext || !closeToNext;
+            const needsDateSep = !prev || new Date(prev.time * 1000).toDateString() !== new Date(msg.time * 1000).toDateString();
+
+            return (
+              <div key={msg.id}>
+                {needsDateSep && (() => {
+                  const d = new Date(msg.time * 1000);
+                  const today = new Date();
+                  const yest = new Date(today); yest.setDate(today.getDate() - 1);
+                  let label = "";
+                  if (d.toDateString() === today.toDateString()) label = "Сегодня";
+                  else if (d.toDateString() === yest.toDateString()) label = "Вчера";
+                  else label = d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+                  return <div className="inbox-date-sticker">{label}</div>;
+                })()}
+                <div
+                  className={`inbox-msg-row ${msg.isMe ? "is-own" : ""} ${isFirstOfGroup ? "first-of-group" : ""}`}
+                  onMouseEnter={() => setHoveredId(msg.id)}
+                  onMouseLeave={() => setHoveredId((p) => p === msg.id ? null : p)}
                 >
-                  <Trash2 size={11} style={{ color: "#c62828" }} />
-                </button>
-              </div>
-            )}
-            <div style={{
-              maxWidth: "75%", padding: "8px 12px",
-              borderRadius: msg.isMe ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
-              background: msg.isMe ? "#0067a5" : "#fff",
-              color: msg.isMe ? "#fff" : "#333",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.06)", fontSize: 13,
-            }}>
-              {!msg.isMe && <p className="text-xs font-medium mb-0.5" style={{ color: "#0067a5" }}>{msg.sender}</p>}
-
-              {/* Forwarded badge */}
-              {msg.forwardedFrom && (
-                <div className="mb-1 pl-2 text-xs" style={{ borderLeft: `2px solid ${msg.isMe ? "rgba(255,255,255,0.5)" : "#0067a5"}`, opacity: 0.85 }}>
-                  <p className="text-xs italic">↪ Переслано{msg.forwardedFrom.senderName ? ` от ${msg.forwardedFrom.senderName}` : ""}</p>
-                </div>
-              )}
-
-              {/* Reply quote */}
-              {msg.replyTo && (
-                <div className="mb-1 pl-2 py-1 rounded text-xs" style={{ borderLeft: `2px solid ${msg.isMe ? "rgba(255,255,255,0.5)" : "#0067a5"}`, background: msg.isMe ? "rgba(255,255,255,0.1)" : "#f0f7ff" }}>
-                  {msg.replyTo.senderName && <p className="font-medium" style={{ color: msg.isMe ? "rgba(255,255,255,0.85)" : "#0067a5" }}>{msg.replyTo.senderName}</p>}
-                  {msg.replyTo.text && <p className="truncate" style={{ maxWidth: 200, opacity: 0.85 }}>{msg.replyTo.text}</p>}
-                </div>
-              )}
-
-              {/* Attachments */}
-              {msg.attaches?.map((a: { type: string; name?: string; size?: number; url?: string; preview?: string; duration?: number; fileId?: number }, ai: number) => {
-                const photoSrc = a.preview || a.url || null;
-                const photoFull = a.url || a.preview || null;
-                return (
-                <div key={ai} className="mb-1">
-                  {a.type === "PHOTO" || a.type === "IMAGE" || a.type === "STICKER" ? (
-                    photoSrc ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={photoSrc}
-                        alt={a.name || ""}
-                        onClick={() => photoFull && setLightbox(photoFull)}
-                        className="rounded cursor-zoom-in hover:opacity-95"
-                        style={{ maxWidth: 360, maxHeight: 360, width: "auto", height: "auto", objectFit: "contain", display: "block" }}
-                      />
-                    ) : <span className="text-xs">🖼 Фото</span>
-                  ) : a.type === "AUDIO" ? (
-                    <div>
-                      <div className="flex items-center gap-1 text-xs mb-1">🎤 Голосовое{a.duration ? ` (${Math.round(a.duration/1000)}с)` : ""}</div>
-                      {(a.url || a.fileId) && <audio controls src={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.url} className="w-full" style={{ maxWidth: 250, height: 36 }} />}
-                    </div>
-                  ) : a.type === "FILE" ? (
-                    <div className="flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:opacity-80"
-                      style={{ background: msg.isMe ? "rgba(255,255,255,0.15)" : "#f0f0f0" }}
-                      onClick={() => {
-                        const url = `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}`;
-                        const link = document.createElement("a");
-                        link.href = url;
-                        link.download = a.name || "file";
-                        link.click();
-                      }}>
-                      <span className="text-lg">📄</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{a.name || "Файл"}</p>
-                        {a.size && <p className="text-xs" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#aaa" }}>{a.size > 1048576 ? (a.size / 1048576).toFixed(1) + " МБ" : (a.size / 1024).toFixed(0) + " КБ"}</p>}
-                      </div>
-                      <span className="text-xs px-1.5 py-0.5 rounded"
-                        style={{ background: msg.isMe ? "rgba(255,255,255,0.2)" : "#e8f4fd", color: msg.isMe ? "#fff" : "#0067a5" }}>
-                        Скачать
-                      </span>
-                    </div>
-                  ) : (
-                    /* Backlog v6 §5.4: MAX sometimes sends attachments with
-                       a type our enum doesn't cover (often «UNSUPPORTED»
-                       for voice notes recorded by the iOS/Android client).
-                       Previously this rendered as «📎 UNSUPPORTED: вложение»
-                       — useless to the operator. If the message has a
-                       fileId or url, render a download link + inline
-                       <audio> player attempt, so at least the operator can
-                       hear voice messages even when the proxy mis-tags
-                       them. */
-                    (a.url || a.fileId) ? (
-                      <div className="flex flex-col gap-1">
-                        <audio
-                          controls
-                          src={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.url}
-                          className="w-full"
-                          style={{ maxWidth: 250, height: 36 }}
-                          onError={(e) => { (e.currentTarget.style as CSSStyleDeclaration).display = "none"; }}
-                        />
-                        <a
-                          href={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.url}
-                          download={a.name || `attachment_${msg.id}`}
-                          className="text-xs underline"
-                          style={{ color: msg.isMe ? "#fff" : "#0067a5" }}
+                  {msg.isMe && hoveredId === msg.id && editingId !== msg.id && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, marginRight: 6, alignSelf: "center" }}>
+                      {msg.text && (
+                        <button
+                          onClick={() => { setEditingId(msg.id); setEditText(msg.text); }}
+                          className="inbox-sidebar-btn"
+                          style={{ width: 26, height: 26, background: "var(--tg-bg-panel)" }}
+                          title="Редактировать"
                         >
-                          📎 {a.name || `Вложение (${a.type})`} — скачать
-                        </a>
+                          <Edit2 size={12} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => deleteMessage(msg.id, false)}
+                        className="inbox-sidebar-btn"
+                        style={{ width: 26, height: 26, background: "var(--tg-bg-panel)", color: "#e57373" }}
+                        title="Удалить у всех"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className={`inbox-msg-bubble ${isLastOfGroup ? "has-tail" : ""}`}>
+                    {!msg.isMe && isFirstOfGroup && msg.sender && <div className="inbox-msg-sender">{msg.sender}</div>}
+
+                    {msg.forwardedFrom && (
+                      <div className="inbox-msg-forwarded">↪ Переслано{msg.forwardedFrom.senderName ? ` от ${msg.forwardedFrom.senderName}` : ""}</div>
+                    )}
+
+                    {msg.replyTo && (
+                      <div className="inbox-msg-reply">
+                        {msg.replyTo.senderName && <div className="inbox-msg-reply-name">{msg.replyTo.senderName}</div>}
+                        {msg.replyTo.text && <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{msg.replyTo.text}</div>}
+                      </div>
+                    )}
+
+                    {msg.attaches?.map((a: { type: string; name?: string; size?: number; url?: string; preview?: string; duration?: number; fileId?: number }, ai: number) => {
+                      const photoSrc = a.preview || a.url || null;
+                      const photoFull = a.url || a.preview || null;
+                      return (
+                        <div key={ai} style={{ marginBottom: 4 }}>
+                          {a.type === "PHOTO" || a.type === "IMAGE" || a.type === "STICKER" ? (
+                            photoSrc ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={photoSrc}
+                                alt={a.name || ""}
+                                onClick={() => photoFull && setLightbox(photoFull)}
+                                className="inbox-msg-media-image"
+                              />
+                            ) : <span style={{ fontSize: 12 }}>🖼 Фото</span>
+                          ) : a.type === "AUDIO" ? (
+                            <div>
+                              <div style={{ fontSize: 12, marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>🎤 Голосовое{a.duration ? ` (${Math.round(a.duration/1000)}с)` : ""}</div>
+                              {(a.url || a.fileId) && <audio controls src={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.url} style={{ maxWidth: 250, height: 36, width: "100%" }} />}
+                            </div>
+                          ) : a.type === "FILE" ? (
+                            <div
+                              style={{
+                                display: "flex", alignItems: "center", gap: 8,
+                                padding: "6px 8px", borderRadius: 8, cursor: "pointer",
+                                background: "rgba(255,255,255,0.06)",
+                              }}
+                              onClick={() => {
+                                const url = `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}`;
+                                const link = document.createElement("a");
+                                link.href = url;
+                                link.download = a.name || "file";
+                                link.click();
+                              }}
+                            >
+                              <span style={{ fontSize: 18 }}>📄</span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name || "Файл"}</div>
+                                {a.size && <div style={{ fontSize: 11, opacity: 0.7 }}>{a.size > 1048576 ? (a.size / 1048576).toFixed(1) + " МБ" : (a.size / 1024).toFixed(0) + " КБ"}</div>}
+                              </div>
+                            </div>
+                          ) : (
+                            (a.url || a.fileId) ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                <audio
+                                  controls
+                                  src={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.url}
+                                  style={{ maxWidth: 250, height: 36, width: "100%" }}
+                                  onError={(e) => { (e.currentTarget.style as CSSStyleDeclaration).display = "none"; }}
+                                />
+                                <a
+                                  href={a.fileId ? `/api/max?action=download&file_id=${a.fileId}&chat_id=${chatId}&message_id=${msg.id}` : a.url}
+                                  download={a.name || `attachment_${msg.id}`}
+                                  style={{ fontSize: 12, textDecoration: "underline", color: "var(--tg-text-link)" }}
+                                >
+                                  📎 {a.name || `Вложение (${a.type})`} — скачать
+                                </a>
+                              </div>
+                            ) : (
+                              <p style={{ fontSize: 12, fontStyle: "italic" }}>📎 {a.type}: {a.name || "вложение"}</p>
+                            )
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {editingId === msg.id ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <textarea
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          rows={2}
+                          style={{ minWidth: 220 }}
+                          autoFocus
+                        />
+                        <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                          <button onClick={() => { setEditingId(null); setEditText(""); }} className="inbox-sidebar-btn" style={{ width: 26, height: 26 }} title="Отмена"><X size={12} /></button>
+                          <button onClick={() => saveEdit(msg.id)} className="inbox-sidebar-btn" style={{ width: 26, height: 26, color: "var(--tg-accent)" }} title="Сохранить"><Check size={12} /></button>
+                        </div>
                       </div>
                     ) : (
-                      <p className="text-xs italic">📎 {a.type}: {a.name || "вложение"}</p>
-                    )
-                  )}
-                </div>
-                );
-              })}
-              {/* Text — inline edit textarea when active, else linkified text */}
-              {editingId === msg.id ? (
-                <div className="flex flex-col gap-1">
-                  <textarea
-                    value={editText}
-                    onChange={(e) => setEditText(e.target.value)}
-                    rows={2}
-                    className="w-full text-sm px-2 py-1 rounded focus:outline-none"
-                    style={{ background: "rgba(255,255,255,0.9)", color: "#333", border: "1px solid rgba(255,255,255,0.4)", minWidth: 200 }}
-                    autoFocus
-                  />
-                  <div className="flex gap-1 justify-end">
-                    <button onClick={() => { setEditingId(null); setEditText(""); }} className="p-1 rounded hover:bg-white/10" title="Отмена">
-                      <X size={12} />
-                    </button>
-                    <button onClick={() => saveEdit(msg.id)} className="p-1 rounded hover:bg-white/10" title="Сохранить">
-                      <Check size={12} />
-                    </button>
+                      msg.text && (
+                        <div style={{ whiteSpace: "pre-wrap" }}>
+                          {linkifyText(msg.text)}
+                          <span className="inbox-msg-meta">
+                            {formatTime(msg.time)}
+                            {msg.isMe && <span className={`inbox-msg-tick ${msg.read ? "is-read" : ""}`}>{msg.read ? "✓✓" : "✓"}</span>}
+                          </span>
+                        </div>
+                      )
+                    )}
+
+                    {!msg.text && (msg.attaches?.length ?? 0) > 0 && (
+                      <div className="inbox-msg-meta" style={{ padding: "2px 6px 0" }}>
+                        {formatTime(msg.time)}
+                        {msg.isMe && <span className={`inbox-msg-tick ${msg.read ? "is-read" : ""}`}>{msg.read ? "✓✓" : "✓"}</span>}
+                      </div>
+                    )}
+
+                    {!msg.text && (!msg.attaches || msg.attaches.length === 0) && !msg.forwardedFrom && !msg.replyTo && (
+                      <p style={{ fontSize: 12, fontStyle: "italic", color: "var(--tg-text-secondary)" }}>📎 Вложение</p>
+                    )}
+
+                    {msg.reactions && msg.reactions.length > 0 && (
+                      <div className="inbox-msg-reactions">
+                        {msg.reactions.map((r, ri) => (
+                          <span key={ri} className="inbox-msg-reaction">
+                            <span>{r.emoji}</span>
+                            {r.count > 1 && <span>{r.count}</span>}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
-              ) : (
-                msg.text && <p className="whitespace-pre-wrap">{linkifyText(msg.text)}</p>
-              )}
-              {/* Empty message without attaches */}
-              {!msg.text && (!msg.attaches || msg.attaches.length === 0) && !msg.forwardedFrom && !msg.replyTo && (
-                <p className="text-xs italic" style={{ color: msg.isMe ? "rgba(255,255,255,0.7)" : "#888" }}>📎 Вложение</p>
-              )}
-
-              {/* Reactions */}
-              {msg.reactions && msg.reactions.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {msg.reactions.map((r, ri) => (
-                    <span key={ri} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs"
-                      style={{ background: msg.isMe ? "rgba(255,255,255,0.18)" : "#f0f0f0", color: msg.isMe ? "#fff" : "#555" }}>
-                      <span style={{ fontSize: 12 }}>{r.emoji}</span>
-                      {r.count > 1 && <span style={{ fontSize: 10 }}>{r.count}</span>}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-1 mt-0.5">
-                <span className="text-xs" style={{ color: msg.isMe ? "rgba(255,255,255,0.6)" : "#aaa", fontSize: 10 }}>{formatTime(msg.time)}</span>
-                {msg.isMe && (
-                  <span className="text-xs" style={{ color: msg.read ? (msg.isMe ? "#a0d0ff" : "#0067a5") : (msg.isMe ? "rgba(255,255,255,0.55)" : "#aaa"), fontSize: 10 }} title={msg.read ? "Прочитано" : "Доставлено"}>
-                    {msg.read ? "✓✓" : "✓"}
-                  </span>
-                )}
               </div>
-            </div>
-          </div>
-        ))}
-        <div ref={bottomRef} />
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
       </div>
 
-      {/* Recording indicator */}
       {recording && (
-        <div className="flex items-center gap-3 px-4 py-2" style={{ background: "#fff3f3", borderTop: "1px solid #ffcdd2" }}>
-          <div className="w-3 h-3 rounded-full animate-pulse" style={{ background: "#d32f2f" }} />
-          <span className="text-xs font-medium" style={{ color: "#d32f2f" }}>Запись {formatDuration(recordingTime)}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px", background: "rgba(220, 76, 76, 0.15)", borderTop: "1px solid var(--tg-border)" }}>
+          <div className="animate-pulse" style={{ width: 10, height: 10, borderRadius: "50%", background: "#e57373" }} />
+          <span style={{ fontSize: 13, color: "#ff9a9a", fontWeight: 500 }}>Запись {formatDuration(recordingTime)}</span>
         </div>
       )}
 
-      {/* Input */}
-      <div className="flex items-center gap-2 px-3 py-2 relative" style={{ borderTop: "1px solid #e4e4e4" }}>
-        <FileTemplatesPanel onInsert={(files) => {
-          for (const f of files) {
-            fetch(f.url).then((r) => r.blob()).then((blob) => {
-              const file = new File([blob], f.name, { type: f.type || "application/octet-stream" });
-              sendFile(file);
-            }).catch(() => {});
-          }
-        }} />
-        <button onClick={() => fileRef.current?.click()} disabled={uploading || recording}
-          className="p-1.5 rounded-full hover:bg-slate-100 transition-colors disabled:opacity-40">
-          <Paperclip size={16} style={{ color: "#888" }} />
-        </button>
-        <input ref={fileRef} type="file" className="hidden" multiple
-          onChange={async (e) => { const files = e.target.files; if (files) { for (let i = 0; i < files.length; i++) await sendFile(files[i]); } e.target.value = ""; }} />
-
-        <textarea value={text} onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px"; }}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-          onPaste={(e) => {
-            const items = e.clipboardData?.items;
-            if (!items) return;
-            for (let i = 0; i < items.length; i++) {
-              if (items[i].type.startsWith("image/")) {
-                const file = items[i].getAsFile();
-                if (file) { e.preventDefault(); sendFile(file); return; }
-              }
+      <div className="inbox-composer">
+        <div className="inbox-composer-row">
+          <FileTemplatesPanel onInsert={(files) => {
+            for (const f of files) {
+              fetch(f.url).then((r) => r.blob()).then((blob) => {
+                const file = new File([blob], f.name, { type: f.type || "application/octet-stream" });
+                sendFile(file);
+              }).catch(() => {});
             }
-          }}
-          placeholder={uploading ? "Загрузка..." : "Сообщение в МАКС..."}
-          disabled={recording || uploading}
-          rows={1}
-          className="flex-1 text-sm px-3 py-1.5 rounded-2xl focus:outline-none resize-none"
-          style={{ border: "1px solid #e0e0e0", background: "#f5f5f5", maxHeight: 120 }} />
+          }} />
+          <button onClick={() => fileRef.current?.click()} disabled={uploading || recording} className="inbox-composer-btn" title="Прикрепить файл">
+            <Paperclip size={18} />
+          </button>
+          <input ref={fileRef} type="file" className="hidden" multiple
+            onChange={async (e) => { const files = e.target.files; if (files) { for (let i = 0; i < files.length; i++) await sendFile(files[i]); } e.target.value = ""; }} />
 
-        {text.trim() ? (
-          <button onClick={sendMessage} disabled={sending}
-            className="p-1.5 rounded-full disabled:opacity-40" style={{ background: "#0067a5" }}>
-            <Send size={14} style={{ color: "#fff" }} />
-          </button>
-        ) : (
-          <button onClick={recording ? stopRecording : startRecording} disabled={uploading}
-            className="p-1.5 rounded-full disabled:opacity-40"
-            style={{ background: recording ? "#d32f2f" : "#0067a5" }}>
-            {recording ? <MicOff size={14} style={{ color: "#fff" }} /> : <Mic size={14} style={{ color: "#fff" }} />}
-          </button>
-        )}
+          <textarea value={text}
+            onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px"; }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+            onPaste={(e) => {
+              const items = e.clipboardData?.items;
+              if (!items) return;
+              for (let i = 0; i < items.length; i++) {
+                if (items[i].type.startsWith("image/")) {
+                  const file = items[i].getAsFile();
+                  if (file) { e.preventDefault(); sendFile(file); return; }
+                }
+              }
+            }}
+            placeholder={uploading ? "Загрузка..." : "Сообщение в МАКС..."}
+            disabled={recording || uploading}
+            rows={1}
+          />
+
+          {text.trim() ? (
+            <button onClick={sendMessage} disabled={sending} className="inbox-composer-btn inbox-composer-send" title="Отправить (Enter)">
+              <Send size={16} />
+            </button>
+          ) : (
+            <button
+              onClick={recording ? stopRecording : startRecording}
+              disabled={uploading}
+              className="inbox-composer-btn inbox-composer-send"
+              style={{ background: recording ? "#e57373" : "var(--tg-accent)" }}
+              title={recording ? "Остановить запись" : "Голосовое"}
+            >
+              {recording ? <MicOff size={16} /> : <Mic size={16} />}
+            </button>
+          )}
+        </div>
       </div>
+
       {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
     </div>
   );
