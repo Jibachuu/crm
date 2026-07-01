@@ -468,7 +468,7 @@ export default function AllMessengersInbox() {
   });
 
   return (
-    <div className="inbox-scope inbox-shell" style={{ flexDirection: "column" }}>
+    <div className={`inbox-scope inbox-shell ${selected ? "is-chat-open" : ""}`} style={{ flexDirection: "column" }}>
       <ConnectionBanner state={streamState} />
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
       {/* — Sidebar — */}
@@ -586,6 +586,7 @@ export default function AllMessengersInbox() {
               avatarUrl={selected.avatar}
               channel="telegram"
               subtitle="Telegram"
+              onBack={() => setSelected(null)}
               actions={
                 <>
                   <button
@@ -620,6 +621,7 @@ export default function AllMessengersInbox() {
               avatarUrl={selected.avatar}
               channel="maks"
               subtitle="МАКС"
+              onBack={() => setSelected(null)}
               actions={
                 <>
                   <button

@@ -254,7 +254,6 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
     const lastId = messages[messages.length - 1]?.id ?? "";
     if (lastId && lastId !== lastMsgIdRef.current) {
       lastMsgIdRef.current = lastId;
-      // Recompute position right now — scroll event may not have fired yet
       const container = scrollContainerRef.current;
       if (!container) return;
       const threshold = 80;
@@ -262,6 +261,19 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
       if (atBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
+
+  // Форс-скролл в самый низ при открытии чата (первый рендер сообщений).
+  const initialScrolledRef = useRef(false);
+  useEffect(() => { initialScrolledRef.current = false; }, [chatId]);
+  useEffect(() => {
+    if (initialScrolledRef.current) return;
+    if (messages.length === 0) return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    initialScrolledRef.current = true;
+    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    setTimeout(() => { el.scrollTop = el.scrollHeight; }, 300);
+  }, [messages.length, chatId]);
   useEffect(() => {
     if (!chatId) return;
     const interval = setInterval(refreshAndLoad, 15000);

@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Inbox" };
 
 export default function InboxPage() {
   return (
-    <div className="flex flex-col" style={{ height: "100vh", maxHeight: "100vh", overflow: "hidden" }}>
+    <div className="flex flex-col" style={{ height: "100dvh", maxHeight: "100dvh", overflow: "hidden" }}>
       <Header title="Inbox" />
       <div className="flex-1" style={{ minHeight: 0, overflow: "hidden" }}>
         <InboxTabsClient />

@@ -723,8 +723,49 @@
 
 /* ── Mobile ────────────────────────────────────────── */
 
-@media (max-width: 900px) {
-  .inbox-shell { flex-direction: column; }
-  .inbox-sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--tg-border); max-height: 40vh; }
-  .inbox-rightpanel { display: none; }
+/* На узких экранах — двухсостояний-навигация как в Telegram Web мобильном:
+   1) видно только список чатов (sidebar на всю ширину)
+   2) когда чат выбран, sidebar уходит влево, чат занимает весь экран.
+   Логика управляется классом .is-chat-open на корне .inbox-shell. */
+@media (max-width: 768px) {
+  .inbox-shell {
+    position: relative;
+    overflow: hidden;
+  }
+  .inbox-sidebar {
+    width: 100%;
+    max-width: 100%;
+    border-right: none;
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .inbox-main {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    transform: translateX(100%);
+    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    background: var(--tg-bg);
+  }
+  .inbox-shell.is-chat-open .inbox-sidebar {
+    transform: translateX(-25%);
+    pointer-events: none;
+    opacity: 0.4;
+  }
+  .inbox-shell.is-chat-open .inbox-main {
+    transform: translateX(0);
+  }
+  .inbox-rightpanel {
+    display: none;
+  }
+  /* Крупнее кнопки/тап-цели */
+  .inbox-sidebar-btn { width: 40px; height: 40px; }
+  .inbox-composer-btn { width: 40px; height: 40px; }
+  .inbox-chat-item { padding: 10px 14px; }
+  .inbox-chat-avatar { width: 48px; height: 48px; font-size: 18px; }
+  .inbox-chat-header { padding: 8px 12px; }
+  /* Кнопка «назад» показывается только в мобильном режиме */
+  .inbox-back-btn { display: inline-flex; }
 }
+
+/* Скрыта на десктопе */
+.inbox-back-btn { display: none; }

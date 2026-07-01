@@ -333,6 +333,24 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   // Прокидываем ссылку в search-хук
   useEffect(() => { searchContainerRef.current = scrollContainerRef.current; });
+
+  // При смене чата — форсим скролл в самый низ как только придут сообщения.
+  // Раньше видно было самое старое сообщение сверху и приходилось листать
+  // вниз к актуальным (жалоба Жибы 01.07). Флаг сбрасывается на новом peer.
+  const initialScrolledRef = useRef(false);
+  useEffect(() => { initialScrolledRef.current = false; }, [peer]);
+  useEffect(() => {
+    if (initialScrolledRef.current) return;
+    if (messages.length === 0) return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    initialScrolledRef.current = true;
+    // Отложенный scroll — ждём фактического рендера пузырей и media
+    // (у картинок onLoad поднимает scrollHeight, поэтому делаем ещё
+    // один финальный пинок через 300 мс).
+    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    setTimeout(() => { el.scrollTop = el.scrollHeight; }, 300);
+  }, [messages.length, peer]);
   const wasAtBottomRef = useRef(true);
 
   // Track whether user is at bottom before new messages arrive

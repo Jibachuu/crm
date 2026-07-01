@@ -45,3 +45,7 @@ next-env.d.ts
 # Claude Code agent state — internal scheduling/cache, not source
 .claude/scheduled_tasks.lock
 .claude/settings.local.json
+
+# Copied by scripts/copy-emojis.js at build/postinstall
+public/apple-emoji/
+

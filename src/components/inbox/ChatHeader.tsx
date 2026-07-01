@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { ChevronLeft } from "lucide-react";
 
 type Channel = "telegram" | "maks" | "email";
 
@@ -24,11 +25,17 @@ interface Props {
   channel: Channel;
   actions?: ReactNode;
   onNameClick?: () => void;
+  onBack?: () => void;
 }
 
-export default function ChatHeader({ name, subtitle, online, typing, avatarUrl, channel, actions, onNameClick }: Props) {
+export default function ChatHeader({ name, subtitle, online, typing, avatarUrl, channel, actions, onNameClick, onBack }: Props) {
   return (
     <div className="inbox-chat-header">
+      {onBack && (
+        <button className="inbox-sidebar-btn inbox-back-btn" onClick={onBack} title="Назад к чатам" style={{ flexShrink: 0 }}>
+          <ChevronLeft size={20} />
+        </button>
+      )}
       {avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={avatarUrl} alt={name} className="inbox-chat-header-avatar" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
