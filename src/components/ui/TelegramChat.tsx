@@ -12,6 +12,8 @@ import { Smile } from "lucide-react";
 import ChatSearchBar from "@/components/inbox/ChatSearchBar";
 import { useChatSearch } from "@/components/inbox/useChatSearch";
 import JumpToBottom from "@/components/inbox/JumpToBottom";
+import { useToast } from "@/components/inbox/Toaster";
+import { formatMessageText } from "@/components/inbox/formatText";
 
 interface TgMessage {
   id: number;
@@ -70,17 +72,7 @@ function formatDuration(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-const URL_REGEX = /(https?:\/\/[^\s<>"')\]]+)/g;
-
-function linkifyText(text: string) {
-  const parts = text.split(URL_REGEX);
-  if (parts.length === 1) return text;
-  return parts.map((part, i) =>
-    URL_REGEX.test(part) ? (
-      <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: "#0067a5", textDecoration: "underline", wordBreak: "break-all" }}>{part}</a>
-    ) : part
-  );
-}
+// linkify/formatting теперь общий — см. formatMessageText в @/components/inbox/formatText
 
 function MediaBubble({ media, peer, msgId, onLightbox }: { media: NonNullable<TgMessage["media"]>; peer: string; msgId: number; onLightbox?: (src: string) => void }) {
   const mediaUrl = `/api/telegram/media?peer=${encodeURIComponent(peer)}&msgId=${msgId}`;
@@ -156,6 +148,7 @@ function MediaBubble({ media, peer, msgId, onLightbox }: { media: NonNullable<Tg
 }
 
 export default function TelegramChat({ peer, compact = false, pollInterval = 8000, readOnly = false, senderName, entityType, entityId, phone }: Props & { entityType?: string; entityId?: string; phone?: string }) {
+  const toast = useToast();
   const [messages, setMessages] = useState<TgMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -373,16 +366,18 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
     clearText();
     setReplyTo(null);
     try {
-      await fetch("/api/telegram/send", {
+      const res = await fetch("/api/telegram/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ to: peer, message: body }),
       });
+      if (!res.ok) throw new Error("send failed");
       // Track who sent this message
       if (senderName) sentByRef.current.set(body, senderName);
       await fetchMessages(true);
     } catch {
       setText(body);
+      toast.error("Не удалось отправить сообщение");
     } finally {
       setSending(false);
     }
@@ -545,7 +540,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
 
                     {msg.text && (
                       <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.35 }}>
-                        {linkifyText(msg.text)}
+                        {formatMessageText(msg.text)}
                         <span className="inbox-msg-meta">
                           {formatMsgTime(msg.date)}
                           {msg.out && <span className={`inbox-msg-tick ${msg.read ? "is-read" : ""}`}>{msg.read ? "✓✓" : "✓"}</span>}
@@ -700,7 +695,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
         const m = ctxMenu.msg;
         const items = [] as { icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void; danger?: boolean }[];
         if (!readOnly) items.push({ icon: MenuIcons.Reply, label: "Ответить", onClick: () => { setReplyTo(m); composerRef.current?.focus(); } });
-        if (m.text) items.push({ icon: MenuIcons.Copy, label: "Копировать текст", onClick: () => navigator.clipboard.writeText(m.text).catch(() => {}) });
+        if (m.text) items.push({ icon: MenuIcons.Copy, label: "Копировать текст", onClick: () => { navigator.clipboard.writeText(m.text).then(() => toast.success("Скопировано")).catch(() => toast.error("Не удалось скопировать")); } });
         // TG-side edit/delete requires MTProto opcodes we haven't
         // proxied yet (backlog v7). Кладём заглушки-подсказку.
         return <MessageContextMenu x={ctxMenu.x} y={ctxMenu.y} items={items} onClose={() => setCtxMenu(null)} />;

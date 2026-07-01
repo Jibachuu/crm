@@ -12,20 +12,13 @@ import { Smile } from "lucide-react";
 import ChatSearchBar from "@/components/inbox/ChatSearchBar";
 import { useChatSearch } from "@/components/inbox/useChatSearch";
 import JumpToBottom from "@/components/inbox/JumpToBottom";
+import { useToast } from "@/components/inbox/Toaster";
+import { formatMessageText } from "@/components/inbox/formatText";
 
-const URL_REGEX = /(https?:\/\/[^\s<>"')\]]+)/g;
-
-function linkifyText(text: string) {
-  const parts = text.split(URL_REGEX);
-  if (parts.length === 1) return text;
-  return parts.map((part, i) =>
-    URL_REGEX.test(part) ? (
-      <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline", wordBreak: "break-all" }}>{part}</a>
-    ) : part
-  );
-}
+// linkify/formatting теперь общий — см. formatMessageText
 
 export default function MaxChat({ chatId, compact = false, entityType, entityId, phone }: { chatId: string; compact?: boolean; entityType?: string; entityId?: string; phone?: string; }) {
+  const toast = useToast();
   const [lightbox, setLightbox] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[]; chatId?: string; reactions?: { emoji: string; count: number }[]; forwardedFrom?: { senderName?: string; text?: string } | null; replyTo?: { id: string; senderName?: string; text?: string } | null; read?: boolean | null }[]>([]);
@@ -105,22 +98,24 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
       body: JSON.stringify({ action: "delete_message", chat_id: chatId, message_id: id, for_me: forMe }),
     });
     const data = await res.json();
-    if (data.error) { alert("Не удалось удалить: " + data.error); return; }
+    if (data.error) { toast.error("Не удалось удалить: " + data.error); return; }
     setMessages((p) => p.filter((m) => m.id !== id));
+    toast.success("Сообщение удалено");
   }
 
   async function saveEdit(id: string) {
-    if (!editText.trim()) { alert("Текст не должен быть пустым"); return; }
+    if (!editText.trim()) { toast.warn("Текст не должен быть пустым"); return; }
     const res = await fetch("/api/max", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "edit_message", chat_id: chatId, message_id: id, text: editText }),
     });
     const data = await res.json();
-    if (data.error) { alert("Не удалось отредактировать: " + data.error); return; }
+    if (data.error) { toast.error("Не удалось отредактировать: " + data.error); return; }
     setMessages((p) => p.map((m) => m.id === id ? { ...m, text: editText } : m));
     setEditingId(null);
     setEditText("");
+    toast.success("Сообщение изменено");
   }
   const [hasMore, setHasMore] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -274,7 +269,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
       body: JSON.stringify({ action: "send", chat_id: chatId, text: body }),
     });
     if (res.ok) { clearText(); setReplyTo(null); setTimeout(loadMessages, 1000); }
-    else { const data = await res.json(); alert("Ошибка: " + (data.error ?? "")); }
+    else { const data = await res.json(); toast.error("Не удалось отправить: " + (data.error ?? "")); }
     setSending(false);
   }
 
@@ -578,7 +573,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
                     ) : (
                       msg.text && (
                         <div style={{ whiteSpace: "pre-wrap" }}>
-                          {linkifyText(msg.text)}
+                          {formatMessageText(msg.text)}
                           <span className="inbox-msg-meta">
                             {formatTime(msg.time)}
                             {msg.isMe && <span className={`inbox-msg-tick ${msg.read ? "is-read" : ""}`}>{msg.read ? "✓✓" : "✓"}</span>}
@@ -707,7 +702,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
         const m = ctxMenu.msg;
         const items = [] as { icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void; danger?: boolean }[];
         items.push({ icon: MenuIcons.Reply, label: "Ответить", onClick: () => { setReplyTo(m); composerRef.current?.focus(); } });
-        if (m.text) items.push({ icon: MenuIcons.Copy, label: "Копировать текст", onClick: () => navigator.clipboard.writeText(m.text).catch(() => {}) });
+        if (m.text) items.push({ icon: MenuIcons.Copy, label: "Копировать текст", onClick: () => { navigator.clipboard.writeText(m.text).then(() => toast.success("Скопировано")).catch(() => toast.error("Не удалось скопировать")); } });
         if (m.isMe && m.text) items.push({ icon: MenuIcons.Pencil, label: "Редактировать", onClick: () => { setEditingId(m.id); setEditText(m.text); } });
         if (m.isMe) items.push({ icon: MenuIcons.Trash2, label: "Удалить у всех", danger: true, onClick: () => deleteMessage(m.id, false) });
         return <MessageContextMenu x={ctxMenu.x} y={ctxMenu.y} items={items} onClose={() => setCtxMenu(null)} />;

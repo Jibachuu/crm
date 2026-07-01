@@ -1,5 +1,6 @@
 import { Roboto } from "next/font/google";
 import "./inbox-theme.css";
+import { ToasterProvider } from "@/components/inbox/Toaster";
 
 // Roboto — родной шрифт Telegram Web. next/font/google скачивает файлы
 // на этапе сборки и self-hostит, так что рантайм-запросов в google
@@ -14,8 +15,10 @@ const roboto = Roboto({
 
 export default function InboxLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={roboto.variable} style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-      {children}
-    </div>
+    <ToasterProvider>
+      <div className={roboto.variable} style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
+        {children}
+      </div>
+    </ToasterProvider>
   );
 }
