@@ -10,6 +10,9 @@ export async function POST(req: NextRequest) {
   const file = formData.get("file") as File | null;
   const peer = formData.get("peer") as string | null;
   const caption = (formData.get("caption") as string | null) ?? "";
+  // sendAsFile=1 → форсим отправку картинки как документа (оригинал
+  // не сжимается, у получателя видно точное имя и расширение).
+  const forceFile = formData.get("sendAsFile") === "1";
 
   if (!file || !peer) {
     return NextResponse.json({ error: "file и peer обязательны" }, { status: 400 });
@@ -18,14 +21,10 @@ export async function POST(req: NextRequest) {
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const mimeType = file.type || "application/octet-stream";
-    // Clipboard images and some drag-and-drop sources hand us empty
-    // file.name → TG proxy sends them as "unnamed" with no extension,
-    // recipient can't open. Synthesize a name from the MIME type.
     const ext = (mimeType.split("/")[1] || "bin").replace("jpeg", "jpg").split(";")[0];
     const fileName = file.name?.trim() || `attachment_${Date.now()}.${ext}`;
-    // Determine kind: images → photo (inline), everything else → file (as document with filename)
     const isImage = mimeType.startsWith("image/") && !mimeType.includes("svg");
-    const kind = isImage ? "photo" : "file";
+    const kind = forceFile ? "file" : (isImage ? "photo" : "file");
     const upstream = await fetch(
       `${URL_BASE}/upload?peer=${encodeURIComponent(peer)}&kind=${kind}&caption=${encodeURIComponent(caption)}&filename=${encodeURIComponent(fileName)}`,
       {

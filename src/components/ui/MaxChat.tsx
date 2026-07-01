@@ -664,7 +664,10 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
           onCancel={() => setReplyTo(null)}
         />
       )}
-      <ComposerAttachments files={pendingFiles} onRemove={(i) => setPendingFiles((p) => p.filter((_, idx) => idx !== i))} />
+      <ComposerAttachments
+        files={pendingFiles}
+        onRemove={(i) => setPendingFiles((p) => p.filter((_, idx) => idx !== i))}
+      />
       <div className="inbox-composer" style={{ position: "relative" }}>
         {emojiOpen && (
           <EmojiPicker

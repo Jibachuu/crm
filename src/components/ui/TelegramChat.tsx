@@ -153,6 +153,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   const [messages, setMessages] = useState<TgMessage[]>([]);
   // R6: очередь аттачей — файл сначала висит в composer'е, уходит по Send
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [sendAsFile, setSendAsFile] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // R2: черновик на чат — сохраняется в localStorage под ключом
@@ -375,12 +376,11 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
       setReplyTo(null);
       try {
         for (let i = 0; i < files.length; i++) {
-          // caption только к последнему файлу — так в TG видно текст
-          // сразу после последней картинки
           const isLast = i === files.length - 1;
           await sendFile(files[i], isLast ? caption : "");
         }
       } catch { toast.error("Не удалось отправить файлы"); }
+      setSendAsFile(false);
       setSending(false);
       return;
     }
@@ -430,6 +430,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
     fd.append("file", named);
     fd.append("peer", peer);
     if (caption) fd.append("caption", caption);
+    if (sendAsFile) fd.append("sendAsFile", "1");
     await fetch("/api/telegram/upload", { method: "POST", body: fd });
     await fetchMessages(true);
     setUploading(false);
@@ -643,7 +644,12 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
               onCancel={() => setReplyTo(null)}
             />
           )}
-          <ComposerAttachments files={pendingFiles} onRemove={(i) => setPendingFiles((p) => p.filter((_, idx) => idx !== i))} />
+          <ComposerAttachments
+            files={pendingFiles}
+            onRemove={(i) => setPendingFiles((p) => p.filter((_, idx) => idx !== i))}
+            asFile={sendAsFile}
+            onToggleAsFile={setSendAsFile}
+          />
           <div className="inbox-composer" style={{ position: "relative" }}>
           {emojiOpen && (
             <EmojiPicker

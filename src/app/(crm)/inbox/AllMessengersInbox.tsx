@@ -62,6 +62,16 @@ export default function AllMessengersInbox() {
   const [addError, setAddError] = useState("");
   const [linkedOpen, setLinkedOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // При открытии чата — сразу очищаем локальный unread на нём, чтобы бейджи
+  // и favicon-счётчик не залипали до следующего SSE-тика (mark-read всё
+  // равно отправляется параллельно из TelegramChat/MaxChat).
+  function openChat(d: UnifiedDialog) {
+    setSelected(d);
+    setDialogs((prev: UnifiedDialog[]) =>
+      prev.map((x) => x.id === d.id ? { ...x, unread: false, unreadCount: 0 } : x)
+    );
+  }
+
   // R2: Ctrl+K быстрый поиск
   const [quickOpen, setQuickOpen] = useState(false);
   useEffect(() => {
@@ -559,7 +569,7 @@ export default function AllMessengersInbox() {
               isSelected={selected?.id === d.id}
               avatarUrl={d.avatar}
               channel={d.channel}
-              onClick={() => setSelected(d)}
+              onClick={() => openChat(d)}
             />
           ))}
         </div>
@@ -660,7 +670,7 @@ export default function AllMessengersInbox() {
         <QuickSearchOverlay
           dialogs={dialogs}
           formatTime={formatTime}
-          onPick={(d) => setSelected(d)}
+          onPick={(d) => openChat(d)}
           onClose={() => setQuickOpen(false)}
         />
       )}

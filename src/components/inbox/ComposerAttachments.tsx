@@ -6,23 +6,45 @@ import { X, FileText, Image as ImageIcon, Music, Video, File as FileIcon } from 
 interface Props {
   files: File[];
   onRemove: (idx: number) => void;
+  // Если среди файлов есть картинки, показываем переключатель:
+  // false = отправить как фото (сжатое JPEG), true = как файл (оригинал).
+  asFile?: boolean;
+  onToggleAsFile?: (v: boolean) => void;
 }
 
 // Полоска предпросмотра аттачей над composer'ом. Для картинок —
 // маленькая миниатюра через FileReader; для остальных — крупная иконка
 // по MIME-типу + имя + размер. Крестик убирает файл из очереди.
-export default function ComposerAttachments({ files, onRemove }: Props) {
+export default function ComposerAttachments({ files, onRemove, asFile, onToggleAsFile }: Props) {
   if (files.length === 0) return null;
+  const hasImages = files.some((f) => f.type.startsWith("image/"));
   return (
     <div style={{
-      display: "flex", flexWrap: "wrap", gap: 8,
+      display: "flex", flexDirection: "column", gap: 6,
       padding: "8px 12px",
       background: "var(--tg-bg-panel-hover)",
       borderTop: "1px solid var(--tg-border-subtle)",
     }}>
-      {files.map((f, i) => (
-        <Preview key={i} file={f} onRemove={() => onRemove(i)} />
-      ))}
+      {hasImages && onToggleAsFile && (
+        <label style={{
+          display: "inline-flex", alignItems: "center", gap: 8,
+          fontSize: 12, color: "var(--tg-text-secondary)",
+          cursor: "pointer", userSelect: "none",
+        }}>
+          <input
+            type="checkbox"
+            checked={!!asFile}
+            onChange={(e) => onToggleAsFile(e.target.checked)}
+            style={{ accentColor: "var(--tg-accent)" }}
+          />
+          Отправить как файл (без сжатия)
+        </label>
+      )}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {files.map((f, i) => (
+          <Preview key={i} file={f} onRemove={() => onRemove(i)} />
+        ))}
+      </div>
     </div>
   );
 }
