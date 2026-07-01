@@ -10,6 +10,9 @@ import ChatListSkeleton from "@/components/inbox/ChatListSkeleton";
 import EmptyChat from "@/components/inbox/EmptyChat";
 import ChatHeader from "@/components/inbox/ChatHeader";
 import QuickSearchOverlay from "@/components/inbox/QuickSearchOverlay";
+import { useInboxNotifications, useNewMessageDetector } from "@/components/inbox/useInboxNotifications";
+import { useTabBadge } from "@/components/inbox/useTabBadge";
+import InboxSettings from "@/components/inbox/InboxSettings";
 import { createClient } from "@/lib/supabase/client";
 
 interface UnifiedDialog {
@@ -69,6 +72,25 @@ export default function AllMessengersInbox() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // R3a: пуш + звук + счётчик на favicon/title
+  const notif = useInboxNotifications();
+  // Считаем сумму непрочитанных по всем чатам. unreadCount может быть
+  // undefined — трактуем «есть-непрочитанные-но-без-числа» как 1.
+  const totalUnread = dialogs.reduce((sum, d) => sum + (d.unreadCount ?? (d.unread ? 1 : 0)), 0);
+  useTabBadge(totalUnread, "Inbox");
+
+  // Реагируем на новые входящие: играем звук + пушим уведомление,
+  // если этот чат сейчас не открыт и вкладка не в фокусе.
+  useNewMessageDetector(dialogs, (d) => {
+    // Только новые ВХОДЯЩИЕ, не свои отправленные
+    const isIncomingUnread = (d.unread === true) || ((d.unreadCount ?? 0) > 0);
+    if (!isIncomingUnread) return;
+    // Если чат сейчас открыт — не пикаем
+    if (selected?.id === d.id) return;
+    notif.sound();
+    notif.notify(d.name || "Новое сообщение", d.lastMessage || "…", d.id);
+  });
 
   async function addContact(channel: "telegram" | "maks") {
     const raw = newPhone.trim();
@@ -402,6 +424,14 @@ export default function AllMessengersInbox() {
           <button onClick={refresh} disabled={refreshing} className="inbox-sidebar-btn" title="Обновить">
             <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
           </button>
+          <InboxSettings
+            soundEnabled={notif.soundEnabled}
+            onSoundToggle={notif.setSoundEnabled}
+            notifEnabled={notif.notifEnabled}
+            onNotifToggle={notif.setNotifEnabled}
+            notifPerm={notif.notifPerm}
+            onRequestNotif={notif.requestNotif}
+          />
         </div>
 
         {showNewChat && (
