@@ -4,6 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import { Send, Paperclip, Mic, MicOff, Edit2, Trash2, Check, X } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import ImageLightbox from "./ImageLightbox";
+import { useDraft } from "@/components/inbox/useDraft";
+import MessageContextMenu, { MenuIcons } from "@/components/inbox/MessageContextMenu";
+import ReplyBar from "@/components/inbox/ReplyBar";
+import EmojiPicker from "@/components/inbox/EmojiPicker";
+import { Smile } from "lucide-react";
 
 const URL_REGEX = /(https?:\/\/[^\s<>"')\]]+)/g;
 
@@ -21,7 +26,8 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   const [lightbox, setLightbox] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [messages, setMessages] = useState<{ id: string; text: string; sender: string; senderId?: number; time: number; isMe: boolean; attaches?: any[]; chatId?: string; reactions?: { emoji: string; count: number }[]; forwardedFrom?: { senderName?: string; text?: string } | null; replyTo?: { id: string; senderName?: string; text?: string } | null; read?: boolean | null }[]>([]);
-  const [text, setText] = useState("");
+  // R2: черновик на чат — сохраняется в localStorage.
+  const [text, setText, clearText] = useDraft(`max:${chatId}`);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -36,6 +42,33 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  // R2: reply target + контекстное меню
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [replyTo, setReplyTo] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; msg: any } | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const emojiBtnRef = useRef<HTMLButtonElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  useEffect(() => { setReplyTo(null); setCtxMenu(null); setEmojiOpen(false); }, [chatId]);
+
+  function insertEmoji(e: string) {
+    const el = composerRef.current;
+    if (!el) { setText(text + e); return; }
+    const start = el.selectionStart ?? text.length;
+    const end = el.selectionEnd ?? text.length;
+    const next = text.slice(0, start) + e + text.slice(end);
+    setText(next);
+    // Восстанавливаем каретку после вставки
+    setTimeout(() => {
+      if (!composerRef.current) return;
+      composerRef.current.focus();
+      const pos = start + e.length;
+      composerRef.current.setSelectionRange(pos, pos);
+    }, 0);
+  }
 
   async function deleteMessage(id: string, forMe: boolean) {
     if (!confirm(forMe ? "Удалить только у себя?" : "Удалить у всех? (24-часовое окно MAX)")) return;
@@ -196,12 +229,21 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   async function sendMessage() {
     if (!text.trim() || sending) return;
     setSending(true);
+    let body = text.trim();
+    // R2: если есть reply — префиксуем цитатой. MAX не имеет
+    // штатного reply_to_id в /api/max send (пока), поэтому цитата
+    // идёт как обычный текст.
+    if (replyTo) {
+      const qname = replyTo.sender || "Сообщение";
+      const qtext = ((replyTo.text as string) || (replyTo.attaches?.length ? "[медиа]" : "")).slice(0, 120);
+      body = `> ${qname}: ${qtext}\n${body}`;
+    }
     const res = await fetch("/api/max", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "send", chat_id: chatId, text: text.trim() }),
+      body: JSON.stringify({ action: "send", chat_id: chatId, text: body }),
     });
-    if (res.ok) { setText(""); setTimeout(loadMessages, 1000); }
+    if (res.ok) { clearText(); setReplyTo(null); setTimeout(loadMessages, 1000); }
     else { const data = await res.json(); alert("Ошибка: " + (data.error ?? "")); }
     setSending(false);
   }
@@ -293,7 +335,28 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   // (внутри карточки контакта/сделки) держит высоту 500px, полный
   // (в /inbox) — 100% доступной. См. [[inbox-theme]].
   return (
-    <div className="inbox-scope" style={{ display: "flex", flexDirection: "column", height: compact ? 500 : "100%", background: "var(--tg-bg)" }}>
+    <div
+      className="inbox-scope"
+      style={{ display: "flex", flexDirection: "column", height: compact ? 500 : "100%", background: "var(--tg-bg)", position: "relative" }}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
+      onDrop={async (e) => {
+        e.preventDefault(); setDragOver(false);
+        const files = Array.from(e.dataTransfer.files);
+        for (const f of files) await sendFile(f);
+      }}
+    >
+      {dragOver && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 40,
+          background: "rgba(106, 183, 255, 0.15)", border: "2px dashed var(--tg-accent)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 15, fontWeight: 500, color: "var(--tg-accent)",
+          pointerEvents: "none",
+        }}>
+          Отпустите файл чтобы отправить
+        </div>
+      )}
       <div ref={scrollContainerRef} className="inbox-messages" style={{ padding: "0 12px" }}>
         <div className="inbox-messages-inner">
           {loading && messages.length === 0 && <div style={{ margin: "auto", color: "var(--tg-text-secondary)", fontSize: 13 }}>Загрузка...</div>}
@@ -342,6 +405,8 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
                   className={`inbox-msg-row ${msg.isMe ? "is-own" : ""} ${isFirstOfGroup ? "first-of-group" : ""}`}
                   onMouseEnter={() => setHoveredId(msg.id)}
                   onMouseLeave={() => setHoveredId((p) => p === msg.id ? null : p)}
+                  onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, msg }); }}
+                  onDoubleClick={() => { if (msg.text) { setReplyTo(msg); composerRef.current?.focus(); } }}
                 >
                   {msg.isMe && hoveredId === msg.id && editingId !== msg.id && (
                     <div style={{ display: "flex", alignItems: "center", gap: 4, marginRight: 6, alignSelf: "center" }}>
@@ -509,7 +574,21 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
         </div>
       )}
 
-      <div className="inbox-composer">
+      {replyTo && (
+        <ReplyBar
+          senderName={replyTo.sender || "Ответ"}
+          text={replyTo.text || (replyTo.attaches?.length ? "[медиа]" : "")}
+          onCancel={() => setReplyTo(null)}
+        />
+      )}
+      <div className="inbox-composer" style={{ position: "relative" }}>
+        {emojiOpen && (
+          <EmojiPicker
+            onPick={(e) => insertEmoji(e)}
+            onClose={() => setEmojiOpen(false)}
+            anchorEl={emojiBtnRef.current}
+          />
+        )}
         <div className="inbox-composer-row">
           <FileTemplatesPanel onInsert={(files) => {
             for (const f of files) {
@@ -524,10 +603,22 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
           </button>
           <input ref={fileRef} type="file" className="hidden" multiple
             onChange={async (e) => { const files = e.target.files; if (files) { for (let i = 0; i < files.length; i++) await sendFile(files[i]); } e.target.value = ""; }} />
+          <button
+            ref={emojiBtnRef}
+            onClick={() => setEmojiOpen((v) => !v)}
+            className="inbox-composer-btn"
+            title="Эмодзи"
+          >
+            <Smile size={18} />
+          </button>
 
           <textarea value={text}
+            ref={composerRef}
             onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px"; }}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+              else if (e.key === "Escape" && replyTo) { e.preventDefault(); setReplyTo(null); }
+            }}
             onPaste={(e) => {
               const items = e.clipboardData?.items;
               if (!items) return;
@@ -562,6 +653,15 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
       </div>
 
       {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
+      {ctxMenu && (() => {
+        const m = ctxMenu.msg;
+        const items = [] as { icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void; danger?: boolean }[];
+        items.push({ icon: MenuIcons.Reply, label: "Ответить", onClick: () => { setReplyTo(m); composerRef.current?.focus(); } });
+        if (m.text) items.push({ icon: MenuIcons.Copy, label: "Копировать текст", onClick: () => navigator.clipboard.writeText(m.text).catch(() => {}) });
+        if (m.isMe && m.text) items.push({ icon: MenuIcons.Pencil, label: "Редактировать", onClick: () => { setEditingId(m.id); setEditText(m.text); } });
+        if (m.isMe) items.push({ icon: MenuIcons.Trash2, label: "Удалить у всех", danger: true, onClick: () => deleteMessage(m.id, false) });
+        return <MessageContextMenu x={ctxMenu.x} y={ctxMenu.y} items={items} onClose={() => setCtxMenu(null)} />;
+      })()}
     </div>
   );
 }

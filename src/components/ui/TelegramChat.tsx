@@ -4,6 +4,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Send, Paperclip, Mic, MicOff, Download, FileText, Image, Music, Video, X } from "lucide-react";
 import FileTemplatesPanel from "./FileTemplatesPanel";
 import ImageLightbox from "./ImageLightbox";
+import { useDraft } from "@/components/inbox/useDraft";
+import MessageContextMenu, { MenuIcons } from "@/components/inbox/MessageContextMenu";
+import ReplyBar from "@/components/inbox/ReplyBar";
+import EmojiPicker from "@/components/inbox/EmojiPicker";
+import { Smile } from "lucide-react";
 
 interface TgMessage {
   id: number;
@@ -151,13 +156,41 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   const [messages, setMessages] = useState<TgMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [text, setText] = useState("");
+  // R2: черновик на чат — сохраняется в localStorage под ключом
+  // peer'а. Пример: `inbox:draft:tg:alexey_ivanov`.
+  const [text, setText, clearText] = useDraft(`tg:${peer}`);
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const sentByRef = useRef<Map<string, string>>(new Map()); // msgText+time → senderName
+
+  // R2: reply target + контекстное меню
+  const [replyTo, setReplyTo] = useState<TgMessage | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; msg: TgMessage } | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+
+  // При смене чата сбрасываем reply
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const emojiBtnRef = useRef<HTMLButtonElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  useEffect(() => { setReplyTo(null); setCtxMenu(null); setEmojiOpen(false); }, [peer]);
+
+  function insertEmoji(e: string) {
+    const el = composerRef.current;
+    if (!el) { setText(text + e); return; }
+    const start = el.selectionStart ?? text.length;
+    const end = el.selectionEnd ?? text.length;
+    const next = text.slice(0, start) + e + text.slice(end);
+    setText(next);
+    setTimeout(() => {
+      if (!composerRef.current) return;
+      composerRef.current.focus();
+      const pos = start + e.length;
+      composerRef.current.setSelectionRange(pos, pos);
+    }, 0);
+  }
 
   // Auto-resolve entity for sync when not provided (inbox context)
   const resolvedEntityRef = useRef<{ type: string; id: string } | null>(null);
@@ -289,8 +322,18 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   async function sendMessage() {
     if (!text.trim() || sending) return;
     setSending(true);
-    const body = text.trim();
-    setText("");
+    let body = text.trim();
+    // R2: если отвечаем на сообщение — добавляем цитату сверху.
+    // Пока это чисто визуальная фича на стороне отправителя;
+    // MTProto reply_to_msg_id в /api/telegram/send пока не пробрасываем
+    // (R3 задача — прошить это в gramjs client.sendMessage).
+    if (replyTo) {
+      const qname = replyTo.fromName || "Сообщение";
+      const qtext = (replyTo.text || (replyTo.media ? "[медиа]" : "")).slice(0, 120);
+      body = `> ${qname}: ${qtext}\n${body}`;
+    }
+    clearText();
+    setReplyTo(null);
     try {
       await fetch("/api/telegram/send", {
         method: "POST",
@@ -381,7 +424,28 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   }
 
   return (
-    <div className="inbox-scope" style={{ display: "flex", flexDirection: "column", height, overflow: "hidden", background: "var(--tg-bg)" }}>
+    <div
+      className="inbox-scope"
+      style={{ display: "flex", flexDirection: "column", height, overflow: "hidden", background: "var(--tg-bg)", position: "relative" }}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
+      onDrop={async (e) => {
+        e.preventDefault(); setDragOver(false);
+        const files = Array.from(e.dataTransfer.files);
+        for (const f of files) await sendFile(f);
+      }}
+    >
+      {dragOver && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 40,
+          background: "rgba(106, 183, 255, 0.15)", border: "2px dashed var(--tg-accent)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 15, fontWeight: 500, color: "var(--tg-accent)",
+          pointerEvents: "none",
+        }}>
+          Отпустите файл чтобы отправить
+        </div>
+      )}
       <div ref={scrollContainerRef} className="inbox-messages" style={{ padding: "0 12px" }}>
         <div className="inbox-messages-inner">
           {messages.length === 0 && (
@@ -402,7 +466,11 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
               <div key={msg.id}>
                 {showDateSep && <div className="inbox-date-sticker">{formatDateSep(msg.date)}</div>}
 
-                <div className={`inbox-msg-row ${msg.out ? "is-own" : ""} ${isFirstOfGroup ? "first-of-group" : ""}`}>
+                <div
+                  className={`inbox-msg-row ${msg.out ? "is-own" : ""} ${isFirstOfGroup ? "first-of-group" : ""}`}
+                  onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, msg }); }}
+                  onDoubleClick={() => { if (msg.text) { setReplyTo(msg); composerRef.current?.focus(); } }}
+                >
                   <div className={`inbox-msg-bubble ${isLastOfGroup ? "has-tail" : ""} ${msg.media && !msg.text ? "is-media" : ""}`}>
                     {!msg.out && isFirstOfGroup && msg.fromName && (
                       <div className="inbox-msg-sender">{msg.fromName}</div>
@@ -474,7 +542,22 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
           <span style={{ fontSize: 12, color: "var(--tg-text-secondary)" }}>Это канал — отправка сообщений недоступна</span>
         </div>
       ) : (
-        <div className="inbox-composer">
+        <>
+          {replyTo && (
+            <ReplyBar
+              senderName={replyTo.fromName || "Ответ"}
+              text={replyTo.text || (replyTo.media ? "[медиа]" : "")}
+              onCancel={() => setReplyTo(null)}
+            />
+          )}
+          <div className="inbox-composer" style={{ position: "relative" }}>
+          {emojiOpen && (
+            <EmojiPicker
+              onPick={(e) => insertEmoji(e)}
+              onClose={() => setEmojiOpen(false)}
+              anchorEl={emojiBtnRef.current}
+            />
+          )}
           <div className="inbox-composer-row">
             <FileTemplatesPanel onInsert={(files) => {
               for (const f of files) {
@@ -495,11 +578,23 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
             </button>
             <input ref={fileInputRef} type="file" className="hidden" multiple
               onChange={async (e) => { const files = e.target.files; if (files) { for (let i = 0; i < files.length; i++) await sendFile(files[i]); } e.target.value = ""; }} />
+            <button
+              ref={emojiBtnRef}
+              onClick={() => setEmojiOpen((v) => !v)}
+              className="inbox-composer-btn"
+              title="Эмодзи"
+            >
+              <Smile size={18} />
+            </button>
 
             <textarea
+              ref={composerRef}
               value={text}
               onChange={(e) => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px"; }}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+                else if (e.key === "Escape" && replyTo) { e.preventDefault(); setReplyTo(null); }
+              }}
               onPaste={(e) => {
                 const items = e.clipboardData?.items;
                 if (!items) return;
@@ -537,11 +632,21 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
             )}
           </div>
         </div>
+        </>
       )}
 
       {/* Скрытые иконки MediaBubble от tree-shake */}
       <span className="hidden"><Image size={1} /><Video size={1} /><X size={1} /></span>
       {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
+      {ctxMenu && (() => {
+        const m = ctxMenu.msg;
+        const items = [] as { icon: React.ComponentType<{ size?: number }>; label: string; onClick: () => void; danger?: boolean }[];
+        if (!readOnly) items.push({ icon: MenuIcons.Reply, label: "Ответить", onClick: () => { setReplyTo(m); composerRef.current?.focus(); } });
+        if (m.text) items.push({ icon: MenuIcons.Copy, label: "Копировать текст", onClick: () => navigator.clipboard.writeText(m.text).catch(() => {}) });
+        // TG-side edit/delete requires MTProto opcodes we haven't
+        // proxied yet (backlog v7). Кладём заглушки-подсказку.
+        return <MessageContextMenu x={ctxMenu.x} y={ctxMenu.y} items={items} onClose={() => setCtxMenu(null)} />;
+      })()}
     </div>
   );
 }

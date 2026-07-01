@@ -9,6 +9,7 @@ import ChatListItem from "@/components/inbox/ChatListItem";
 import ChatListSkeleton from "@/components/inbox/ChatListSkeleton";
 import EmptyChat from "@/components/inbox/EmptyChat";
 import ChatHeader from "@/components/inbox/ChatHeader";
+import QuickSearchOverlay from "@/components/inbox/QuickSearchOverlay";
 import { createClient } from "@/lib/supabase/client";
 
 interface UnifiedDialog {
@@ -56,6 +57,18 @@ export default function AllMessengersInbox() {
   const [addError, setAddError] = useState("");
   const [linkedOpen, setLinkedOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // R2: Ctrl+K быстрый поиск
+  const [quickOpen, setQuickOpen] = useState(false);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setQuickOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   async function addContact(channel: "telegram" | "maks") {
     const raw = newPhone.trim();
@@ -541,6 +554,15 @@ export default function AllMessengersInbox() {
           </>
         ) : null}
       </div>
+
+      {quickOpen && (
+        <QuickSearchOverlay
+          dialogs={dialogs}
+          formatTime={formatTime}
+          onPick={(d) => setSelected(d)}
+          onClose={() => setQuickOpen(false)}
+        />
+      )}
 
       {/* — Right panel — */}
       {linkedOpen && selected && (
