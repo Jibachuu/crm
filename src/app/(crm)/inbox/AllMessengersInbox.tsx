@@ -111,10 +111,20 @@ export default function AllMessengersInbox() {
         const next: UnifiedDialog[] = [];
         for (const f of fresh) {
           const old = byId.get(f.id);
-          if (old) next.push({ ...old, lastMessage: f.lastMessage, lastTime: f.lastTime, unread: f.unread, unreadCount: f.unreadCount });
-          else next.push(f);
+          if (old) {
+            // Обновляем lastTime только если пришло НОВЕЕ, чтобы не
+            // дребезжать при одинаковых таймстемпах от TG-server поллинга
+            const newerTime = (f.lastTime ?? 0) > (old.lastTime ?? 0);
+            next.push({
+              ...old,
+              lastMessage: f.lastMessage || old.lastMessage,
+              lastTime: newerTime ? f.lastTime : old.lastTime,
+              unread: f.unread,
+              unreadCount: f.unreadCount,
+            });
+          } else next.push(f);
         }
-        return next.sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
+        return next.sort((a, b) => ((b.lastTime ?? 0) - (a.lastTime ?? 0)) || a.id.localeCompare(b.id));
       });
     },
     onDelta: (changed: UnifiedDialog[], removed: string[]) => {
@@ -128,10 +138,17 @@ export default function AllMessengersInbox() {
             const c = changedById.get(d.id);
             if (!c) return d;
             changedById.delete(d.id);
-            return { ...d, lastMessage: c.lastMessage, lastTime: c.lastTime, unread: c.unread, unreadCount: c.unreadCount };
+            const newerTime = (c.lastTime ?? 0) > (d.lastTime ?? 0);
+            return {
+              ...d,
+              lastMessage: c.lastMessage || d.lastMessage,
+              lastTime: newerTime ? c.lastTime : d.lastTime,
+              unread: c.unread,
+              unreadCount: c.unreadCount,
+            };
           });
         for (const [, c] of changedById) next.push(c);
-        return next.sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
+        return next.sort((a, b) => ((b.lastTime ?? 0) - (a.lastTime ?? 0)) || a.id.localeCompare(b.id));
       });
     },
   });
@@ -439,7 +456,7 @@ export default function AllMessengersInbox() {
     }
 
     // Sort by last message time, newest first
-    all.sort((a, b) => (b.lastTime || 0) - (a.lastTime || 0));
+    all.sort((a, b) => ((b.lastTime || 0) - (a.lastTime || 0)) || a.id.localeCompare(b.id));
     setDialogs(all);
     if (all.length === 0) {
       setLoadError("Не удалось загрузить чаты. Проверьте подключение или попробуйте обновить.");

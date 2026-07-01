@@ -27,6 +27,7 @@ interface TgMessage {
     fileName: string | null;
     mimeType: string | null;
     duration: number | null;
+    size?: number | null;
     url?: string | null;
     title?: string | null;
     description?: string | null;
@@ -75,18 +76,34 @@ function formatDuration(sec: number) {
 
 // linkify/formatting теперь общий — см. formatMessageText в @/components/inbox/formatText
 
+function formatSize(bytes: number | null | undefined): string {
+  if (!bytes || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} ГБ`;
+}
+
+function iconForMime(mime: string | null): React.ComponentType<{ size?: number }> {
+  if (!mime) return FileText;
+  if (mime.startsWith("image/")) return Image;
+  if (mime.startsWith("audio/")) return Music;
+  if (mime.startsWith("video/")) return Video;
+  return FileText;
+}
+
 function MediaBubble({ media, peer, msgId, onLightbox }: { media: NonNullable<TgMessage["media"]>; peer: string; msgId: number; onLightbox?: (src: string) => void }) {
   const mediaUrl = `/api/telegram/media?peer=${encodeURIComponent(peer)}&msgId=${msgId}`;
+  const dlUrl = `${mediaUrl}&download=1`;
 
   if (media.type === "photo") {
     return (
-      <div className="mt-1">
+      <div style={{ marginTop: 2 }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={mediaUrl}
           alt="Фото"
-          className="rounded-lg cursor-zoom-in hover:opacity-95"
-          style={{ maxWidth: 360, maxHeight: 360, width: "auto", height: "auto", objectFit: "contain", display: "block" }}
+          className="inbox-msg-media-image"
           onClick={() => onLightbox?.(mediaUrl)}
         />
       </div>
@@ -95,57 +112,114 @@ function MediaBubble({ media, peer, msgId, onLightbox }: { media: NonNullable<Tg
 
   if (media.type === "voice") {
     return (
-      <div className="mt-1 flex items-center gap-2">
-        <Music size={14} style={{ flexShrink: 0, color: "#0067a5" }} />
-        <audio controls src={mediaUrl} className="h-8 max-w-[200px]" style={{ outline: "none" }} />
-        {media.duration && <span className="text-xs" style={{ color: "#888" }}>{formatDuration(media.duration)}</span>}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+        <Music size={16} style={{ color: "var(--tg-accent)", flexShrink: 0 }} />
+        <audio controls src={mediaUrl} style={{ height: 32, maxWidth: 240 }} />
+        {media.duration && <span style={{ fontSize: 11, opacity: 0.7 }}>{formatDuration(media.duration)}</span>}
       </div>
     );
   }
 
   if (media.type === "audio") {
     return (
-      <div className="mt-1 flex items-center gap-2">
-        <Music size={14} style={{ color: "#0067a5" }} />
-        <audio controls src={mediaUrl} className="h-8 max-w-[220px]" />
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+        {media.fileName && <span style={{ fontSize: 13, fontWeight: 500 }}>{media.fileName}</span>}
+        <audio controls src={mediaUrl} style={{ height: 32, maxWidth: 260 }} />
       </div>
     );
   }
 
   if (media.type === "video") {
     return (
-      <div className="mt-1">
-        <video controls src={mediaUrl} className="rounded-lg" style={{ maxWidth: 360, maxHeight: 360 }} />
+      <div style={{ marginTop: 2, position: "relative" }}>
+        <video controls src={mediaUrl} style={{ maxWidth: 360, maxHeight: 360, borderRadius: 10, display: "block" }} />
       </div>
     );
   }
 
   if (media.type === "document") {
+    const Icon = iconForMime(media.mimeType);
+    const size = formatSize(media.size);
     return (
-      <a href={mediaUrl} download={media.fileName ?? "file"} className="mt-1 flex items-center gap-2 hover:opacity-70">
-        <FileText size={16} style={{ color: "#0067a5", flexShrink: 0 }} />
-        <span className="text-sm" style={{ color: "#0067a5", textDecoration: "underline" }}>{media.fileName ?? "Файл"}</span>
-        <Download size={13} style={{ color: "#aaa" }} />
+      <a
+        href={dlUrl}
+        download={media.fileName ?? "file"}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "8px 10px",
+          borderRadius: 10,
+          background: "rgba(255,255,255,0.06)",
+          textDecoration: "none",
+          color: "inherit",
+          marginTop: 2,
+          minWidth: 220,
+          maxWidth: 340,
+          transition: "background-color 0.1s",
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.10)")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+      >
+        <div style={{
+          width: 40, height: 40, borderRadius: "50%",
+          background: "var(--tg-accent)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flexShrink: 0, color: "#fff",
+        }}>
+          <Icon size={20} />
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{
+            fontSize: 14, fontWeight: 500,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>{media.fileName ?? "Файл"}</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>
+            {size} {media.mimeType && `· ${media.mimeType.split("/").pop()}`}
+          </div>
+        </div>
+        <Download size={16} style={{ opacity: 0.6, flexShrink: 0 }} />
       </a>
     );
   }
 
   if (media.type === "sticker") {
-    return <span className="text-2xl mt-1 block">🎭 Стикер</span>;
+    return <span style={{ fontSize: 32, marginTop: 4, display: "block" }}>🎭</span>;
   }
 
   if (media.type === "webpage" && media.url) {
     return (
       <a href={media.url} target="_blank" rel="noopener noreferrer"
-        className="mt-1 block p-2 rounded" style={{ border: "1px solid #ddd", background: "#f9f9f9", maxWidth: 240 }}>
-        {media.title && <p className="text-xs font-semibold" style={{ color: "#333" }}>{media.title}</p>}
-        {media.description && <p className="text-xs" style={{ color: "#777" }}>{media.description}</p>}
-        <p className="text-xs truncate mt-0.5" style={{ color: "#0067a5" }}>{media.url}</p>
+        style={{
+          display: "block", padding: 10, borderRadius: 10, marginTop: 4,
+          background: "rgba(255,255,255,0.06)", textDecoration: "none", color: "inherit",
+          borderLeft: "3px solid var(--tg-accent)",
+          maxWidth: 300,
+        }}>
+        {media.title && <div style={{ fontSize: 13, fontWeight: 500 }}>{media.title}</div>}
+        {media.description && <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>{media.description}</div>}
+        <div style={{ fontSize: 11, marginTop: 3, color: "var(--tg-text-link)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{media.url}</div>
       </a>
     );
   }
 
-  return null;
+  // Fallback для unsupported / неизвестных типов — дать хотя бы скачать
+  return (
+    <a
+      href={dlUrl}
+      download={media.fileName ?? "file"}
+      style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "6px 10px", borderRadius: 8,
+        background: "rgba(255,255,255,0.06)",
+        color: "inherit", textDecoration: "none", marginTop: 2,
+      }}
+    >
+      <FileText size={16} style={{ opacity: 0.7 }} />
+      <span style={{ fontSize: 13 }}>{media.fileName ?? "Вложение"}</span>
+      <Download size={14} style={{ opacity: 0.6, marginLeft: "auto" }} />
+    </a>
+  );
 }
 
 export default function TelegramChat({ peer, compact = false, pollInterval = 8000, readOnly = false, senderName, entityType, entityId, phone }: Props & { entityType?: string; entityId?: string; phone?: string }) {
