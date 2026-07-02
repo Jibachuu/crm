@@ -120,6 +120,18 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
     cleanup();
   }, [cleanup]);
 
+  // Счётчик перезапусков — увеличиваем чтобы форсировать re-mount UA
+  const [reconnectTrigger, setReconnectTrigger] = useState(0);
+  const reconnect = useCallback(() => {
+    console.log("[WebPhone] manual reconnect requested");
+    try {
+      if (uaRef.current) { uaRef.current.stop(); }
+    } catch { /* ignore */ }
+    uaRef.current = null;
+    setStateAndRef("registering");
+    setReconnectTrigger((n) => n + 1);
+  }, []);
+
   // Initialize JsSIP UA
   useEffect(() => {
     if (!sipUser || !sipPassword) return;
@@ -145,7 +157,18 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
 
       ua.on("registered", () => { console.log("[WebPhone] registered"); if (mounted) setStateAndRef("registered"); });
       ua.on("unregistered", () => { console.log("[WebPhone] unregistered"); if (mounted) setStateAndRef("idle"); });
-      ua.on("registrationFailed", (e: any) => { console.error("[WebPhone] registration failed:", e?.cause); if (mounted) setStateAndRef("failed"); });
+      ua.on("registrationFailed", (e: any) => {
+        console.error("[WebPhone] registration failed:", e?.cause);
+        if (mounted) setStateAndRef("failed");
+        // Автоматически пробуем переподключиться через 5 сек. Novofon
+        // иногда режет регистрацию если конкурентно активны >1 сессий.
+        setTimeout(() => {
+          if (mounted && stateRef.current === "failed") {
+            console.log("[WebPhone] auto-retry after registrationFailed");
+            reconnect();
+          }
+        }, 5000);
+      });
       ua.on("connected", () => { console.log("[WebPhone] WS connected"); });
       ua.on("disconnected", () => { console.log("[WebPhone] WS disconnected"); });
 
@@ -326,7 +349,7 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
       if (uaRef.current) { try { uaRef.current.stop(); } catch {} }
       cleanup();
     };
-  }, [sipUser, sipPassword, sipServer, wsUrl, displayName, cleanup, endCall, startRingback, stopRingback]);
+  }, [sipUser, sipPassword, sipServer, wsUrl, displayName, cleanup, endCall, startRingback, stopRingback, reconnectTrigger]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function attachAudio(session: any) {
@@ -622,6 +645,15 @@ export default function WebPhone({ sipUser, sipPassword, sipServer = "sip.novofo
                 title="Сбросить состояние SIP при залипшей сессии"
               >
                 Сброс
+              </button>
+              <button
+                onClick={reconnect}
+                disabled={state === "registering"}
+                className="text-[10px] px-1.5 py-0.5 rounded hover:bg-blue-50 disabled:opacity-50"
+                style={{ color: "#0067a5", border: "1px solid #b3e0f5" }}
+                title="Полностью пересоздать SIP-регистрацию (при 'Сотрудник не отвечает')"
+              >
+                Пересоединить
               </button>
               <button onClick={() => setMinimized(true)} className="p-1 rounded hover:bg-gray-100">
                 <X size={14} style={{ color: "#888" }} />
