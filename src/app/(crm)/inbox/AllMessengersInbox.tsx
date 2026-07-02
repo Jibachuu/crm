@@ -379,7 +379,7 @@ export default function AllMessengersInbox() {
       if (orFilters.length > 0) {
         const { data: contacts } = await supabase
           .from("contacts")
-          .select("id, maks_id, telegram_id, telegram_username, full_name, avatar_url, phone, company_id")
+          .select("id, maks_id, telegram_id, telegram_username, full_name, avatar_url, phone, company_id, updated_at, created_at")
           .or(orFilters.join(","));
 
         // Fetch company names for linked contacts
@@ -396,17 +396,47 @@ export default function AllMessengersInbox() {
         // Build lookup maps
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         type ContactRow = any;
-        const byMaksId = new Map<string, ContactRow>();
-        const byTgId = new Map<string, ContactRow>();
-        const byTgUsername = new Map<string, ContactRow>();
-        const byPhone = new Map<string, ContactRow>();
-        const byName = new Map<string, ContactRow>();
+        // Map держит ВСЕ контакты с этим ключом (не только последний),
+        // чтобы можно было выбрать самый подходящий (по свежести
+        // updated_at, или по наличию телефона, или по компании).
+        const byMaksId = new Map<string, ContactRow[]>();
+        const byTgId = new Map<string, ContactRow[]>();
+        const byTgUsername = new Map<string, ContactRow[]>();
+        const byPhone = new Map<string, ContactRow[]>();
+        const byName = new Map<string, ContactRow[]>();
+        function push(m: Map<string, ContactRow[]>, k: string, v: ContactRow) {
+          const arr = m.get(k) || [];
+          arr.push(v);
+          m.set(k, arr);
+        }
         for (const c of contacts ?? []) {
-          if (c.maks_id) byMaksId.set(c.maks_id, c);
-          if (c.telegram_id) byTgId.set(String(c.telegram_id), c);
-          if (c.telegram_username) byTgUsername.set(c.telegram_username.toLowerCase(), c);
-          if (c.phone) byPhone.set(c.phone.replace(/\D/g, "").slice(-10), c);
-          if (c.full_name) byName.set(c.full_name.toLowerCase().trim(), c);
+          if (c.maks_id) push(byMaksId, String(c.maks_id), c);
+          if (c.telegram_id) push(byTgId, String(c.telegram_id), c);
+          if (c.telegram_username) push(byTgUsername, c.telegram_username.toLowerCase(), c);
+          if (c.phone) push(byPhone, c.phone.replace(/\D/g, "").slice(-10), c);
+          if (c.full_name) push(byName, c.full_name.toLowerCase().trim(), c);
+        }
+        // Выбирает лучший контакт из списка кандидатов. Приоритет:
+        // 1) есть телефон и компания и полное ФИО
+        // 2) есть телефон
+        // 3) самое свежее updated_at
+        function pickBest(list: ContactRow[] | undefined): ContactRow | undefined {
+          if (!list || list.length === 0) return undefined;
+          if (list.length === 1) return list[0];
+          const scored = list.map((c) => ({
+            c,
+            score:
+              (c.phone ? 4 : 0) +
+              (c.company_id ? 2 : 0) +
+              (c.full_name && !/^\d+$/.test(c.full_name) ? 1 : 0),
+          }));
+          scored.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            const au = new Date(a.c.updated_at ?? a.c.created_at ?? 0).getTime();
+            const bu = new Date(b.c.updated_at ?? b.c.created_at ?? 0).getTime();
+            return bu - au;
+          });
+          return scored[0].c;
         }
 
         // Cache TG avatars → CRM contacts (background, fire-and-forget)
@@ -414,9 +444,22 @@ export default function AllMessengersInbox() {
 
         for (const d of all) {
           const phoneSuffix = d.phone ? d.phone.replace(/\D/g, "").slice(-10) : "";
-          const contact = d.channel === "maks"
-            ? (byMaksId.get(d.chatId!) || (phoneSuffix ? byPhone.get(phoneSuffix) : undefined) || (d.name ? byName.get(d.name.toLowerCase().trim()) : undefined))
-            : (byTgId.get(d.id.replace("tg_", "")) || (d.username ? byTgUsername.get(d.username.toLowerCase()) : undefined) || (phoneSuffix ? byPhone.get(phoneSuffix) : undefined));
+          // Для MAX/TG предпочитаем ТЕЛЕФОН как самый надёжный источник —
+          // если у диалога есть phone и в CRM есть контакт с этим phone,
+          // используем его. Только если phone не совпал — падаем на
+          // maks_id/telegram_id/username. Это исправляет случаи, когда
+          // за одним maks_id в CRM висит несколько контактов и enrichment
+          // раньше терял правильного.
+          let contact: ContactRow | undefined;
+          if (phoneSuffix) contact = pickBest(byPhone.get(phoneSuffix));
+          if (!contact && d.channel === "maks") {
+            contact = pickBest(byMaksId.get(String(d.chatId ?? "")));
+          } else if (!contact && d.channel === "telegram") {
+            const tgId = d.id.replace("tg_", "");
+            contact = pickBest(byTgId.get(tgId))
+              || (d.username ? pickBest(byTgUsername.get(d.username.toLowerCase())) : undefined);
+          }
+          if (!contact && d.name) contact = pickBest(byName.get(d.name.toLowerCase().trim()));
           if (!contact) {
             if (d.channel === "maks") console.log("[Inbox] Unmatched MAX chat:", d.chatId, d.name);
             continue;
