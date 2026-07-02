@@ -72,6 +72,45 @@ export default function AllMessengersInbox() {
     );
   }
 
+  // Глобальный поиск по Telegram — если локальный (среди 60 диалогов) ничего не нашёл
+  const [globalSearching, setGlobalSearching] = useState(false);
+  const [globalResults, setGlobalResults] = useState<Array<{ id: string; name: string; username?: string | null; phone?: string | null }>>([]);
+  async function searchTelegramGlobal(q: string) {
+    setGlobalSearching(true);
+    setGlobalResults([]);
+    try {
+      const res = await fetch("/api/telegram/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q }),
+      });
+      const data = await res.json();
+      setGlobalResults(data.users ?? []);
+    } catch { /* skip */ }
+    setGlobalSearching(false);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function openTelegramFromSearch(u: any) {
+    // Создаём временный диалог и открываем чат
+    const dialog: UnifiedDialog = {
+      id: `tg_${u.id}`,
+      name: u.name,
+      channel: "telegram",
+      lastMessage: "",
+      lastTime: Date.now() / 1000,
+      peer: u.username || u.phone || String(u.id),
+      username: u.username || undefined,
+      phone: u.phone || undefined,
+    };
+    setDialogs((prev) => {
+      if (prev.some((d) => d.id === dialog.id)) return prev;
+      return [dialog, ...prev];
+    });
+    setSelected(dialog);
+    setGlobalResults([]);
+    setSearch("");
+  }
+
   // R2: Ctrl+K быстрый поиск
   const [quickOpen, setQuickOpen] = useState(false);
   useEffect(() => {
@@ -616,7 +655,48 @@ export default function AllMessengersInbox() {
             </div>
           )}
           {!loading && !loadError && filtered.length === 0 && (
-            <p style={{ fontSize: 13, textAlign: "center", padding: "48px 16px", color: "var(--tg-text-secondary)" }}>Нет диалогов</p>
+            <div style={{ textAlign: "center", padding: "40px 16px" }}>
+              <p style={{ fontSize: 13, color: "var(--tg-text-secondary)", marginBottom: search ? 12 : 0 }}>Нет диалогов среди последних 60.</p>
+              {search.trim().length >= 2 && (
+                <>
+                  <p style={{ fontSize: 11, color: "var(--tg-text-tertiary)", marginBottom: 10 }}>
+                    Возможно, чат старее — я могу поискать глобально в Telegram.
+                  </p>
+                  <button
+                    onClick={() => searchTelegramGlobal(search.trim())}
+                    disabled={globalSearching}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      padding: "8px 14px", borderRadius: 8, fontSize: 13,
+                      background: "var(--tg-accent)", color: "#fff", border: "none",
+                      cursor: globalSearching ? "default" : "pointer", opacity: globalSearching ? 0.5 : 1,
+                    }}
+                  >
+                    {globalSearching ? "Ищем..." : `Найти "${search}" в Telegram`}
+                  </button>
+                  {globalResults.length > 0 && (
+                    <div style={{ marginTop: 16, textAlign: "left" }}>
+                      {globalResults.map((u) => (
+                        <button
+                          key={u.id}
+                          onClick={() => openTelegramFromSearch(u)}
+                          style={{
+                            display: "block", width: "100%", padding: "8px 12px",
+                            background: "var(--tg-bg-panel-hover)", color: "var(--tg-text)",
+                            border: "none", borderRadius: 8, marginBottom: 6, cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>{u.name}</div>
+                          {u.username && <div style={{ fontSize: 11, color: "var(--tg-text-secondary)" }}>@{u.username}</div>}
+                          {u.phone && <div style={{ fontSize: 11, color: "var(--tg-text-secondary)" }}>+{u.phone}</div>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           )}
           {filtered.map((d) => (
             <ChatListItem
