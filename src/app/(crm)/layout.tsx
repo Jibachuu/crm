@@ -4,6 +4,10 @@ import Sidebar from "@/components/layout/Sidebar";
 import PageLoader from "@/components/layout/PageLoader";
 import IncomingCallPopup from "@/components/ui/IncomingCallPopup";
 import WebPhone from "@/components/ui/WebPhone";
+// Тема инбокса грузится на весь CRM — TelegramChat/MaxChat используются
+// не только на /inbox, но и во вкладках карточек контакта/сделки/лида.
+// Без импорта пузыри рендерятся без фонов и стилей, «голыми».
+import "./inbox/inbox-theme.css";
 import type { User } from "@/types/database";
 
 export default async function CRMLayout({ children }: { children: React.ReactNode }) {

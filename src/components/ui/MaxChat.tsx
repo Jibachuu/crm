@@ -435,7 +435,7 @@ export default function MaxChat({ chatId, compact = false, entityType, entityId,
   return (
     <div
       className="inbox-scope"
-      style={{ display: "flex", flexDirection: "column", height: compact ? 500 : "100%", background: "var(--tg-bg)", position: "relative" }}
+      style={{ display: "flex", flexDirection: "column", height: compact ? 640 : "100%", background: "var(--tg-bg)", position: "relative", borderRadius: compact ? 12 : 0, overflow: "hidden" }}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
       onDrop={async (e) => {

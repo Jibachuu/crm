@@ -606,7 +606,10 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
     };
   }
 
-  const height = compact ? 500 : "100%";
+  // compact = встроенный чат в карточке контакта/сделки. 640px даёт
+  // достаточно места для истории + composer, при этом не выдавливает
+  // остальные табы карточки. Раньше было 500 — слишком тесно.
+  const height = compact ? 640 : "100%";
 
   if (loading) {
     return (
@@ -628,7 +631,7 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
   return (
     <div
       className="inbox-scope"
-      style={{ display: "flex", flexDirection: "column", height, overflow: "hidden", background: "var(--tg-bg)", position: "relative" }}
+      style={{ display: "flex", flexDirection: "column", height, overflow: "hidden", background: "var(--tg-bg)", position: "relative", borderRadius: compact ? 12 : 0 }}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
       onDrop={(e) => {
