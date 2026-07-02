@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Mail, RefreshCw, ArrowLeft, Paperclip, Reply, Send, Download, Link2, CheckCheck } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Mail, RefreshCw, ArrowLeft, Paperclip, Reply, Send, Download, Link2, CheckCheck, Search, MoreVertical, Inbox as InboxIcon, FileText, Trash2, AlertOctagon } from "lucide-react";
 import EmailCompose from "@/components/ui/EmailCompose";
 import LinkedEntitiesPanel from "@/components/ui/LinkedEntitiesPanel";
+import ChatListSkeleton from "@/components/inbox/ChatListSkeleton";
 
 interface Email {
   uid: number;
@@ -16,7 +17,6 @@ interface Email {
   preview: string;
   seen: boolean;
   hasAttachments: boolean;
-  // DB sent emails
   dbId?: string;
   body?: string;
   dbAttachments?: { filename: string; size: number }[];
@@ -39,22 +39,21 @@ function formatDate(dateStr: string) {
   const now = new Date();
   const time = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
   if (d.toDateString() === now.toDateString()) return time;
-  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }) + " " + time;
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "вчера";
+  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
 }
 
 function getInitials(name: string) {
-  return name.split(/[\s@]+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
+  return name.split(/[\s@]+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "?";
 }
 
-/** Normalize subject for threading: strip Re:/Fwd: prefixes */
 function normalizeSubject(s: string) {
   return s.replace(/^(Re|Fwd|Fw):\s*/gi, "").trim().toLowerCase();
 }
 
-/** Get the "other party" email for a conversation */
-function getConversationPartner(email: Email, myEmail: string) {
+function getConversationPartner(email: Email) {
   if (email.folder !== "INBOX") {
-    // Sent email — partner is the recipient
     return email.to.match(/<(.+?)>/)?.[1] ?? email.to.split(",")[0].trim();
   }
   return email.fromEmail;
@@ -62,13 +61,13 @@ function getConversationPartner(email: Email, myEmail: string) {
 
 type Folder = "ALL" | "INBOX" | "SENT" | "DRAFTS" | "TRASH" | "SPAM";
 
-const FOLDER_LABELS: Record<Folder, string> = {
-  ALL: "Все",
-  INBOX: "Входящие",
-  SENT: "Отправленные",
-  DRAFTS: "Черновики",
-  TRASH: "Удалённые",
-  SPAM: "Спам",
+const FOLDER_META: Record<Folder, { label: string; icon: React.ComponentType<{ size?: number }> }> = {
+  ALL: { label: "Все", icon: Mail },
+  INBOX: { label: "Входящие", icon: InboxIcon },
+  SENT: { label: "Отправленные", icon: Send },
+  DRAFTS: { label: "Черновики", icon: FileText },
+  TRASH: { label: "Удалённые", icon: Trash2 },
+  SPAM: { label: "Спам", icon: AlertOctagon },
 };
 
 export default function EmailInbox() {
@@ -83,8 +82,7 @@ export default function EmailInbox() {
   const [linkedOpen, setLinkedOpen] = useState(false);
   const [markingRead, setMarkingRead] = useState(false);
   const [folder, setFolder] = useState<Folder>("ALL");
-
-  const myEmail = (process.env.NEXT_PUBLIC_SMTP_USER ?? "").toLowerCase();
+  const [search, setSearch] = useState("");
 
   async function loadEmails(f: Folder = folder) {
     setLoading(true);
@@ -109,26 +107,28 @@ export default function EmailInbox() {
 
   useEffect(() => { loadEmails(folder); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [folder]);
 
-  // Group emails into conversation threads by normalized subject
-  function getThreads(): { key: string; subject: string; emails: Email[]; latest: Email; partner: string }[] {
+  const threads = useMemo(() => {
+    const q = search.trim().toLowerCase();
     const threadMap = new Map<string, Email[]>();
     for (const em of emails) {
+      if (q) {
+        const hay = `${em.subject} ${em.from} ${em.fromEmail} ${em.to} ${em.preview}`.toLowerCase();
+        if (!hay.includes(q)) continue;
+      }
       const key = normalizeSubject(em.subject);
       if (!threadMap.has(key)) threadMap.set(key, []);
       threadMap.get(key)!.push(em);
     }
-    const threads: { key: string; subject: string; emails: Email[]; latest: Email; partner: string }[] = [];
+    const arr: { key: string; subject: string; emails: Email[]; latest: Email; partner: string }[] = [];
     for (const [key, threadEmails] of threadMap) {
-      // Sort chronologically within thread
       threadEmails.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       const latest = threadEmails[threadEmails.length - 1];
-      const partner = getConversationPartner(latest, myEmail);
-      threads.push({ key, subject: latest.subject, emails: threadEmails, latest, partner });
+      const partner = getConversationPartner(latest);
+      arr.push({ key, subject: latest.subject, emails: threadEmails, latest, partner });
     }
-    // Sort threads by latest email date, newest first
-    threads.sort((a, b) => new Date(b.latest.date).getTime() - new Date(a.latest.date).getTime());
-    return threads;
-  }
+    arr.sort((a, b) => (new Date(b.latest.date).getTime() - new Date(a.latest.date).getTime()) || a.key.localeCompare(b.key));
+    return arr;
+  }, [emails, search]);
 
   async function openThread(threadEmails: Email[]) {
     setSelectedThread(threadEmails);
@@ -139,27 +139,17 @@ export default function EmailInbox() {
     await Promise.all(
       threadEmails.map(async (em) => {
         const key = em.dbId ? `SENT-${em.dbId}` : `${em.folder}-${em.uid}`;
-        // DB sent emails — use data directly, no IMAP fetch needed
         if (em.dbId) {
           details.set(key, {
-            uid: 0,
-            subject: em.subject,
-            from: em.from,
-            fromEmail: em.fromEmail,
-            to: em.to,
-            date: em.date,
-            html: null,
-            text: em.body ?? "",
+            uid: 0, subject: em.subject, from: em.from, fromEmail: em.fromEmail,
+            to: em.to, date: em.date, html: null, text: em.body ?? "",
             attachments: (em.dbAttachments ?? []).map((a) => ({ filename: a.filename, contentType: "", size: a.size })),
           });
           return;
         }
-        // IMAP emails — fetch from server
         try {
           const res = await fetch(`/api/email/read?uid=${em.uid}&folder=${encodeURIComponent(em.folder)}`);
-          if (res.ok) {
-            details.set(key, await res.json());
-          }
+          if (res.ok) details.set(key, await res.json());
         } catch { /* skip */ }
       })
     );
@@ -174,299 +164,331 @@ export default function EmailInbox() {
       await Promise.all(
         unread.map((e) =>
           fetch("/api/email/mark-read", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ uid: e.uid, folder: e.folder }),
           })
         )
       );
-      // Update local state
       setEmails((prev) =>
-        prev.map((e) =>
-          unread.some((u) => u.uid === e.uid && u.folder === e.folder) ? { ...e, seen: true } : e
-        )
+        prev.map((e) => unread.some((u) => u.uid === e.uid && u.folder === e.folder) ? { ...e, seen: true } : e)
       );
       if (selectedThread) {
         setSelectedThread((prev) =>
-          prev?.map((e) =>
-            unread.some((u) => u.uid === e.uid && u.folder === e.folder) ? { ...e, seen: true } : e
-          ) ?? null
+          prev?.map((e) => unread.some((u) => u.uid === e.uid && u.folder === e.folder) ? { ...e, seen: true } : e) ?? null
         );
       }
-    } catch {
-      alert("Ошибка при пометке как прочитанное");
-    }
+    } catch { /* skip */ }
     setMarkingRead(false);
   }
 
-  const threads = getThreads();
-
-  // Find reply-to address: the other party in the thread
   function getReplyTo(): string {
     if (!selectedThread?.length) return "";
-    // Find the last incoming email's sender
     for (let i = selectedThread.length - 1; i >= 0; i--) {
       if (selectedThread[i].folder === "INBOX") return selectedThread[i].fromEmail;
     }
-    // Fallback: first email's sender/recipient
     const first = selectedThread[0];
     return first.folder === "INBOX" ? first.fromEmail : (first.to.match(/<(.+?)>/)?.[1] ?? first.to);
   }
 
+  const isSelected = (key: string) => selectedThread?.[0] && normalizeSubject(selectedThread[0].subject) === key;
+
   return (
-    <div className="flex h-full">
-      {/* Thread list */}
-      <div className="flex flex-col" style={{ width: 380, borderRight: "1px solid #e4e4e4", background: "#fff" }}>
-        <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid #f0f0f0" }}>
-          <span className="text-xs font-semibold" style={{ color: "#888" }}>ПОЧТА · {threads.length}</span>
-          <button onClick={refresh} disabled={refreshing} className="p-1 rounded hover:bg-slate-100 disabled:opacity-40">
-            <RefreshCw size={13} style={{ color: "#888" }} className={refreshing ? "animate-spin" : ""} />
+    <div className="inbox-scope inbox-shell" style={{ flexDirection: "row" }}>
+      {/* Sidebar: folders + thread list */}
+      <aside className="inbox-sidebar" style={{ width: 380 }}>
+        <div className="inbox-sidebar-header">
+          <div className="inbox-search">
+            <Search size={15} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск писем"
+              autoComplete="off"
+            />
+          </div>
+          <button onClick={refresh} disabled={refreshing} className="inbox-sidebar-btn" title="Обновить">
+            <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
           </button>
         </div>
-        {/* IMAP folder tabs. Hosting.reg.ru exposes only INBOX so SENT is
-            filled from sent_emails table; other folders simply return
-            empty if the server doesn't have them. */}
-        <div className="flex overflow-x-auto" style={{ borderBottom: "1px solid #f0f0f0" }}>
-          {(Object.keys(FOLDER_LABELS) as Folder[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFolder(f)}
-              className="px-3 py-1.5 text-xs whitespace-nowrap"
-              style={{
-                color: folder === f ? "#0067a5" : "#888",
-                borderBottom: folder === f ? "2px solid #0067a5" : "2px solid transparent",
-                fontWeight: folder === f ? 600 : 400,
-              }}
-            >
-              {FOLDER_LABELS[f]}
-            </button>
-          ))}
+
+        {/* Folder tabs */}
+        <div style={{ display: "flex", overflowX: "auto", borderBottom: "1px solid var(--tg-border)", background: "var(--tg-bg-panel)", flexShrink: 0 }}>
+          {(Object.keys(FOLDER_META) as Folder[]).map((f) => {
+            const Icon = FOLDER_META[f].icon;
+            const active = folder === f;
+            return (
+              <button
+                key={f}
+                onClick={() => setFolder(f)}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "8px 12px", fontSize: 12, whiteSpace: "nowrap",
+                  color: active ? "var(--tg-accent)" : "var(--tg-text-secondary)",
+                  background: "transparent", border: "none",
+                  borderBottom: active ? "2px solid var(--tg-accent)" : "2px solid transparent",
+                  marginBottom: -1, cursor: "pointer",
+                }}
+              >
+                <Icon size={12} /> {FOLDER_META[f].label}
+              </button>
+            );
+          })}
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {loading && <p className="text-xs text-center py-12" style={{ color: "#aaa" }}>Загрузка почты...</p>}
-          {error && (
-            <div className="p-4 text-center">
-              <p className="text-xs" style={{ color: "#d32f2f" }}>{error}</p>
-              <button onClick={() => loadEmails()} className="text-xs underline mt-2" style={{ color: "#0067a5" }}>Повторить</button>
+        <div className="inbox-chatlist">
+          {loading && <ChatListSkeleton count={6} />}
+          {!loading && error && (
+            <div style={{ textAlign: "center", padding: "48px 16px" }}>
+              <p style={{ fontSize: 13, marginBottom: 8, color: "#e57373" }}>{error}</p>
+              <button onClick={() => loadEmails()} style={{ fontSize: 12, background: "transparent", border: "none", color: "var(--tg-accent)", cursor: "pointer", textDecoration: "underline" }}>
+                Повторить
+              </button>
             </div>
           )}
           {!loading && !error && threads.length === 0 && (
-            <div className="text-center py-12">
-              <Mail size={32} className="mx-auto mb-2" style={{ color: "#ddd" }} />
-              <p className="text-xs" style={{ color: "#aaa" }}>Нет писем</p>
+            <div style={{ textAlign: "center", padding: "60px 16px", color: "var(--tg-text-secondary)" }}>
+              <Mail size={40} style={{ opacity: 0.35, marginBottom: 8 }} />
+              <p style={{ fontSize: 13 }}>{search ? "Ничего не найдено" : "Нет писем"}</p>
             </div>
           )}
           {threads.map((thread) => {
             const isSent = thread.latest.folder !== "INBOX";
             const hasUnread = thread.emails.some((e) => !e.seen && e.folder === "INBOX");
-            const isSelected = selectedThread?.[0] && normalizeSubject(selectedThread[0].subject) === thread.key;
+            const senderName = isSent ? `Кому: ${thread.partner}` : thread.latest.from.split("<")[0].trim();
+            const selected = isSelected(thread.key);
             return (
               <button
                 key={thread.key}
                 onClick={() => openThread(thread.emails)}
-                className="w-full text-left px-4 py-3 transition-colors hover:bg-gray-50"
-                style={{ borderBottom: "1px solid #f5f5f5", background: isSelected ? "#e8f4fd" : "transparent" }}
+                className={`inbox-chat-item ${selected ? "is-selected" : ""} ${hasUnread ? "is-unread" : ""}`}
               >
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5"
-                    style={{ background: isSent ? "#2e7d32" : hasUnread ? "#0067a5" : "#aaa" }}>
-                    {isSent ? <Send size={13} /> : getInitials(thread.latest.from)}
+                <div className="inbox-chat-avatar-wrap">
+                  <div className="inbox-chat-avatar" style={{ background: isSent ? "linear-gradient(135deg, #4dcd5e, #2e7d32)" : "linear-gradient(135deg, #6ab7ff, #2b5278)" }}>
+                    {isSent ? <Send size={20} /> : getInitials(thread.latest.from)}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-xs font-medium truncate" style={{ color: "#333", fontWeight: hasUnread ? 600 : 400 }}>
-                        {isSent ? `Кому: ${thread.partner}` : thread.latest.from.split("<")[0].trim()}
-                      </span>
-                      <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                        {thread.emails.length > 1 && (
-                          <span className="text-xs px-1 rounded" style={{ background: "#e8f4fd", color: "#0067a5", fontSize: 10 }}>
-                            {thread.emails.length}
-                          </span>
-                        )}
-                        <span className="text-xs" style={{ color: "#aaa" }}>{formatDate(thread.latest.date)}</span>
+                  <div className="inbox-chat-channel-badge" style={{ background: "#7d8b99" }}>@</div>
+                </div>
+                <div className="inbox-chat-body">
+                  <div className="inbox-chat-toprow">
+                    <span className="inbox-chat-name">{senderName}</span>
+                    <span className="inbox-chat-time">{formatDate(thread.latest.date)}</span>
+                  </div>
+                  <div className="inbox-chat-bottomrow">
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: hasUnread ? 500 : 400, color: hasUnread ? "var(--tg-text)" : "var(--tg-text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {thread.subject.replace(/^(Re|Fwd|Fw):\s*/gi, "") || "(без темы)"}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--tg-text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {thread.latest.preview}
                       </div>
                     </div>
-                    <p className="text-xs truncate" style={{ color: "#333", fontWeight: hasUnread ? 600 : 400 }}>{thread.subject}</p>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <p className="text-xs truncate flex-1" style={{ color: "#999" }}>{thread.latest.preview}</p>
-                      {thread.emails.some((e) => e.hasAttachments) && <Paperclip size={10} style={{ color: "#aaa" }} />}
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                      {thread.emails.some((e) => e.hasAttachments) && <Paperclip size={11} style={{ opacity: 0.5 }} />}
+                      {thread.emails.length > 1 && (
+                        <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8, background: "var(--tg-accent-dim)", color: "var(--tg-accent)" }}>
+                          {thread.emails.length}
+                        </span>
+                      )}
+                      {hasUnread && <span className="inbox-chat-unread is-dot" />}
                     </div>
                   </div>
-                  {hasUnread && <div className="w-2 h-2 rounded-full flex-shrink-0 mt-2" style={{ background: "#0067a5" }} />}
                 </div>
               </button>
             );
           })}
         </div>
-      </div>
+      </aside>
 
-      {/* Thread detail / conversation view */}
-      <div className="flex-1 flex min-w-0" style={{ background: "#f5f5f5" }}>
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Main: thread detail */}
+      <div className="inbox-main">
         {!selectedThread && !loadingDetails && (
-          <div className="flex flex-col items-center justify-center h-full gap-3">
-            <Mail size={48} style={{ color: "#ddd" }} />
-            <p className="text-sm" style={{ color: "#aaa" }}>Выберите переписку</p>
+          <div className="inbox-empty">
+            <Mail size={44} style={{ opacity: 0.35 }} />
+            <div className="inbox-empty-badge">Выберите переписку</div>
           </div>
         )}
-        {loadingDetails && (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-sm" style={{ color: "#aaa" }}>Загрузка...</p>
+
+        {loadingDetails && !selectedThread && (
+          <div className="inbox-empty">
+            <span style={{ fontSize: 13, color: "var(--tg-text-secondary)" }}>Загрузка...</span>
           </div>
         )}
-        {selectedThread && !loadingDetails && (
+
+        {selectedThread && (
           <>
-            {/* Thread header */}
-            <div className="px-6 py-3 flex items-center justify-between" style={{ background: "#fff", borderBottom: "1px solid #e4e4e4" }}>
-              <div className="flex items-center gap-3">
-                <button onClick={() => { setSelectedThread(null); setThreadDetails(new Map()); setLinkedOpen(false); }} className="flex items-center gap-1 text-xs hover:underline" style={{ color: "#0067a5" }}>
-                  <ArrowLeft size={12} />
-                </button>
-                <h2 className="text-sm font-semibold" style={{ color: "#333" }}>
-                  {selectedThread[0].subject.replace(/^(Re|Fwd|Fw):\s*/gi, "")}
-                </h2>
-                <span className="text-xs" style={{ color: "#aaa" }}>{selectedThread.length} сообщ.</span>
+            {/* Header */}
+            <div className="inbox-chat-header">
+              <button
+                onClick={() => { setSelectedThread(null); setThreadDetails(new Map()); setLinkedOpen(false); }}
+                className="inbox-sidebar-btn inbox-back-btn"
+                title="Назад"
+                style={{ flexShrink: 0 }}
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <div className="inbox-chat-header-body">
+                <div className="inbox-chat-header-name">
+                  {selectedThread[0].subject.replace(/^(Re|Fwd|Fw):\s*/gi, "") || "(без темы)"}
+                </div>
+                <div className="inbox-chat-header-sub">{selectedThread.length} сообщ. · {selectedThread[selectedThread.length - 1].fromEmail}</div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="inbox-chat-header-actions">
                 {selectedThread.some((e) => !e.seen && e.folder === "INBOX" && !e.dbId) && (
                   <button
                     onClick={() => markThreadAsRead(selectedThread)}
                     disabled={markingRead}
-                    className="text-xs px-2 py-1 rounded hover:bg-green-50 flex items-center gap-1 disabled:opacity-50"
-                    style={{ color: "#2e7d32", border: "1px solid #a5d6a7" }}
+                    className="inbox-sidebar-btn"
                     title="Отметить как прочитанное"
                   >
-                    <CheckCheck size={11} /> {markingRead ? "..." : "Прочитано"}
+                    <CheckCheck size={16} />
                   </button>
                 )}
-                <button
-                  onClick={() => setLinkedOpen(!linkedOpen)}
-                  className="text-xs px-2 py-1 rounded hover:bg-blue-50 flex items-center gap-1"
-                  style={{ color: "#0067a5", border: "1px solid #b3d4f0" }}
-                  title="Связанные данные"
-                >
-                  <Link2 size={11} /> Связи
+                <button onClick={() => setLinkedOpen(!linkedOpen)} className="inbox-sidebar-btn" title="Связанные данные">
+                  <Link2 size={16} />
                 </button>
+                <button className="inbox-sidebar-btn" title="Меню"><MoreVertical size={16} /></button>
               </div>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {selectedThread.map((em) => {
-                const detailKey = em.dbId ? `SENT-${em.dbId}` : `${em.folder}-${em.uid}`;
-                const detail = threadDetails.get(detailKey);
-                const isSent = em.folder !== "INBOX";
-                return (
-                  <div key={detailKey}
-                    className="rounded-lg p-4"
-                    style={{
-                      background: "#fff",
-                      border: `1px solid ${isSent ? "#c8e6c9" : "#e4e4e4"}`,
-                      marginLeft: isSent ? 40 : 0,
-                      marginRight: isSent ? 0 : 40,
-                    }}>
-                    {/* Message header */}
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                          style={{ background: isSent ? "#2e7d32" : "#0067a5" }}>
-                          {isSent ? <Send size={10} /> : getInitials(em.from)}
-                        </div>
-                        <div>
-                          <span className="text-xs font-medium" style={{ color: isSent ? "#2e7d32" : "#333" }}>
-                            {isSent ? "Вы" : em.from.split("<")[0].trim()}
-                          </span>
-                          <span className="text-xs ml-2" style={{ color: "#aaa" }}>
-                            → {isSent ? em.to.split("<")[0].trim() : "Вам"}
-                          </span>
-                        </div>
-                      </div>
-                      <span className="text-xs" style={{ color: "#aaa" }}>{formatDate(em.date)}</span>
-                    </div>
-
-                    {/* Subject (if different from thread) */}
-                    {em.subject !== selectedThread[0].subject.replace(/^(Re|Fwd|Fw):\s*/gi, "") && (
-                      <p className="text-xs mb-2" style={{ color: "#888" }}>Тема: {em.subject}</p>
-                    )}
-
-                    {/* Message body */}
-                    {detail ? (
-                      <>
-                        {detail.html ? (
-                          <div className="text-sm email-body" style={{ color: "#333" }}
-                            dangerouslySetInnerHTML={{ __html: detail.html }} />
-                        ) : (
-                          <pre className="text-sm whitespace-pre-wrap" style={{ color: "#333", fontFamily: "inherit" }}>
-                            {detail.text}
-                          </pre>
-                        )}
-
-                        {/* Attachments with download */}
-                        {detail.attachments.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-3 pt-3" style={{ borderTop: "1px solid #f0f0f0" }}>
-                            {detail.attachments.map((a, i) => (
-                              <a key={i}
-                                href={`/api/email/attachment?uid=${em.uid}&folder=${encodeURIComponent(em.folder)}&index=${i}`}
-                                download={a.filename}
-                                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded transition-colors hover:bg-blue-50"
-                                style={{ background: "#f5f5f5", border: "1px solid #e0e0e0", color: "#0067a5" }}>
-                                <Download size={11} />
-                                <span>{a.filename}</span>
-                                <span style={{ color: "#aaa" }}>({(a.size / 1024).toFixed(0)} КБ)</span>
-                              </a>
-                            ))}
+            <div className="inbox-chat-area" style={{ overflowY: "auto" }}>
+              {loadingDetails && (
+                <div style={{ padding: 24, textAlign: "center", color: "var(--tg-text-secondary)", fontSize: 13 }}>Загрузка...</div>
+              )}
+              <div style={{ padding: "16px 16px 0", display: "flex", flexDirection: "column", gap: 12 }}>
+                {selectedThread.map((em) => {
+                  const detailKey = em.dbId ? `SENT-${em.dbId}` : `${em.folder}-${em.uid}`;
+                  const detail = threadDetails.get(detailKey);
+                  const isSent = em.folder !== "INBOX";
+                  return (
+                    <div
+                      key={detailKey}
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: 12,
+                        background: isSent ? "var(--tg-bg-own)" : "var(--tg-bg-secondary)",
+                        color: "var(--tg-text)",
+                        alignSelf: isSent ? "flex-end" : "flex-start",
+                        maxWidth: "min(720px, 88%)",
+                        border: "1px solid rgba(255,255,255,0.05)",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                          <div style={{
+                            width: 28, height: 28, borderRadius: "50%",
+                            background: isSent ? "linear-gradient(135deg, #4dcd5e, #2e7d32)" : "linear-gradient(135deg, #6ab7ff, #2b5278)",
+                            color: "#fff", fontSize: 11, fontWeight: 600,
+                            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                          }}>
+                            {isSent ? <Send size={12} /> : getInitials(em.from)}
                           </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-xs" style={{ color: "#aaa" }}>Не удалось загрузить содержимое</p>
-                    )}
-                  </div>
-                );
-              })}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {isSent ? "Вы" : em.from.split("<")[0].trim()}
+                            </div>
+                            <div style={{ fontSize: 11, opacity: 0.7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              → {isSent ? em.to.split("<")[0].trim() : "Вам"}
+                            </div>
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 11, opacity: 0.7, whiteSpace: "nowrap" }}>{formatDate(em.date)}</span>
+                      </div>
 
-              {/* Reply */}
-              <div style={{ marginLeft: 40 }}>
-                {!showReply ? (
-                  <button
-                    onClick={() => setShowReply(true)}
-                    className="flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-lg transition-colors hover:bg-white"
-                    style={{ border: "1px solid #d0d0d0", color: "#555", background: "#fff" }}
-                  >
-                    <Reply size={13} /> Ответить
-                  </button>
-                ) : (
-                  <EmailCompose
-                    to={getReplyTo()}
-                    defaultSubject={`Re: ${selectedThread[0].subject.replace(/^(Re|Fwd|Fw):\s*/gi, "")}`}
-                    onSent={() => { setShowReply(false); loadEmails().then(() => { /* thread will update on next open */ }); }}
-                    onClose={() => setShowReply(false)}
-                    compact
-                  />
-                )}
+                      {em.subject !== selectedThread[0].subject.replace(/^(Re|Fwd|Fw):\s*/gi, "") && (
+                        <p style={{ fontSize: 12, marginBottom: 6, opacity: 0.7 }}>Тема: {em.subject}</p>
+                      )}
+
+                      {detail ? (
+                        <>
+                          {detail.html ? (
+                            <div
+                              className="email-body"
+                              style={{ fontSize: 14, lineHeight: 1.45, background: "#ffffff", color: "#222", padding: "10px 12px", borderRadius: 8, marginTop: 4 }}
+                              dangerouslySetInnerHTML={{ __html: detail.html }}
+                            />
+                          ) : (
+                            <pre style={{ fontSize: 14, whiteSpace: "pre-wrap", fontFamily: "inherit", margin: 0 }}>{detail.text}</pre>
+                          )}
+
+                          {detail.attachments.length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                              {detail.attachments.map((a, i) => (
+                                <a
+                                  key={i}
+                                  href={`/api/email/attachment?uid=${em.uid}&folder=${encodeURIComponent(em.folder)}&index=${i}`}
+                                  download={a.filename}
+                                  style={{
+                                    display: "inline-flex", alignItems: "center", gap: 6,
+                                    fontSize: 12, padding: "6px 10px", borderRadius: 8,
+                                    background: "rgba(255,255,255,0.10)", color: "inherit",
+                                    textDecoration: "none",
+                                  }}
+                                >
+                                  <Download size={12} /> {a.filename}
+                                  <span style={{ opacity: 0.6 }}>({(a.size / 1024).toFixed(0)} КБ)</span>
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p style={{ fontSize: 12, opacity: 0.6 }}>Загружаем содержимое…</p>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Reply */}
+                <div style={{ alignSelf: "flex-start", width: "100%", marginTop: 8 }}>
+                  {!showReply ? (
+                    <button
+                      onClick={() => setShowReply(true)}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 8,
+                        padding: "10px 16px", fontSize: 13,
+                        background: "var(--tg-bg-panel)", color: "var(--tg-text)",
+                        border: "1px solid var(--tg-border-subtle)", borderRadius: 10,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Reply size={14} /> Ответить
+                    </button>
+                  ) : (
+                    <div style={{ background: "var(--tg-bg-panel)", borderRadius: 12, padding: 8, marginBottom: 20 }}>
+                      <EmailCompose
+                        to={getReplyTo()}
+                        defaultSubject={`Re: ${selectedThread[0].subject.replace(/^(Re|Fwd|Fw):\s*/gi, "")}`}
+                        onSent={() => { setShowReply(false); loadEmails(); }}
+                        onClose={() => setShowReply(false)}
+                        compact
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </>
         )}
       </div>
+
+      {/* Right panel */}
       {linkedOpen && selectedThread && (() => {
         const partnerEmail = selectedThread[selectedThread.length - 1].folder === "INBOX"
           ? selectedThread[selectedThread.length - 1].fromEmail
           : (selectedThread[selectedThread.length - 1].to.match(/<(.+?)>/)?.[1] ?? selectedThread[selectedThread.length - 1].to);
         const partnerName = selectedThread[selectedThread.length - 1].from.split("<")[0].trim();
         return (
-          <div style={{ width: 320, borderLeft: "1px solid #e4e4e4" }}>
+          <aside className="inbox-rightpanel">
             <LinkedEntitiesPanel
               email={partnerEmail}
               displayName={partnerName || partnerEmail}
               channel="email"
               onClose={() => setLinkedOpen(false)}
             />
-          </div>
+          </aside>
         );
       })()}
-      </div>
     </div>
   );
 }
