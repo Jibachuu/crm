@@ -167,13 +167,18 @@ export default function ContactDetail({ contact: initialContact, communications:
   const hasPhone = contact.phone || contact.phone_mobile || contact.phone_other;
   const missingMessenger = !contact.telegram_id || !contact.maks_id;
 
+  // TG/MAX-вкладки показываем ещё и когда есть username/phone —
+  // даже без явного telegram_id/maks_id можно писать (proxy сам
+  // резолвит peer по @username или добавляет по номеру).
+  const canTG = !!(contact.telegram_id || contact.telegram_username || contact.phone || contact.phone_mobile);
+  const canMax = !!(contact.maks_id || contact.phone || contact.phone_mobile);
   const tabs = [
     { id: "info", label: "Информация" },
     { id: "communications", label: `Коммуникации (${communications.length})` },
     { id: "tasks", label: `Задачи (${tasks.length})` },
     ...(contact.email ? [{ id: "email", label: "📧 Почта" }] : []),
-    ...(contact.telegram_id ? [{ id: "telegram", label: "💬 Telegram" }] : []),
-    ...(contact.maks_id ? [{ id: "maks", label: "🔵 МАКС" }] : []),
+    ...(canTG ? [{ id: "telegram", label: "💬 Telegram" }] : []),
+    ...(canMax ? [{ id: "maks", label: "🔵 МАКС" }] : []),
   ];
 
   return (
@@ -346,22 +351,32 @@ export default function ContactDetail({ contact: initialContact, communications:
               />
             )}
 
-            {activeTab === "telegram" && contact.telegram_id && (
+            {activeTab === "telegram" && canTG && (
               <div>
                 <p className="text-xs mb-2" style={{ color: "#888" }}>
                   Переписка с <strong>{contact.full_name}</strong>
                   {contact.telegram_username && <> · <span style={{ color: "#0067a5" }}>@{contact.telegram_username}</span></>}
                 </p>
-                <TelegramChat peer={contact.telegram_username || contact.phone || contact.telegram_id} compact phone={contact.phone || undefined} />
+                <TelegramChat
+                  peer={contact.telegram_username || contact.phone || contact.phone_mobile || contact.telegram_id!}
+                  compact
+                  phone={contact.phone || contact.phone_mobile || undefined}
+                  entityType="contact"
+                  entityId={contact.id}
+                />
               </div>
             )}
 
-            {activeTab === "maks" && contact.maks_id && (
+            {activeTab === "maks" && canMax && (
               <div>
                 <p className="text-xs mb-2" style={{ color: "#888" }}>
                   Переписка в МАКС с <strong>{contact.full_name}</strong>
                 </p>
-                <MaxChat chatId={contact.maks_id} compact />
+                {contact.maks_id ? (
+                  <MaxChat chatId={contact.maks_id} compact phone={contact.phone || contact.phone_mobile} entityType="contact" entityId={contact.id} />
+                ) : (
+                  <MaxAutoResolveChat contact={contact} />
+                )}
               </div>
             )}
 
@@ -500,6 +515,64 @@ export default function ContactDetail({ contact: initialContact, communications:
             )}
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function MaxAutoResolveChat({ contact }: { contact: any }) {
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [triedOnce, setTriedOnce] = useState(false);
+  const phone = contact.phone || contact.phone_mobile;
+
+  async function resolve() {
+    if (!phone) { setError("У контакта нет телефона — MAX ищет только по номеру"); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/max", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add_contact", phone, firstName: contact.full_name || "", lastName: "" }),
+      });
+      const data = await res.json();
+      const id = data?.chatId || data?.contact?.id;
+      if (id) {
+        setChatId(String(id));
+        // Сохраняем в CRM чтобы в следующий раз не искать
+        fetch("/api/contacts", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: contact.id, maks_id: String(id) }),
+        }).catch(() => {});
+      } else {
+        setError(data?.error || "Не удалось найти в МАКС");
+      }
+    } catch (e) { setError(String(e)); }
+    setLoading(false);
+    setTriedOnce(true);
+  }
+
+  if (chatId) return <MaxChat chatId={chatId} compact phone={phone} entityType="contact" entityId={contact.id} />;
+
+  return (
+    <div style={{ padding: 24, textAlign: "center", background: "#f8f9fa", border: "1px solid #e0e0e0", borderRadius: 8 }}>
+      {!triedOnce ? (
+        <>
+          <p style={{ fontSize: 13, marginBottom: 10, color: "#555" }}>Контакт ещё не привязан к МАКС.</p>
+          <Button size="sm" onClick={resolve} loading={loading} disabled={!phone}>
+            Найти в МАКС по телефону
+          </Button>
+          {!phone && <p style={{ fontSize: 11, marginTop: 8, color: "#c62828" }}>Добавьте телефон в карточку.</p>}
+        </>
+      ) : (
+        <>
+          <p style={{ fontSize: 13, color: "#c62828", marginBottom: 8 }}>{error}</p>
+          <Button size="sm" variant="secondary" onClick={resolve} loading={loading}>Попробовать снова</Button>
+        </>
       )}
     </div>
   );
