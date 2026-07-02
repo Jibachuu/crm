@@ -336,29 +336,62 @@ export default function TelegramChat({ peer, compact = false, pollInterval = 800
       const res = await fetch(`/api/telegram/messages?peer=${encodeURIComponent(peer)}&limit=50`);
       const data = await res.json();
       if (data.error) {
-        // If entity not found, try to resolve via add-contact with phone
+        // Auto-resolve: если TG не может найти peer, пробуем add-contact
+        // с username (если он в peer уже) или с phone. resolveAttemptedRef
+        // не даёт зациклиться — один шанс.
         if (data.error.includes("Could not find") && !resolveAttemptedRef.current) {
           resolveAttemptedRef.current = true;
-          if (phone) {
+          // Определяем что подать в add-contact: если peer — @username или буквы, то username; иначе phone.
+          const isUsername = /^[a-zA-Z]/.test(peer) || peer.startsWith("@");
+          const addBody: Record<string, string> = {};
+          if (isUsername) addBody.username = peer.replace(/^@/, "");
+          else if (phone) addBody.phone = phone;
+          else if (/^\+?\d{6,}$/.test(peer)) addBody.phone = peer;
+
+          if (Object.keys(addBody).length > 0) {
             try {
-              await fetch("/api/telegram/add-contact", {
+              const addRes = await fetch("/api/telegram/add-contact", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ phone }),
+                body: JSON.stringify(addBody),
               });
-              // Retry with phone as peer
-              const retry = await fetch(`/api/telegram/messages?peer=${encodeURIComponent(phone)}&limit=50`);
-              const retryData = await retry.json();
-              if (!retryData.error) {
-                const msgs = (retryData.messages as TgMessage[]).reverse();
-                setMessages(msgs);
+              const addData = await addRes.json();
+              if (addData?.ok && addData.user) {
+                // Резолв прошёл — сохраняем id в CRM-контакт если есть entityType=contact
+                if (resolvedEntityRef.current?.type === "contact") {
+                  fetch("/api/contacts", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      id: resolvedEntityRef.current.id,
+                      telegram_id: String(addData.user.id),
+                      telegram_username: addData.user.username || undefined,
+                    }),
+                  }).catch(() => {});
+                }
+                // Retry — теперь peer резолвится
+                const retryPeer = addData.user.username || String(addData.user.id) || phone || peer;
+                const retry = await fetch(`/api/telegram/messages?peer=${encodeURIComponent(retryPeer)}&limit=50`);
+                const retryData = await retry.json();
+                if (!retryData.error) {
+                  const msgs = (retryData.messages as TgMessage[]).reverse();
+                  setMessages(msgs);
+                  setError(null);
+                  setLoading(false);
+                  return;
+                }
+                // Ретрай без сообщений — просто пустой чат
+                setMessages([]);
                 setError(null);
                 setLoading(false);
                 return;
               }
+              setError(addData?.error || "Не удалось найти в Telegram. Проверь @username или номер.");
+              setLoading(false);
+              return;
             } catch { /* fall through */ }
           }
-          setError("Не удалось найти пользователя в Telegram по ID. Telegram требует username или номер телефона для первого подключения. Добавьте @username или телефон в карточку контакта → Редактировать.");
+          setError("Нужен @username или телефон для первого подключения. Добавь через кнопку «Редактировать» в карточке.");
           setLoading(false);
           return;
         }
